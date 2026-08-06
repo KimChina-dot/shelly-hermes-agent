@@ -9,3 +9,6 @@ export * from "./tools/index.js";
 export * from "./checkpoint/index.js";
 export * from "./kernel/index.js";
 export * from "./adapters/node/index.js";
+
+export * from "./adapters/android/index.js";
+export * from "./adapters/windows/index.js";
