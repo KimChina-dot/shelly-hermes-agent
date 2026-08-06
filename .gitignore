@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+*.log
+.shelly/checkpoints/
+.shelly/audit/
+.DS_Store
+Thumbs.db

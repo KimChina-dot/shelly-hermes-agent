@@ -1,0 +1,33 @@
+# Shelly Hermes Agent
+
+面向 Android 与 Windows 的极简编程 Agent 核心。
+
+## 设计约束
+
+- `src/core` 只依赖 TypeScript 标准能力和抽象端口。
+- 平台文件系统、进程、后台任务和通知均由适配器注入。
+- Android 与 Windows 共享 Agent、Hermes、插件、安全策略和检查点协议。
+- 默认最小权限；危险能力必须由宿主显式授权。
+- 记忆正文使用可迁移的纯文本格式，不依赖向量数据库。
+
+## 开发
+
+```bash
+npm install
+npm test
+npm run check
+npm run build
+```
+
+## 目录
+
+```text
+src/
+  core/       跨平台领域类型和端口
+  plugins/    插件注册与能力控制
+  hermes/     纯文本知识账本
+  adapters/   平台适配器（后续加入 Android、Windows）
+examples/     可运行演示
+test/         跨平台契约测试
+docs/         架构决策
+```
