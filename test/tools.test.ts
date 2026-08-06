@@ -1,0 +1,5 @@
+import assert from "node:assert/strict"; import test from "node:test"; import { SafeFileTools, resolveSandboxPath } from "../src/tools/index.js";
+class Store{m=new Map<string,string>();async read(p:string){return this.m.get(p)} async writeAtomic(p:string,c:string){this.m.set(p,c)} async append(p:string,c:string){this.m.set(p,(this.m.get(p)??"")+c)} async exists(p:string){return this.m.has(p)}}
+test("blocks traversal on posix and windows",()=>{assert.throws(()=>resolveSandboxPath("/project","../secret"));assert.throws(()=>resolveSandboxPath("C:/project","D:/secret"));});
+test("requires write capability",async()=>{await assert.rejects(new SafeFileTools(new Store(),"/project",{read:true,write:false}).write("a.ts","x"),/fs.write/)});
+test("patches exactly once and rejects stale context",async()=>{const s=new Store();s.m.set("/project/a.ts","const x = 1;");const t=new SafeFileTools(s,"/project",{read:true,write:true});await t.applyPatch("a.ts","1","2");assert.equal(s.m.get("/project/a.ts"),"const x = 2;");await assert.rejects(t.applyPatch("a.ts","1","3"),/exactly once/)});
