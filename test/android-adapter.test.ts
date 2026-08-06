@@ -1,0 +1,5 @@
+import assert from "node:assert/strict";import test from "node:test";import { AndroidHostBridge,type AndroidHostBindings } from "../src/adapters/android/index.js";
+const events:any[]=[];const b:AndroidHostBindings={readText:async()=>null,writeTextAtomic:async(p,c)=>{events.push([p,c])},appendText:async()=>{},exists:async()=>false,runProcess:async()=>({exitCode:0,stdout:"ok",stderr:"",timedOut:false}),scheduleTask:async(i,p)=>{events.push([i,p])},cancelTask:async()=>{},notify:async e=>{events.push(e)}};
+test("maps nullable native reads to portable undefined",async()=>assert.equal(await new AndroidHostBridge(b).read("a"),undefined));
+test("validates task payload and progress",async()=>{const h=new AndroidHostBridge(b);await assert.rejects(h.schedule("bad id","{}"));await assert.rejects(h.schedule("ok","bad"));await assert.rejects(h.showProgress("ok","x",2));});
+test("forwards process without shell transformation",async()=>assert.equal((await new AndroidHostBridge(b).run({executable:"git",args:["status"],cwd:"/home",timeoutMs:10,maxOutputBytes:100})).stdout,"ok"));
