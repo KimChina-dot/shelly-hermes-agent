@@ -1,10 +1,10 @@
 import { readdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const files = (await readdir(new URL("../test/", import.meta.url), { withFileTypes: true }))
   .filter((entry) => entry.isFile() && entry.name.endsWith(".test.ts"))
-  .map((entry) => resolve(new URL(`../test/${entry.name}`, import.meta.url).pathname))
+  .map((entry) => fileURLToPath(new URL(`../test/${entry.name}`, import.meta.url)))
   .sort();
 
 if (files.length === 0) throw new Error("No test files found");
