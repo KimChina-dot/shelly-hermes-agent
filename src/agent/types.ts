@@ -54,6 +54,11 @@ export interface AgentTool {
 export interface AgentRunOptions {
   readonly systemPrompt: string;
   readonly history?: readonly ChatMessage[];
+  readonly contextProvider?: import("../context/index.js").ContextProviderPort;
+  readonly contextSummary?: import("../context/index.js").SummaryPort;
+  readonly contextTokenCounter?: import("../context/index.js").TokenCounterPort;
+  readonly contextCharacterBudget?: number;
+  readonly contextTokenBudget?: number;
   readonly maxTurns?: number;
   readonly maxToolCalls?: number;
   readonly signal?: AbortSignal;

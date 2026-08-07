@@ -1,3 +1,4 @@
+import { compressContext } from "../context/index.js";
 import type {
   AgentRunOptions,
   AgentRunResult,
@@ -30,9 +31,25 @@ export class CodingAgent {
     const maxTurns = positive(options.maxTurns, 12, "maxTurns");
     const maxToolCalls = nonNegative(options.maxToolCalls, 24, "maxToolCalls");
     const confirm = options.confirm ?? (async () => false);
+    const history = options.history ?? [];
+    const recalled = options.contextProvider
+      ? await options.contextProvider.provide({
+          prompt,
+          history,
+          ...(options.contextCharacterBudget === undefined ? {} : { characterBudget: options.contextCharacterBudget }),
+          ...(options.contextTokenBudget === undefined ? {} : { tokenBudget: options.contextTokenBudget }),
+        })
+      : [];
+    const compressed = recalled.length
+      ? await compressContext(recalled, {
+          ...(options.contextCharacterBudget === undefined ? {} : { maxCharacters: options.contextCharacterBudget }),
+          ...(options.contextTokenBudget === undefined ? {} : { maxTokens: options.contextTokenBudget }),
+        }, options.contextSummary, options.contextTokenCounter)
+      : undefined;
     const messages: ChatMessage[] = [
       { role: "system", content: options.systemPrompt },
-      ...(options.history ?? []),
+      ...(compressed?.text ? [{ role: "system" as const, content: `Recalled context:\n${compressed.text}` }] : []),
+      ...history,
       { role: "user", content: prompt },
     ];
     const usage = { inputTokens: 0, outputTokens: 0 };

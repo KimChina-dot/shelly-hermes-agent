@@ -5,6 +5,8 @@ export * from "./agent/index.js";
 export * from "./models/index.js";
 export * from "./plugins/index.js";
 export * from "./hermes/index.js";
+export * from "./context/index.js";
+export * from "./diff/index.js";
 
 export * from "./policy/index.js";
 export * from "./tools/index.js";
