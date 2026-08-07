@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shelly.example/schemas/version-manifest.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["product", "version", "components", "runtime", "android"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "product": { "const": "shelly-hermes-agent" },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$" },
+    "components": {
+      "type": "object", "additionalProperties": false,
+      "required": ["core", "windows", "androidBridge"],
+      "properties": { "core": {"type":"string"}, "windows":{"type":"string"}, "androidBridge":{"type":"string"} }
+    },
+    "runtime": { "type":"object", "required":["node"], "properties":{"node":{"type":"string"}}, "additionalProperties":false },
+    "android": {
+      "type":"object", "additionalProperties":false,
+      "required":["status","applicationId","versionCode","minSdk"],
+      "properties": {
+        "status":{"enum":["contract-only","buildable","releasable"]},
+        "applicationId":{"type":["string","null"]}, "versionCode":{"type":["integer","null"],"minimum":1}, "minSdk":{"type":["integer","null"],"minimum":21}
+      }
+    }
+  }
+}
