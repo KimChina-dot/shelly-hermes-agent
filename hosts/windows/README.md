@@ -9,7 +9,8 @@
 - `config.ts`：优先级 `defaults < shelly.config.json < .env < process env < CLI`，校验、路径归一化、密钥脱敏。
 - `sessions.ts`：`~/.shelly/sessions/*.json` 原子写入，会话创建/列出/恢复。
 - `health.ts`：带超时的 `GET /models` 探测，可自动采用首个模型。
-- `server.ts`：默认仅监听 `127.0.0.1:43821`；`/healthz` 为进程存活，`/readyz` 为模型就绪。
+- `server.ts`：仅监听 `127.0.0.1:43821`；提供带会话 Cookie 与 CSRF 防护的桌面 API，`/healthz` 为进程存活，`/readyz` 为模型就绪。
+- `desktop.ts` / `web/`：零大型运行时依赖的本地 Web 桌面入口与静态 UI。
 - `logger.ts`：`~/.shelly/logs/shelly.jsonl` JSONL，敏感字段脱敏。
 - `cli.ts`：持久上下文、确认、取消和优雅关闭。
 

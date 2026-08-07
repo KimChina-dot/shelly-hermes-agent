@@ -28,6 +28,11 @@ Copy-Item .env.example .env
 
 交付文档：
 
+- [版本清单](version-manifest.json) 与 [升级通道 schema](schemas/update-channel.schema.json)
+- [安装与升级](docs/install-upgrade.zh-CN.md)
+- [故障排查](docs/troubleshooting.zh-CN.md)
+- [隐私说明](docs/privacy.zh-CN.md)
+- [签名与密钥安全](docs/security-signing.zh-CN.md)
 - [CI 与交付审计](docs/delivery-audit.zh-CN.md)
 - [Android Host Contract](docs/android-host-contract.zh-CN.md)
 - [发行与打包结构](docs/release-structure.zh-CN.md)
@@ -41,7 +46,7 @@ npm run verify
 npm run package
 ```
 
-产物写入 `release/shelly-hermes-agent-v<version>/`，并生成 `SHA256SUMS`。
+`scripts/package.mjs` 只从锁定清单复制已知文件，按路径排序生成确定性 JSON/SHA256 内容；相同源码、lockfile、Node/TypeScript 版本应产生相同文件内容（目录时间戳不属于内容承诺）。产物写入 `release/shelly-hermes-agent-v<version>/`，生成 `SHA256SUMS` 和 CycloneDX `sbom.cdx.json`。当前流程仅上传未签名 CI 候选产物，不执行真实签名或公开发布。
 
 ## 开发
 

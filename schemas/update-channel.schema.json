@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shelly.example/schemas/update-channel.schema.json",
+  "title": "Shelly Hermes update channel",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion","channel","generatedAt","releases"],
+  "properties": {
+    "schemaVersion":{"const":1}, "channel":{"enum":["stable","beta","nightly"]},
+    "generatedAt":{"type":"string","format":"date-time"},
+    "releases":{"type":"array","items":{"$ref":"#/$defs/release"}}
+  },
+  "$defs": {
+    "artifact":{"type":"object","additionalProperties":false,"required":["platform","arch","url","size","sha256","signature"],"properties":{
+      "platform":{"enum":["windows","android"]},"arch":{"enum":["x64","arm64","universal"]},"url":{"type":"string","pattern":"^https://"},"size":{"type":"integer","minimum":1},"sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+      "signature":{"type":"object","additionalProperties":false,"required":["status"],"properties":{"status":{"enum":["unsigned","signed"]},"algorithm":{"type":"string"},"keyId":{"type":"string"},"url":{"type":"string","pattern":"^https://"}}}
+    }},
+    "release":{"type":"object","additionalProperties":false,"required":["version","publishedAt","minimumVersion","rollout","artifacts"],"properties":{
+      "version":{"type":"string"},"publishedAt":{"type":"string","format":"date-time"},"minimumVersion":{"type":"string"},"rollout":{"type":"integer","minimum":0,"maximum":100},"notesUrl":{"type":"string","pattern":"^https://"},"artifacts":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/artifact"}}
+    }}
+  }
+}

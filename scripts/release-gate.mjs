@@ -1,0 +1,12 @@
+import { readFile, access } from "node:fs/promises";
+const root = new URL("../", import.meta.url);
+const manifestUrl = process.env.SHELLY_VERSION_MANIFEST ? new URL(`file://${process.env.SHELLY_VERSION_MANIFEST}`) : new URL("version-manifest.json", root);
+const manifest = JSON.parse(await readFile(manifestUrl, "utf8"));
+const pkg = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
+if (manifest.version !== pkg.version) throw new Error("version-manifest.json 与 package.json 版本不一致");
+for (const value of Object.values(manifest.components)) if (value !== manifest.version) throw new Error("组件版本未统一");
+const metadata = JSON.parse(await readFile(new URL("release-metadata/stable.json", root), "utf8"));
+if (metadata.schemaVersion !== 1 || metadata.channel !== "stable") throw new Error("升级通道元数据无效");
+await access(new URL("keys/README.md", root)); await access(new URL("docs/security-signing.zh-CN.md", root));
+if (metadata.releases.some((r) => r.artifacts?.some((a) => a.signature?.status === "signed" && (!a.signature.keyId || !a.signature.url)))) throw new Error("签名元数据缺少 keyId/url");
+console.log("release gates: PASS (未执行真实签名或发布)");
