@@ -10,6 +10,16 @@
 - 默认最小权限；危险能力必须由宿主显式授权。
 - 记忆正文使用可迁移的纯文本格式，不依赖向量数据库。
 
+## Windows CLI（首个可试用版）
+
+已提供 OpenAI-compatible 模型接入、多轮工具调用、工作区文件工具和命令执行审批。详细配置与启动方式见 [`hosts/windows/README.md`](hosts/windows/README.md)。
+
+```powershell
+Copy-Item .env.example .env
+# 编辑 .env 后
+.\hosts\windows\start.ps1
+```
+
 ## 开发
 
 ```bash
