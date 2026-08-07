@@ -28,6 +28,8 @@ jobs:
           $dir = Get-ChildItem release -Directory | Select-Object -First 1
           if (-not $dir) { throw "release directory missing" }
           if (-not (Test-Path "$($dir.FullName)/hosts/windows/start.ps1")) { throw "start.ps1 missing" }
+          if (-not (Test-Path "$($dir.FullName)/hosts/windows/start-desktop.ps1")) { throw "start-desktop.ps1 missing" }
+          if (-not (Test-Path "$($dir.FullName)/hosts/windows/web/app.js")) { throw "desktop assets missing" }
           if (-not (Test-Path "$($dir.FullName)/SHA256SUMS")) { throw "SHA256SUMS missing" }
       - uses: actions/upload-artifact@v4
         with:

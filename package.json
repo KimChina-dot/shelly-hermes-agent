@@ -15,6 +15,7 @@
     "package": "npm run build && node scripts/package.mjs",
     "smoke:windows": "node --import tsx hosts/windows/smoke.ts",
     "demo": "tsx examples/demo.ts",
+    "desktop": "tsx hosts/windows/desktop.ts",
     "cli": "tsx hosts/windows/cli.ts",
     "test:windows-host": "node --import tsx --test test/windows-host.test.ts"
   },

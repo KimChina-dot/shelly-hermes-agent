@@ -31,7 +31,7 @@ export async function loadHostConfig(options: LoadConfigOptions = {}): Promise<H
     workspace: path(merged.workspace, cwd), dataDir: path(merged.dataDir, cwd),
     logLevel: level(merged.logLevel), timeoutMs: integer(merged.timeoutMs, "timeoutMs", 1),
     maxTurns: integer(merged.maxTurns, "maxTurns", 1), maxToolCalls: integer(merged.maxToolCalls, "maxToolCalls", 0),
-    host: string(merged.host, "host"), port: integer(merged.port, "port", 1, 65535),
+    host: loopback(merged.host), port: integer(merged.port, "port", 1, 65535),
   };
   try { new URL(config.baseUrl); } catch { throw new Error(`baseUrl 不是有效 URL: ${config.baseUrl}`); }
   return config;
@@ -63,4 +63,5 @@ function camel(v:string){return v.replace(/-([a-z])/g,(_,c:string)=>c.toUpperCas
 function string(v:unknown,n:string){if(typeof v!=="string"||!v.trim())throw new Error(`${n} 不能为空`);return v.trim();}
 function path(v:unknown,cwd:string){const s=string(v,"path");return resolve(isAbsolute(s)?s:resolve(cwd,s));}
 function integer(v:unknown,n:string,min:number,max=Number.MAX_SAFE_INTEGER){const x=typeof v==="number"?v:Number(v);if(!Number.isInteger(x)||x<min||x>max)throw new Error(`${n} 必须是 ${min}..${max} 的整数`);return x;}
+function loopback(v:unknown){const value=string(v,"host");if(value!=="127.0.0.1")throw new Error("host 必须是 127.0.0.1");return value;}
 function level(v:unknown):LogLevel{if(v==="debug"||v==="info"||v==="warn"||v==="error")return v;throw new Error("logLevel 必须是 debug/info/warn/error");}
