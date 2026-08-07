@@ -10,3 +10,9 @@ release/
 .shelly/audit/
 .DS_Store
 Thumbs.db
+.gradle/
+**/build/
+local.properties
+*.jks
+*.keystore
+keystore.properties

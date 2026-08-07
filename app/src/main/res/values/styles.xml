@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Shelly Hermes</string>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item><item name="android:colorAccent">#315DA8</item>
+    </style>
+</resources>
