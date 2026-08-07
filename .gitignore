@@ -1,7 +1,11 @@
 node_modules/
 dist/
 coverage/
+release/
 *.log
+.env
+.env.*
+!.env.example
 .shelly/checkpoints/
 .shelly/audit/
 .DS_Store
