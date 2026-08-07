@@ -11,8 +11,12 @@
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test test/**/*.test.ts",
+    "verify": "npm run check && npm test && npm run build",
+    "package": "npm run build && node scripts/package.mjs",
+    "smoke:windows": "node --import tsx hosts/windows/smoke.ts",
     "demo": "tsx examples/demo.ts",
-    "cli": "tsx hosts/windows/cli.ts"
+    "cli": "tsx hosts/windows/cli.ts",
+    "test:windows-host": "node --import tsx --test test/windows-host.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

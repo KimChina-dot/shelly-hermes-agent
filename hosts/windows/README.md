@@ -1,64 +1,49 @@
-# Windows CLI 首个可试用版
+# Windows host / CLI 审计与运行说明
 
-该版本把跨平台 Agent 核心接入 OpenAI-compatible Chat Completions API，并提供 Windows/Node 交互命令行。
+## 审计结论
 
-## 当前能力
+旧版 `cli.ts` 仅直接读取四个环境变量；文档要求 `.env`，但 Node/脚本并未可靠加载它。每个输入都是独立 `agent.run`，没有跨任务历史、持久会话、模型发现、健康端点或结构化日志；Ctrl+C 会直接结束 readline，无法区分取消任务与退出；启动时也不验证模型服务。
 
-- 多轮模型推理与标准 function/tool calling
-- 读取工作区文本文件
-- 列出工作区目录
-- 写入文件（每次必须人工确认）
-- 执行非交互命令（每次必须人工确认，不经过 Shell 字符串拼接）
-- 路径沙箱、轮次上限、工具调用上限、超时与输出截断
+本实现保持零运行时依赖，拆为可测试组件：
 
-## 环境要求
-
-- Windows 10/11
-- Node.js 20 或 22
-- 一个兼容 `POST /v1/chat/completions` 和 function calling 的模型服务
+- `config.ts`：优先级 `defaults < shelly.config.json < .env < process env < CLI`，校验、路径归一化、密钥脱敏。
+- `sessions.ts`：`~/.shelly/sessions/*.json` 原子写入，会话创建/列出/恢复。
+- `health.ts`：带超时的 `GET /models` 探测，可自动采用首个模型。
+- `server.ts`：默认仅监听 `127.0.0.1:43821`；`/healthz` 为进程存活，`/readyz` 为模型就绪。
+- `logger.ts`：`~/.shelly/logs/shelly.jsonl` JSONL，敏感字段脱敏。
+- `cli.ts`：持久上下文、确认、取消和优雅关闭。
 
 ## 配置
 
-在仓库根目录执行：
+复制 `.env.example`，或创建 `shelly.config.json`：
 
-```powershell
-Copy-Item .env.example .env
-notepad .env
+```json
+{
+  "baseUrl": "http://127.0.0.1:11434/v1",
+  "apiKey": "local",
+  "model": "qwen2.5-coder:7b",
+  "workspace": "C:\\src\\my-project",
+  "dataDir": "C:\\Users\\me\\.shelly",
+  "timeoutMs": 120000,
+  "maxTurns": 12,
+  "maxToolCalls": 24,
+  "host": "127.0.0.1",
+  "port": 43821,
+  "logLevel": "info"
+}
 ```
 
-填写：
+所有字段也支持 `SHELLY_*` 环境变量以及如 `--model m --workspace C:\\src --port 43821` 参数。不要把服务绑定到 `0.0.0.0`：健康服务没有认证，设计用途仅为本机守护/托盘集成。
 
-```dotenv
-SHELLY_BASE_URL=https://你的服务地址/v1
-SHELLY_API_KEY=你的密钥
-SHELLY_MODEL=模型名
-SHELLY_WORKSPACE=C:\你的项目目录
-```
-
-`.env` 已被 Git 忽略，不会被正常提交。不要把真实密钥写进 `.env.example`。
-
-## 启动
-
-在 PowerShell 中：
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\hosts\windows\start.ps1
-```
-
-也可以手动设置环境变量后运行：
+## 使用
 
 ```powershell
 npm install
-npm run cli
+npm run check
+npm test
+npm run cli -- --workspace C:\src\project
 ```
 
-输入 `/exit` 退出。
+命令：`/help`、`/new`、`/sessions`、`/resume <id>`、`/clear`、`/health`、`/config`、`/cancel`、`/exit`。运行任务时按 Ctrl+C 请求取消；空闲时 Ctrl+C 优雅退出。探针：`Invoke-RestMethod http://127.0.0.1:43821/healthz`。
 
-## 安全边界
-
-- Agent 只能访问 `SHELLY_WORKSPACE` 目录树。
-- `..` 越界路径和绝对路径会被拒绝。
-- 写文件和执行命令默认逐次询问，直接回车等同拒绝。
-- 命令通过 `spawn(executable, args, { shell: false })` 执行，降低 Shell 注入风险。
-- 本版尚未提供 GUI、补丁预览、Git 自动回滚、会话恢复或 Windows 安装包。
+会话文件含用户/模型内容，不含 API key，但仍可能含源码片段；请按敏感数据保护 `dataDir`。JSONL 日志只记录元数据和错误，不记录完整 prompt。

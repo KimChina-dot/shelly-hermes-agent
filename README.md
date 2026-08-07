@@ -20,6 +20,29 @@ Copy-Item .env.example .env
 .\hosts\windows\start.ps1
 ```
 
+## 交付与支持矩阵
+
+- 核心：Linux、Windows、macOS；Node.js 20/22。
+- Windows：Node CLI 专项 CI 与可校验目录产物。
+- Android：当前仅有 TypeScript bridge/契约测试，**尚不能视为 APK 或实机交付**。
+
+交付文档：
+
+- [CI 与交付审计](docs/delivery-audit.zh-CN.md)
+- [Android Host Contract](docs/android-host-contract.zh-CN.md)
+- [发行与打包结构](docs/release-structure.zh-CN.md)
+- [版本路线与验收门槛](docs/roadmap-and-gates.zh-CN.md)
+
+本地完整验收与打包：
+
+```bash
+npm ci
+npm run verify
+npm run package
+```
+
+产物写入 `release/shelly-hermes-agent-v<version>/`，并生成 `SHA256SUMS`。
+
 ## 开发
 
 ```bash
