@@ -9,7 +9,13 @@ import androidx.core.content.ContextCompat
 class MainActivity : androidx.activity.ComponentActivity() {
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri ?: return@registerForActivityResult
-        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        try {
+            contentResolver.takePersistableUriPermission(uri, flags)
+        } catch (error: SecurityException) {
+            Toast.makeText(this, "无法持久化目录权限，请重新选择目录", Toast.LENGTH_LONG).show()
+            return@registerForActivityResult
+        }
         getSharedPreferences("public_config", MODE_PRIVATE).edit().putString("workspace_uri", uri.toString()).apply()
         findViewById<TextView>(R.id.workspace).text = "工作目录：$uri"
     }
