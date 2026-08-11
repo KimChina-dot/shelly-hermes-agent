@@ -11,7 +11,6 @@ import dev.shelly.hermes.core.MessageRole
 import dev.shelly.hermes.core.ModelGateway
 import dev.shelly.hermes.core.ModelReply
 import dev.shelly.hermes.core.ToolCall
-import dev.shelly.hermes.core.ToolExecutor
 
 /**
  * Hosts [AgentCoreAndroidCoordinator] in the foreground service and wires the real
@@ -47,7 +46,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                             ModelReply(content = "已完成演示任务", inputTokens = 5, outputTokens = 5)
                         }
                     },
-                    tools = ToolExecutor { "模拟执行成功" },
+                    tools = SafWorkspaceFileExecutor(applicationContext),
                     approvals = approvals,
                     checkpoints = checkpoints,
                     limits = dev.shelly.hermes.core.AgentLimits(maxRounds = 2)
