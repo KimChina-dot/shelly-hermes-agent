@@ -1,6 +1,7 @@
 package dev.shelly.hermes.core
 
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,6 +21,7 @@ class ApprovalBrokerTest {
 
         var decision: ApprovalDecision? = null
         val job = launch { decision = broker.request(call) }
+        runCurrent()
 
         // No decision yet: the coroutine is suspended.
         assertEquals(1, launched.size)
@@ -48,6 +50,7 @@ class ApprovalBrokerTest {
         broker.launcher = { received = it }
 
         val job = launch { broker.request(call) }
+        runCurrent()
         assertEquals(call, received?.call)
         broker.resolve(ApprovalDecision.REJECT)
         job.join()
