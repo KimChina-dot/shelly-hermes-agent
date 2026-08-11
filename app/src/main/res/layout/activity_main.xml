@@ -1,14 +1,232 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent">
-<LinearLayout android:orientation="vertical" android:padding="20dp" android:layout_width="match_parent" android:layout_height="wrap_content">
-<TextView android:text="Shelly Hermes" android:textSize="26sp" android:textStyle="bold" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
-<TextView android:id="@+id/workspace" android:text="尚未选择工作目录" android:paddingTop="16dp" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-<Button android:id="@+id/pickDirectory" android:text="选择工作目录（SAF）" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-<EditText android:id="@+id/endpoint" android:hint="模型端点（HTTPS）" android:inputType="textUri" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-<EditText android:id="@+id/model" android:hint="模型名称" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-<EditText android:id="@+id/apiKey" android:hint="API Key（加密保存）" android:inputType="textPassword" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-<Button android:id="@+id/saveModel" android:text="安全保存模型配置" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-<Button android:id="@+id/startTask" android:text="启动前台任务" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-<Button android:id="@+id/approval" android:text="打开审批 / Diff" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-<TextView android:id="@+id/status" android:text="会话：就绪" android:paddingTop="16dp" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-</LinearLayout></ScrollView>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="?android:attr/colorBackground"
+    android:importantForAccessibility="yes">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:minHeight="64dp"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp">
+
+        <Button
+            android:id="@+id/sessionMenu"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="☰"
+            android:contentDescription="打开会话列表" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingHorizontal="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Shelly Hermes"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="会话：就绪"
+                android:textSize="13sp"
+                android:accessibilityLiveRegion="polite" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/settings"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="设置"
+            android:contentDescription="打开设置" />
+    </LinearLayout>
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:id="@+id/workspace"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:gravity="center"
+                android:minWidth="120dp"
+                android:paddingHorizontal="12dp"
+                android:text="未选择项目"
+                android:contentDescription="当前项目" />
+
+            <TextView
+                android:id="@+id/modelStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:gravity="center"
+                android:minWidth="120dp"
+                android:paddingHorizontal="12dp"
+                android:text="模型未连接"
+                android:contentDescription="模型状态" />
+
+            <Button
+                android:id="@+id/chooseWorkspace"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="选择项目" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <ListView
+            android:id="@+id/messageList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:clipToPadding="false"
+            android:divider="@android:color/transparent"
+            android:dividerHeight="8dp"
+            android:contentDescription="聊天消息列表" />
+
+        <LinearLayout
+            android:id="@+id/emptyState"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="32dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="开始一段新对话"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="选择项目和模型，然后描述你希望完成的任务。"
+                android:textSize="15sp" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/taskPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/taskProgressText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="正在处理任务"
+            android:accessibilityLiveRegion="polite" />
+
+        <ProgressBar
+            android:id="@+id/taskProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="0" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/errorPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:visibility="gone"
+        android:accessibilityLiveRegion="assertive">
+
+        <TextView
+            android:id="@+id/errorText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="操作失败，请稍后重试" />
+
+        <Button
+            android:id="@+id/retry"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="重试" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="bottom"
+        android:padding="12dp">
+
+        <EditText
+            android:id="@+id/messageInput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:minHeight="56dp"
+            android:maxLines="6"
+            android:gravity="top|start"
+            android:hint="输入消息或任务要求"
+            android:inputType="textCapSentences|textMultiLine"
+            android:padding="12dp"
+            android:contentDescription="消息输入框" />
+
+        <Button
+            android:id="@+id/startTask"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:layout_marginStart="8dp"
+            android:text="发送"
+            android:contentDescription="发送消息" />
+
+        <Button
+            android:id="@+id/stopTask"
+            android:layout_width="wrap_content"
+            android:layout_height="56dp"
+            android:layout_marginStart="8dp"
+            android:text="停止"
+            android:contentDescription="停止当前任务"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/approval"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="8dp"
+        android:text="查看变更并审批"
+        android:contentDescription="打开 Diff 分块预览和审批页面" />
+</LinearLayout>

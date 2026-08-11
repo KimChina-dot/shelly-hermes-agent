@@ -15,13 +15,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
     }
     override fun onCreate(state: Bundle?) {
         super.onCreate(state); setContentView(R.layout.activity_main)
-        findViewById<Button>(R.id.pickDirectory).setOnClickListener { picker.launch(null) }
-        findViewById<Button>(R.id.saveModel).setOnClickListener {
-            val endpoint = findViewById<EditText>(R.id.endpoint).text.toString()
-            val model = findViewById<EditText>(R.id.model).text.toString()
-            val key = findViewById<EditText>(R.id.apiKey).text.toString()
-            if (!endpoint.startsWith("https://") || key.isBlank()) Toast.makeText(this, "请输入 HTTPS 端点和密钥", Toast.LENGTH_SHORT).show()
-            else { AndroidKeyStoreModelConfig(this).save(ModelConfig(endpoint, model, key)); findViewById<EditText>(R.id.apiKey).text.clear(); Toast.makeText(this, "已加密保存", Toast.LENGTH_SHORT).show() }
+        findViewById<Button>(R.id.chooseWorkspace).setOnClickListener { picker.launch(null) }
+        findViewById<Button>(R.id.settings).setOnClickListener {
+            Toast.makeText(this, "模型设置界面正在接入", Toast.LENGTH_SHORT).show()
         }
         findViewById<Button>(R.id.startTask).setOnClickListener { ContextCompat.startForegroundService(this, Intent(this, TaskForegroundService::class.java)) }
         findViewById<Button>(R.id.approval).setOnClickListener { startActivity(Intent(this, ApprovalActivity::class.java)) }
