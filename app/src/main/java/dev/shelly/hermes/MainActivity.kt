@@ -25,6 +25,9 @@ class MainActivity : androidx.activity.ComponentActivity() {
         findViewById<Button>(R.id.settings).setOnClickListener {
             showModelSettingsDialog()
         }
+        ApprovalBridge.gateway.launcher = { pending ->
+            runOnUiThread { startActivity(Intent(this, ApprovalActivity::class.java)) }
+        }
         findViewById<Button>(R.id.startTask).setOnClickListener { ContextCompat.startForegroundService(this, Intent(this, TaskForegroundService::class.java)) }
         findViewById<Button>(R.id.approval).setOnClickListener { startActivity(Intent(this, ApprovalActivity::class.java)) }
     }
