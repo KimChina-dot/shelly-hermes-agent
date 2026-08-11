@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#F7F7F9"
+    android:background="@color/surface_background"
     android:paddingStart="20dp"
     android:paddingTop="20dp"
     android:paddingEnd="20dp"
@@ -13,24 +13,21 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="变更审批"
-        android:textColor="#17171A"
-        android:textSize="26sp"
-        android:textStyle="bold" />
+        android:textAppearance="@style/TextAppearance.Luma.Title" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:text="确认工具将要执行的操作"
-        android:textColor="#68686F"
-        android:textSize="14sp" />
+        android:textAppearance="@style/TextAppearance.Luma.Caption" />
 
     <TextView
         android:id="@+id/risk"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:background="#FFFFF2F0"
+        android:background="@color/risk_background"
         android:minHeight="48dp"
         android:gravity="center_vertical"
         android:paddingStart="14dp"
@@ -38,7 +35,7 @@
         android:paddingEnd="14dp"
         android:paddingBottom="10dp"
         android:text="风险：工具调用需要人工确认"
-        android:textColor="#9D241F"
+        android:textColor="@color/status_error"
         android:textSize="14sp"
         android:textStyle="bold" />
 
@@ -47,8 +44,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="18dp"
         android:text="工具"
-        android:textColor="#68686F"
-        android:textSize="12sp"
+        android:textAppearance="@style/TextAppearance.Luma.Caption"
         android:textStyle="bold" />
 
     <TextView
@@ -56,22 +52,19 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
-        android:background="#FFFFFFFF"
+        android:background="@color/surface_glass"
         android:minHeight="48dp"
         android:gravity="center_vertical"
         android:paddingStart="14dp"
         android:paddingEnd="14dp"
-        android:textColor="#17171A"
-        android:textSize="17sp"
-        android:textStyle="bold" />
+        android:textAppearance="@style/TextAppearance.Luma.SectionTitle" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:text="参数与变更内容"
-        android:textColor="#68686F"
-        android:textSize="12sp"
+        android:textAppearance="@style/TextAppearance.Luma.Caption"
         android:textStyle="bold" />
 
     <TextView
@@ -80,13 +73,13 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginTop="6dp"
-        android:background="#FFFFFFFF"
+        android:background="@color/surface_glass"
         android:fontFamily="monospace"
         android:gravity="start|top"
         android:lineSpacingExtra="3dp"
         android:padding="14dp"
         android:scrollbars="vertical"
-        android:textColor="#29292E"
+        android:textColor="@color/text_primary"
         android:textIsSelectable="true"
         android:textSize="13sp" />
 
@@ -98,8 +91,7 @@
         android:gravity="center"
         android:padding="24dp"
         android:text="当前没有待审批的工具调用"
-        android:textColor="#68686F"
-        android:textSize="15sp"
+        android:textAppearance="@style/TextAppearance.Luma.Body"
         android:visibility="gone" />
 
     <LinearLayout
@@ -114,13 +106,9 @@
             android:layout_width="0dp"
             android:layout_height="52dp"
             android:layout_weight="1"
-            android:backgroundTint="#E9E9ED"
             android:minHeight="48dp"
             android:text="拒绝"
-            android:textAllCaps="false"
-            android:textColor="#34343A"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:textAllCaps="false" />
 
         <Space
             android:layout_width="12dp"
@@ -131,12 +119,8 @@
             android:layout_width="0dp"
             android:layout_height="52dp"
             android:layout_weight="1.35"
-            android:backgroundTint="#17171A"
             android:minHeight="48dp"
             android:text="批准并继续"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:textAllCaps="false" />
     </LinearLayout>
 </LinearLayout>

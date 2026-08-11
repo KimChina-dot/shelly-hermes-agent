@@ -13,5 +13,7 @@
     <color name="accent_foreground">#FFFFFFFF</color>
     <color name="status_success">#FF34C759</color>
     <color name="status_warning">#FFFF9F0A</color>
+    <color name="status_error">#FFB3261E</color>
+    <color name="risk_background">#FFFFF2F0</color>
     <color name="divider_subtle">#14000000</color>
 </resources>

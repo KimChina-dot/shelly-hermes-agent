@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/surface_background"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="24dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="能力"
+            android:textAppearance="@style/TextAppearance.Luma.Title" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Luma 当前可使用的模型、工具和权限"
+            android:textAppearance="@style/TextAppearance.Luma.Caption" />
+
+        <TextView
+            android:id="@+id/modelCapability"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:background="@color/surface_glass"
+            android:padding="16dp"
+            android:textAppearance="@style/TextAppearance.Luma.Body" />
+
+        <TextView
+            android:id="@+id/workspaceCapability"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@color/surface_glass"
+            android:padding="16dp"
+            android:textAppearance="@style/TextAppearance.Luma.Body" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="已启用工具"
+            android:textAppearance="@style/TextAppearance.Luma.SectionTitle" />
+
+        <TextView
+            android:id="@+id/toolCapability"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/surface_glass"
+            android:padding="16dp"
+            android:textAppearance="@style/TextAppearance.Luma.Body" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="安全边界"
+            android:textAppearance="@style/TextAppearance.Luma.SectionTitle" />
+
+        <TextView
+            android:id="@+id/securityCapability"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/surface_glass"
+            android:padding="16dp"
+            android:textAppearance="@style/TextAppearance.Luma.Body" />
+    </LinearLayout>
+</ScrollView>

@@ -3,10 +3,9 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?android:attr/colorBackground"
+    android:background="@color/surface_background"
     android:importantForAccessibility="yes">
 
-    <!-- 保留现有业务 View ID，并以简洁分层结构组织主界面。 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -20,16 +19,25 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Hermes"
-            android:textAppearance="?android:attr/textAppearanceLarge"
+            android:text="Luma"
+            android:textAppearance="@style/TextAppearance.Luma.Title"
             android:textStyle="bold" />
 
         <Button
+            android:id="@+id/capabilities"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="能力"
+            android:textAllCaps="false"
+            android:contentDescription="查看已启用的能力" />
+
+        <Button
             android:id="@+id/settings"
-            android:layout_width="48dp"
+            android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:text="设置"
-            android:contentDescription="打开设置" />
+            android:textAllCaps="false"
+            android:contentDescription="打开模型设置" />
     </LinearLayout>
 
     <HorizontalScrollView
@@ -53,6 +61,7 @@
                 android:gravity="center_vertical"
                 android:paddingHorizontal="12dp"
                 android:text="尚未选择项目"
+                android:textColor="@color/text_secondary"
                 android:contentDescription="当前项目" />
 
             <TextView
@@ -62,13 +71,15 @@
                 android:gravity="center_vertical"
                 android:paddingHorizontal="12dp"
                 android:text="模型未连接"
+                android:textColor="@color/text_secondary"
                 android:contentDescription="模型状态" />
 
             <Button
                 android:id="@+id/chooseWorkspace"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:text="选择项目" />
+                android:text="选择项目"
+                android:textAllCaps="false" />
         </LinearLayout>
     </HorizontalScrollView>
 
@@ -105,7 +116,8 @@
             android:gravity="center"
             android:padding="24dp"
             android:text="从一个任务开始"
-            android:visibility="gone" />
+            android:textColor="@color/text_secondary"
+            android:visibility="visible" />
     </FrameLayout>
 
     <LinearLayout
@@ -124,13 +136,15 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="操作失败，请稍后重试" />
+            android:text="操作失败，请稍后重试"
+            android:textColor="@color/status_error" />
 
         <Button
             android:id="@+id/retry"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
-            android:text="重试" />
+            android:text="重试"
+            android:textAllCaps="false" />
     </LinearLayout>
 
     <LinearLayout
@@ -158,6 +172,7 @@
             android:layout_height="48dp"
             android:layout_marginStart="8dp"
             android:text="发送"
+            android:textAllCaps="false"
             android:contentDescription="开始任务" />
 
         <Button
@@ -166,6 +181,7 @@
             android:layout_height="48dp"
             android:layout_marginStart="8dp"
             android:text="停止"
+            android:textAllCaps="false"
             android:visibility="gone" />
     </LinearLayout>
 
@@ -176,5 +192,6 @@
         android:layout_marginHorizontal="12dp"
         android:layout_marginBottom="8dp"
         android:text="查看变更并审批"
+        android:textAllCaps="false"
         android:contentDescription="打开 Diff 分块预览和审批页面" />
 </LinearLayout>

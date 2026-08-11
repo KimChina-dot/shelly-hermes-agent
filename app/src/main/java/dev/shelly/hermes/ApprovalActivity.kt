@@ -2,19 +2,13 @@ package dev.shelly.hermes
 
 import android.app.Activity
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import dev.shelly.hermes.core.ApprovalDecision
 
-/**
- * Human approval screen for a single pending tool call.
- *
- * Reads the currently pending request from [ApprovalBridge.gateway] and lets the user approve
- * or reject the tool call. The decision is pushed back into the gateway, resuming the suspended
- * agent coroutine that is waiting for approval.
- */
+/** Human approval screen for the currently pending tool call. */
 class ApprovalActivity : Activity() {
-
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         setContentView(R.layout.activity_approval)
@@ -23,24 +17,26 @@ class ApprovalActivity : Activity() {
         val name = findViewById<TextView>(R.id.tool_name)
         val args = findViewById<TextView>(R.id.tool_args)
         val empty = findViewById<TextView>(R.id.empty)
+        val approve = findViewById<Button>(R.id.approve)
+        val reject = findViewById<Button>(R.id.reject)
 
         if (pending == null) {
-            name.visibility = android.view.View.GONE
-            args.visibility = android.view.View.GONE
-            empty.visibility = android.view.View.VISIBLE
-            findViewById<Button>(R.id.approve).isEnabled = false
-            findViewById<Button>(R.id.reject).isEnabled = false
+            name.visibility = View.GONE
+            args.visibility = View.GONE
+            empty.visibility = View.VISIBLE
+            approve.isEnabled = false
+            reject.isEnabled = false
         } else {
             name.text = "工具调用：${pending.call.name}"
             args.text = pending.call.argumentsJson.takeIf { it.isNotBlank() } ?: "（无参数）"
         }
 
-        findViewById<Button>(R.id.approve).setOnClickListener {
+        approve.setOnClickListener {
             ApprovalBridge.gateway.resolve(ApprovalDecision.APPROVE)
             setResult(RESULT_OK)
             finish()
         }
-        findViewById<Button>(R.id.reject).setOnClickListener {
+        reject.setOnClickListener {
             ApprovalBridge.gateway.resolve(ApprovalDecision.REJECT)
             setResult(RESULT_CANCELED)
             finish()
@@ -48,7 +44,7 @@ class ApprovalActivity : Activity() {
     }
 }
 
-/** Application-wide bridge so the approval screen and the gateway share one instance. */
+/** Application-wide bridge shared by the service and approval screen. */
 object ApprovalBridge {
     val gateway = AndroidApprovalGateway()
 }
