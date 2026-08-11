@@ -28,6 +28,7 @@
 - Android 源码乱码和未配对普通字符串静态扫描：通过。
 - 能力页资源与 Manifest 引用静态检查：通过。
 - Android CI 工作流改为显式执行 `core` JVM 测试、App 单元测试、Lint 和 Debug APK 构建。
+- 首次 GitHub Android 构建已定位并修复资源链接问题：补齐 `TextAppearance.Luma` 基样式。
 
 ## 当前限制
 

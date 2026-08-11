@@ -12,6 +12,11 @@
         <item name="android:windowBackground">@color/surface_background</item>
     </style>
 
+    <style name="TextAppearance.Luma" parent="android:style/TextAppearance.Material.Body1">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
     <style name="TextAppearance.Luma.Title">
         <item name="android:textColor">@color/text_primary</item>
         <item name="android:textSize">22sp</item>
