@@ -33,3 +33,34 @@ data class AgentCheckpoint(
     val consumedTokens: Int,
     val toolCalls: Int
 )
+
+/** Lightweight lifecycle signals for progress UI, metrics, and diagnostics. */
+sealed interface AgentEvent {
+    data class ModelStarted(val round: Int) : AgentEvent
+
+    data class ModelFinished(
+        val round: Int,
+        val durationMillis: Long,
+        val succeeded: Boolean
+    ) : AgentEvent
+
+    data class ApprovalWaiting(val call: ToolCall) : AgentEvent
+
+    data class ApprovalFinished(
+        val call: ToolCall,
+        val durationMillis: Long,
+        val decision: ApprovalDecision?
+    ) : AgentEvent
+
+    data class ToolStarted(
+        val toolCallId: String,
+        val toolName: String
+    ) : AgentEvent
+
+    data class ToolFinished(
+        val toolCallId: String,
+        val toolName: String,
+        val durationMillis: Long,
+        val succeeded: Boolean
+    ) : AgentEvent
+}

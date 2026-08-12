@@ -32,6 +32,14 @@
             android:contentDescription="查看已启用的能力" />
 
         <Button
+            android:id="@+id/history"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="历史"
+            android:textAllCaps="false"
+            android:contentDescription="查看任务历史" />
+
+        <Button
             android:id="@+id/settings"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
@@ -107,6 +115,16 @@
             android:layout_gravity="center"
             android:visibility="gone"
             android:contentDescription="正在处理" />
+
+        <TextView
+            android:id="@+id/taskStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:padding="8dp"
+            android:text="就绪"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/emptyState"

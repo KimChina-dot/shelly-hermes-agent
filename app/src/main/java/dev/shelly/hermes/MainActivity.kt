@@ -62,6 +62,9 @@ class MainActivity : ComponentActivity() {
         findViewById<Button>(R.id.capabilities).setOnClickListener {
             startActivity(Intent(this, CapabilitiesActivity::class.java))
         }
+        findViewById<Button>(R.id.history).setOnClickListener {
+            startActivity(Intent(this, HistoryActivity::class.java))
+        }
         findViewById<Button>(R.id.settings).setOnClickListener { showModelSettingsDialog() }
         findViewById<Button>(R.id.startTask).setOnClickListener { startTask() }
         findViewById<Button>(R.id.stopTask).setOnClickListener { stopTask() }
@@ -139,6 +142,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun renderTaskState(state: String, detail: String) {
+        findViewById<TextView>(R.id.taskStatus).apply {
+            text = detail.ifBlank { stateDescription(state) }
+            visibility = if (state == TaskState.COMPLETED.name || state == TaskState.FAILED.name || state == TaskState.STOPPED.name) View.GONE else View.VISIBLE
+        }
         when (state) {
             TaskState.STARTING.name, TaskState.RUNNING.name -> setRunning(true)
             TaskForegroundService.STATE_AWAITING_APPROVAL -> {
@@ -159,6 +166,15 @@ class MainActivity : ComponentActivity() {
                 findViewById<TextView>(R.id.errorText).text = detail.ifBlank { "任务执行失败" }
             }
         }
+    }
+
+    private fun stateDescription(state: String): String = when (state) {
+        TaskState.STARTING.name -> "任务启动中"
+        TaskState.RUNNING.name -> "任务执行中"
+        TaskState.STOPPING.name -> "任务停止中"
+        TaskState.CANCELLING.name -> "任务取消中"
+        TaskForegroundService.STATE_AWAITING_APPROVAL -> "等待审批"
+        else -> state
     }
 
     private fun appendMessage(text: String) {

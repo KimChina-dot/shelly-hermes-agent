@@ -11,6 +11,9 @@ import androidx.core.app.NotificationCompat
 import dev.shelly.hermes.core.AgentCore
 import dev.shelly.hermes.core.AgentMessage
 import dev.shelly.hermes.core.AgentResult
+import dev.shelly.hermes.core.AgentEvent
+import dev.shelly.hermes.core.AgentObserver
+import dev.shelly.hermes.core.ToolApprovalPolicy
 import dev.shelly.hermes.core.MessageRole
 
 /** Runs one user-started agent task in a foreground service. */
@@ -98,7 +101,13 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             null -> status.error?.message.orEmpty()
         }
         FileSessionStore(this).save(
-            Session(status.taskId, "任务状态：${status.state}", System.currentTimeMillis()),
+            Session(
+                id = status.taskId,
+                prompt = "",
+                updatedAt = System.currentTimeMillis(),
+                status = status.state.name,
+                summary = detail,
+            ),
         )
         broadcastStatus(status.state.name, detail)
     }
@@ -115,6 +124,17 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             tools = tools,
             approvals = ApprovalBridge.gateway,
             checkpoints = AgentCheckpointStore(this),
+            approvalPolicy = ToolApprovalPolicy.autoApproveReadOnly(),
+            observer = AgentObserver { event ->
+                when (event) {
+                    is AgentEvent.ModelStarted -> broadcastStatus(TaskState.RUNNING.name, "正在请求模型（第 ${event.round} 轮）")
+                    is AgentEvent.ModelFinished -> broadcastStatus(TaskState.RUNNING.name, "模型响应耗时 ${event.durationMillis}ms")
+                    is AgentEvent.ApprovalWaiting -> broadcastStatus(STATE_AWAITING_APPROVAL, "等待审批：${event.call.name}")
+                    is AgentEvent.ApprovalFinished -> broadcastStatus(TaskState.RUNNING.name, "审批结果：${event.decision}")
+                    is AgentEvent.ToolStarted -> broadcastStatus(TaskState.RUNNING.name, "正在执行：${event.toolName}")
+                    is AgentEvent.ToolFinished -> broadcastStatus(TaskState.RUNNING.name, "${event.toolName} 完成（${event.durationMillis}ms）")
+                }
+            },
         )
     }
 
