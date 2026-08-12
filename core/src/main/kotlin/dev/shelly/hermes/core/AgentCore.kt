@@ -108,6 +108,7 @@ class AgentCore(
             for (call in reply.toolCalls) {
                 if (cancellation.isCancelled) return AgentResult.Stopped("cancelled", snapshot())
                 if (++toolCallCount > limits.maxToolCalls) return AgentResult.Stopped("tool_budget_exceeded", snapshot())
+                val approvalCalls = DiffHunkApproval.expand(call)
                 val requiresApproval = try {
                     approvalPolicy.requiresApproval(call)
                 } catch (_: Throwable) {
@@ -115,16 +116,24 @@ class AgentCore(
                     true
                 }
                 val decision = if (requiresApproval) {
-                    emit(AgentEvent.ApprovalWaiting(call))
-                    val approvalStarted = nanoTime()
-                    try {
-                        approvals.request(call).also {
-                            emit(AgentEvent.ApprovalFinished(call, elapsedMillis(approvalStarted), it))
+                    var finalDecision = ApprovalDecision.APPROVE
+                    for (approvalCall in approvalCalls) {
+                        emit(AgentEvent.ApprovalWaiting(approvalCall))
+                        val approvalStarted = nanoTime()
+                        val hunkDecision = try {
+                            approvals.request(approvalCall).also {
+                                emit(AgentEvent.ApprovalFinished(approvalCall, elapsedMillis(approvalStarted), it))
+                            }
+                        } catch (error: Throwable) {
+                            emit(AgentEvent.ApprovalFinished(approvalCall, elapsedMillis(approvalStarted), null))
+                            throw error
                         }
-                    } catch (error: Throwable) {
-                        emit(AgentEvent.ApprovalFinished(call, elapsedMillis(approvalStarted), null))
-                        throw error
+                        if (hunkDecision == ApprovalDecision.REJECT) {
+                            finalDecision = ApprovalDecision.REJECT
+                            break
+                        }
                     }
+                    finalDecision
                 } else {
                     ApprovalDecision.APPROVE
                 }
