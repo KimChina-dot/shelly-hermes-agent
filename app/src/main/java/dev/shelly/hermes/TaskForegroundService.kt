@@ -20,6 +20,7 @@ import dev.shelly.hermes.core.MessageRole
 class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateListener {
     private lateinit var coordinator: AgentCoreAndroidCoordinator
     private var currentTaskId: String? = null
+    @Volatile private var currentModelClient: OpenAiModelGateway? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -44,6 +45,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
+                currentModelClient?.cancelCurrentRequest()
                 currentTaskId?.let(coordinator::cancel)
                 return START_NOT_STICKY
             }
@@ -76,6 +78,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        currentModelClient?.cancelCurrentRequest()
         currentTaskId?.let(coordinator::onForegroundServiceStopped)
         super.onDestroy()
     }
@@ -89,6 +92,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
     }
 
     override fun stop(taskId: String) {
+        currentModelClient = null
         currentTaskId = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -117,7 +121,9 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             .getString(MainActivity.WORKSPACE_URI, null)
             ?: error("尚未选择项目目录")
         val workspace = Uri.parse(workspaceValue)
-        val model = OpenAiAgentModelGateway(OpenAiModelGateway(AndroidKeyStoreModelConfig(this)))
+        val modelClient = OpenAiModelGateway(AndroidKeyStoreModelConfig(this))
+        currentModelClient = modelClient
+        val model = OpenAiAgentModelGateway(modelClient)
         val tools = SafWorkspaceToolExecutor(SafWorkspaceFileExecutor(applicationContext, workspace))
         return AgentCore(
             model = model,

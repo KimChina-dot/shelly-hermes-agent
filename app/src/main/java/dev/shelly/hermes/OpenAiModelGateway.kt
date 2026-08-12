@@ -8,6 +8,9 @@ import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.URL
+import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLException
 
@@ -21,7 +24,9 @@ class OpenAiModelGateway(
     private val configStore: ModelConfigStore,
     private val connectTimeoutMs: Int = DEFAULT_CONNECT_TIMEOUT_MS,
     private val readTimeoutMs: Int = DEFAULT_READ_TIMEOUT_MS,
+    private val retryPolicy: ModelRetryPolicy = ModelRetryPolicy(),
 ) {
+    private val activeRequest = AtomicReference<ActiveRequest?>()
     init {
         require(connectTimeoutMs > 0) { "connectTimeoutMs must be positive" }
         require(readTimeoutMs > 0) { "readTimeoutMs must be positive" }
@@ -33,6 +38,66 @@ class OpenAiModelGateway(
      */
     @Throws(ModelGatewayException::class)
     fun chatCompletions(requestJson: String): String {
+        val prepared = prepareRequest(requestJson, streaming = false)
+        return executeWithRetry(prepared.config, prepared.body, JSON_MEDIA_TYPE) { connection, _ ->
+            val status = connection.responseCode
+            val body = readResponseBody(connection, status)
+            if (status !in 200..299) throw mapHttpError(status, body)
+            if (body.isBlank()) {
+                throw ModelGatewayException.InvalidResponse("Model endpoint returned an empty response")
+            }
+            try {
+                JSONObject(body)
+            } catch (error: JSONException) {
+                throw ModelGatewayException.InvalidResponse(
+                    "Model endpoint returned non-JSON content",
+                    error,
+                )
+            }
+            body
+        }
+    }
+
+    /**
+     * Streams raw OpenAI-compatible SSE events. Each `data:` payload is delivered immediately;
+     * callers can inspect [SseEvent.isDone] for the terminal `[DONE]` marker. The request body is
+     * copied and `stream=true` is injected without changing the caller's JSON.
+     */
+    @Throws(ModelGatewayException::class)
+    fun chatCompletionsStream(requestJson: String, onEvent: (SseEvent) -> Unit) {
+        val prepared = prepareRequest(requestJson, streaming = true)
+        executeWithRetry(prepared.config, prepared.body, SSE_MEDIA_TYPE) { connection, active ->
+            val status = connection.responseCode
+            if (status !in 200..299) {
+                throw mapHttpError(status, readResponseBody(connection, status))
+            }
+            val contentType = connection.contentType.orEmpty()
+            if (!contentType.substringBefore(';').trim().equals("text/event-stream", ignoreCase = true)) {
+                throw ModelGatewayException.InvalidResponse(
+                    "Streaming endpoint returned an unexpected content type: ${contentType.ifBlank { "unknown" }}",
+                )
+            }
+            val parser = SseEventParser { event ->
+                active.responseStarted = true
+                onEvent(event)
+            }
+            connection.inputStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
+                lines.forEach { line ->
+                    ensureNotCancelled(active)
+                    parser.acceptLine(line.removeSuffix("\r"))
+                }
+            }
+            parser.finish()
+            Unit
+        }
+    }
+
+    /** Disconnects the active buffered or streaming request. Safe to call when idle. */
+    fun cancelCurrentRequest() {
+        activeRequest.get()?.cancel()
+    }
+
+    private fun prepareRequest(requestJson: String, streaming: Boolean): PreparedRequest {
         val config = configStore.load()
             ?: throw ModelGatewayException.Configuration("Model configuration is missing")
         validateConfig(config)
@@ -45,65 +110,112 @@ class OpenAiModelGateway(
         if (!request.has("model") || request.optString("model").isBlank()) {
             request.put("model", config.model)
         }
-
-        val connection = try {
-            openConnection(resolveChatCompletionsUrl(config.endpoint))
-        } catch (error: ModelGatewayException) {
-            throw error
-        } catch (error: Exception) {
-            throw ModelGatewayException.Configuration("Invalid model endpoint", error)
+        if (streaming) {
+            request.put("stream", true)
         }
+        return PreparedRequest(config, request.toString())
+    }
 
+    private fun <T> executeWithRetry(
+        config: ModelConfig,
+        body: String,
+        accept: String,
+        consume: (HttpURLConnection, ActiveRequest) -> T,
+    ): T {
+        val request = ActiveRequest()
+        activeRequest.getAndSet(request)?.cancel()
+        var retryIndex = 0
         try {
-            connection.requestMethod = "POST"
-            connection.connectTimeout = connectTimeoutMs
-            connection.readTimeout = readTimeoutMs
-            connection.doOutput = true
-            connection.useCaches = false
-            connection.setRequestProperty("Accept", JSON_MEDIA_TYPE)
-            connection.setRequestProperty("Content-Type", JSON_MEDIA_TYPE)
-            connection.setRequestProperty("Authorization", "Bearer ${config.apiKey}")
-
-            connection.outputStream.bufferedWriter(Charsets.UTF_8).use { writer ->
-                writer.write(request.toString())
+            while (true) {
+                ensureNotCancelled(request)
+                val connection = try {
+                    openConnection(resolveChatCompletionsUrl(config.endpoint))
+                } catch (error: ModelGatewayException) {
+                    throw error
+                } catch (error: Exception) {
+                    throw ModelGatewayException.Configuration("Invalid model endpoint", error)
+                }
+                request.connection.set(connection)
+                request.responseStarted = false
+                try {
+                    ensureNotCancelled(request)
+                    configureConnection(connection, config, accept)
+                    connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body) }
+                    return consume(connection, request)
+                } catch (error: Throwable) {
+                    val mapped = mapTransportError(error, request)
+                    if (
+                        request.responseStarted ||
+                        retryIndex >= retryPolicy.maxRetries ||
+                        !retryPolicy.isRetryableFailure(mapped)
+                    ) {
+                        throw mapped
+                    }
+                    waitBeforeRetry(request, retryPolicy.delayBeforeRetry(retryIndex))
+                    retryIndex += 1
+                } finally {
+                    request.connection.compareAndSet(connection, null)
+                    connection.disconnect()
+                }
             }
-
-            val status = connection.responseCode
-            val body = (if (status in 200..299) connection.inputStream else connection.errorStream)
-                ?.bufferedReader(Charsets.UTF_8)
-                ?.use { it.readText() }
-                .orEmpty()
-
-            if (status !in 200..299) {
-                throw mapHttpError(status, body)
-            }
-            if (body.isBlank()) {
-                throw ModelGatewayException.InvalidResponse("Model endpoint returned an empty response")
-            }
-            try {
-                JSONObject(body)
-            } catch (error: JSONException) {
-                throw ModelGatewayException.InvalidResponse(
-                    "Model endpoint returned non-JSON content",
-                    error,
-                )
-            }
-            return body
-        } catch (error: ModelGatewayException) {
-            throw error
-        } catch (error: SocketTimeoutException) {
-            throw ModelGatewayException.Timeout("Model request timed out", error)
-        } catch (error: SSLException) {
-            throw ModelGatewayException.Security("TLS validation failed", error)
-        } catch (error: SecurityException) {
-            throw ModelGatewayException.Security("Network request was blocked by Android security policy", error)
-        } catch (error: NetworkOnMainThreadException) {
-            throw ModelGatewayException.InvalidRequest("Model requests must run off the main thread", error)
-        } catch (error: IOException) {
-            throw ModelGatewayException.Network("Model request failed", error)
         } finally {
-            connection.disconnect()
+            activeRequest.compareAndSet(request, null)
         }
+    }
+
+    private fun configureConnection(connection: HttpURLConnection, config: ModelConfig, accept: String) {
+        connection.requestMethod = "POST"
+        connection.connectTimeout = connectTimeoutMs
+        connection.readTimeout = readTimeoutMs
+        connection.doOutput = true
+        connection.useCaches = false
+        connection.instanceFollowRedirects = false
+        connection.setRequestProperty("Accept", accept)
+        connection.setRequestProperty("Content-Type", JSON_MEDIA_TYPE)
+        connection.setRequestProperty("Authorization", "Bearer ${config.apiKey}")
+    }
+
+    private fun readResponseBody(connection: HttpURLConnection, status: Int): String =
+        (if (status in 200..299) connection.inputStream else connection.errorStream)
+            ?.bufferedReader(Charsets.UTF_8)
+            ?.use { it.readText() }
+            .orEmpty()
+
+    private fun mapTransportError(error: Throwable, request: ActiveRequest): ModelGatewayException {
+        if (request.cancelled) return ModelGatewayException.Cancelled("Model request was cancelled")
+        return when (error) {
+            is ModelGatewayException -> error
+            is SocketTimeoutException -> ModelGatewayException.Timeout("Model request timed out", error)
+            is SSLException -> ModelGatewayException.Security("TLS validation failed", error)
+            is SecurityException -> ModelGatewayException.Security(
+                "Network request was blocked by Android security policy",
+                error,
+            )
+            is NetworkOnMainThreadException -> ModelGatewayException.InvalidRequest(
+                "Model requests must run off the main thread",
+                error,
+            )
+            is IOException -> ModelGatewayException.Network("Model request failed", error)
+            else -> throw error
+        }
+    }
+
+    private fun waitBeforeRetry(request: ActiveRequest, delayMs: Long) {
+        if (delayMs == 0L) return ensureNotCancelled(request)
+        try {
+            if (request.cancelledSignal.await(delayMs, TimeUnit.MILLISECONDS)) {
+                throw ModelGatewayException.Cancelled("Model request was cancelled")
+            }
+        } catch (error: InterruptedException) {
+            Thread.currentThread().interrupt()
+            request.cancel()
+            throw ModelGatewayException.Cancelled("Model request was cancelled", error)
+        }
+        ensureNotCancelled(request)
+    }
+
+    private fun ensureNotCancelled(request: ActiveRequest) {
+        if (request.cancelled) throw ModelGatewayException.Cancelled("Model request was cancelled")
     }
 
     private fun openConnection(url: URL): HttpURLConnection {
@@ -170,7 +282,7 @@ class OpenAiModelGateway(
         }
         return when (status) {
             401, 403 -> ModelGatewayException.Authentication(message, status)
-            408, 504 -> ModelGatewayException.Timeout(message)
+            408, 504 -> ModelGatewayException.Timeout(message, httpStatus = status)
             429 -> ModelGatewayException.RateLimited(message, status)
             in 400..499 -> ModelGatewayException.InvalidRequest(message, httpStatus = status)
             else -> ModelGatewayException.Upstream(message, status)
@@ -199,7 +311,23 @@ class OpenAiModelGateway(
         const val DEFAULT_CONNECT_TIMEOUT_MS = 15_000
         const val DEFAULT_READ_TIMEOUT_MS = 60_000
         private const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
+        private const val SSE_MEDIA_TYPE = "text/event-stream"
         private const val MAX_ERROR_MESSAGE_LENGTH = 512
+    }
+
+    private data class PreparedRequest(val config: ModelConfig, val body: String)
+
+    private class ActiveRequest {
+        val connection = AtomicReference<HttpURLConnection?>()
+        val cancelledSignal = CountDownLatch(1)
+        @Volatile var cancelled: Boolean = false
+        @Volatile var responseStarted: Boolean = false
+
+        fun cancel() {
+            cancelled = true
+            cancelledSignal.countDown()
+            connection.getAndSet(null)?.disconnect()
+        }
     }
 }
 
@@ -223,8 +351,11 @@ sealed class ModelGatewayException(
     class RateLimited(message: String, override val httpStatus: Int?) :
         ModelGatewayException(message, httpStatus = httpStatus)
 
-    class Timeout(message: String, cause: Throwable? = null) :
-        ModelGatewayException(message, cause)
+    class Timeout(
+        message: String,
+        cause: Throwable? = null,
+        override val httpStatus: Int? = null,
+    ) : ModelGatewayException(message, cause, httpStatus)
 
     class Security(message: String, cause: Throwable? = null) :
         ModelGatewayException(message, cause)
@@ -233,6 +364,9 @@ sealed class ModelGatewayException(
         ModelGatewayException(message, cause)
 
     class InvalidResponse(message: String, cause: Throwable? = null) :
+        ModelGatewayException(message, cause)
+
+    class Cancelled(message: String, cause: Throwable? = null) :
         ModelGatewayException(message, cause)
 
     class Upstream(message: String, override val httpStatus: Int?) :
