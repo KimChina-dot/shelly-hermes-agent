@@ -50,14 +50,16 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                 currentTaskId?.let(coordinator::cancel)
                 return START_NOT_STICKY
             }
-            ACTION_START -> Unit
+            ACTION_START, ACTION_RESUME -> Unit
             else -> return START_NOT_STICKY
         }
 
+        val isResume = intent.action == ACTION_RESUME
+        val resumeCheckpoint = if (isResume) AgentCheckpointStore(this).load() else null
         val taskId = intent.getStringExtra(EXTRA_TASK_ID)?.takeIf { it.isNotBlank() }
         val prompt = intent.getStringExtra(EXTRA_PROMPT)?.trim().orEmpty()
         val mode = AgentMode.fromWireValue(intent.getStringExtra(EXTRA_MODE))
-        if (taskId == null || prompt.isBlank()) {
+        if (taskId == null || (!isResume && prompt.isBlank()) || (isResume && resumeCheckpoint == null)) {
             broadcastStatus(TaskState.FAILED.name, "任务参数不完整")
             stopSelf(startId)
             return START_NOT_STICKY
@@ -69,14 +71,14 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
 
         currentTaskId = taskId
         currentMode = mode
-        FileSessionStore(this).save(Session(taskId, prompt.take(120), System.currentTimeMillis()))
+        FileSessionStore(this).save(Session(taskId, prompt.take(120).ifBlank { "Resumed task" }, System.currentTimeMillis()))
         val initialMessages = buildList {
             if (mode == AgentMode.PLAN) {
                 add(AgentMessage(MessageRole.SYSTEM, "Plan mode: analyze the task and inspect the workspace using read-only tools only. Do not modify files."))
             }
             add(AgentMessage(MessageRole.USER, prompt))
         }
-        if (!coordinator.start(taskId, initialMessages)) {
+        if (!coordinator.start(taskId, initialMessages, resumeCheckpoint)) {
             currentTaskId = null
             broadcastStatus(TaskState.FAILED.name, "任务未能启动")
             stopSelf(startId)
@@ -196,6 +198,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
     companion object {
         const val CHANNEL = "luma_tasks"
         const val ACTION_START = "dev.shelly.hermes.action.START_TASK"
+        const val ACTION_RESUME = "dev.shelly.hermes.action.RESUME_TASK"
         const val ACTION_STOP = "dev.shelly.hermes.action.STOP_TASK"
         const val ACTION_STATUS = "dev.shelly.hermes.action.TASK_STATUS"
         const val EXTRA_TASK_ID = "task_id"

@@ -76,6 +76,8 @@ class AgentCheckpointStore(private val directory: File) : CheckpointStore {
         }.getOrNull()
     }
 
+    fun hasCheckpoint(): Boolean = load() != null
+
     companion object {
         private const val DIRECTORY_NAME = "agent-checkpoints"
         private const val FILE_NAME = "latest.checkpoint"

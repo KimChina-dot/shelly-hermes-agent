@@ -1,6 +1,7 @@
 package dev.shelly.hermes
 
 import dev.shelly.hermes.core.AgentCore
+import dev.shelly.hermes.core.AgentCheckpoint
 import dev.shelly.hermes.core.AgentMessage
 import dev.shelly.hermes.core.AgentResult
 import dev.shelly.hermes.core.CancellationSignal
@@ -28,7 +29,7 @@ class AgentCoreAndroidCoordinator(
     private val tasks = ConcurrentHashMap<String, RunningTask>()
 
     /** Starts a task once. Returns false when the same task id is already active. */
-    fun start(taskId: String, messages: List<AgentMessage>): Boolean {
+    fun start(taskId: String, messages: List<AgentMessage>, resumeFrom: AgentCheckpoint? = null): Boolean {
         require(taskId.isNotBlank()) { "taskId must not be blank" }
 
         val task = RunningTask(taskId)
@@ -40,7 +41,7 @@ class AgentCoreAndroidCoordinator(
         executor.execute {
             publish(taskId, if (task.cancelled.get()) task.state else TaskState.RUNNING)
             val block: suspend () -> AgentResult = {
-                agentFactory(taskId).run(messages, task)
+                agentFactory(taskId).run(messages, task, resumeFrom)
             }
             block.startCoroutine(object : Continuation<AgentResult> {
                 override val context = EmptyCoroutineContext

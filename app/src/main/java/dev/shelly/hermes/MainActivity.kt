@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
             renderMode()
         }
         findViewById<Button>(R.id.startTask).setOnClickListener { startTask() }
+        findViewById<Button>(R.id.resumeTask).setOnClickListener { resumeTask() }
         findViewById<Button>(R.id.stopTask).setOnClickListener { stopTask() }
         findViewById<Button>(R.id.retry).setOnClickListener {
             if (lastPrompt.isNotBlank()) {
@@ -148,6 +149,19 @@ class MainActivity : ComponentActivity() {
         })
     }
 
+    private fun resumeTask() {
+        if (!AgentCheckpointStore(this).hasCheckpoint()) {
+            Toast.makeText(this, "No task checkpoint is available", Toast.LENGTH_SHORT).show()
+            return
+        }
+        setRunning(true)
+        ContextCompat.startForegroundService(this, Intent(this, TaskForegroundService::class.java).apply {
+            action = TaskForegroundService.ACTION_RESUME
+            putExtra(TaskForegroundService.EXTRA_TASK_ID, "resume-${System.currentTimeMillis()}")
+            putExtra(TaskForegroundService.EXTRA_MODE, currentMode.wireValue)
+        })
+    }
+
     private fun renderTaskState(state: String, detail: String) {
         findViewById<TextView>(R.id.taskStatus).apply {
             text = detail.ifBlank { stateDescription(state) }
@@ -197,6 +211,7 @@ class MainActivity : ComponentActivity() {
         findViewById<Button>(R.id.stopTask).visibility = if (running) View.VISIBLE else View.GONE
         findViewById<EditText>(R.id.taskInput).isEnabled = !running
         findViewById<Button>(R.id.taskMode).isEnabled = !running
+        findViewById<Button>(R.id.resumeTask).isEnabled = !running
     }
 
     private fun renderMode() {

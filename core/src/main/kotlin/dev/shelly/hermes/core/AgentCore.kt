@@ -64,12 +64,13 @@ class AgentCore(
 ) {
     suspend fun run(
         initialMessages: List<AgentMessage>,
-        cancellation: CancellationSignal
+        cancellation: CancellationSignal,
+        resumeFrom: AgentCheckpoint? = null,
     ): AgentResult {
-        val messages = initialMessages.toMutableList()
-        var round = 0
-        var consumedTokens = 0
-        var toolCallCount = 0
+        val messages = (resumeFrom?.messages ?: initialMessages).toMutableList()
+        var round = resumeFrom?.round ?: 0
+        var consumedTokens = resumeFrom?.consumedTokens ?: 0
+        var toolCallCount = resumeFrom?.toolCalls ?: 0
 
         fun snapshot() = AgentCheckpoint(messages.toList(), round, consumedTokens, toolCallCount)
         fun emit(event: AgentEvent) {
