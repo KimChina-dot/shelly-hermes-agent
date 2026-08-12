@@ -319,7 +319,8 @@ class SafWorkspaceFileExecutor(
         const val DEFAULT_SEARCH_LIMIT = 50
         const val MAX_LIST_LIMIT = 500
         const val MAX_SEARCH_LIMIT = 100
-        private const val MAX_SEARCH_FILES = 1_000
+        // listFiles enforces MAX_LIST_LIMIT, so search must use the same bounded traversal ceiling.
+        private const val MAX_SEARCH_FILES = MAX_LIST_LIMIT
         private const val MAX_WALK_DEPTH = 32
         private const val MAX_QUERY_CHARS = 512
         private const val MAX_SEARCH_FILE_BYTES = 1_000_000L
