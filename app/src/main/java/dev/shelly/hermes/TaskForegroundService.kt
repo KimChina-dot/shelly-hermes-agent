@@ -20,6 +20,7 @@ import dev.shelly.hermes.core.MessageRole
 class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateListener {
     private lateinit var coordinator: AgentCoreAndroidCoordinator
     private var currentTaskId: String? = null
+    private var currentMode: AgentMode = AgentMode.ACT
     @Volatile private var currentModelClient: OpenAiModelGateway? = null
 
     override fun onCreate() {
@@ -55,6 +56,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
 
         val taskId = intent.getStringExtra(EXTRA_TASK_ID)?.takeIf { it.isNotBlank() }
         val prompt = intent.getStringExtra(EXTRA_PROMPT)?.trim().orEmpty()
+        val mode = AgentMode.fromWireValue(intent.getStringExtra(EXTRA_MODE))
         if (taskId == null || prompt.isBlank()) {
             broadcastStatus(TaskState.FAILED.name, "任务参数不完整")
             stopSelf(startId)
@@ -66,8 +68,15 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         }
 
         currentTaskId = taskId
+        currentMode = mode
         FileSessionStore(this).save(Session(taskId, prompt.take(120), System.currentTimeMillis()))
-        if (!coordinator.start(taskId, listOf(AgentMessage(MessageRole.USER, prompt)))) {
+        val initialMessages = buildList {
+            if (mode == AgentMode.PLAN) {
+                add(AgentMessage(MessageRole.SYSTEM, "Plan mode: analyze the task and inspect the workspace using read-only tools only. Do not modify files."))
+            }
+            add(AgentMessage(MessageRole.USER, prompt))
+        }
+        if (!coordinator.start(taskId, initialMessages)) {
             currentTaskId = null
             broadcastStatus(TaskState.FAILED.name, "任务未能启动")
             stopSelf(startId)
@@ -123,7 +132,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         val workspace = Uri.parse(workspaceValue)
         val modelClient = OpenAiModelGateway(AndroidKeyStoreModelConfig(this))
         currentModelClient = modelClient
-        val model = OpenAiAgentModelGateway(modelClient)
+        val model = OpenAiAgentModelGateway(modelClient, currentMode)
         val tools = SafWorkspaceToolExecutor(SafWorkspaceFileExecutor(applicationContext, workspace))
         return AgentCore(
             model = model,
@@ -191,6 +200,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         const val ACTION_STATUS = "dev.shelly.hermes.action.TASK_STATUS"
         const val EXTRA_TASK_ID = "task_id"
         const val EXTRA_PROMPT = "prompt"
+        const val EXTRA_MODE = "mode"
         const val EXTRA_STATE = "state"
         const val EXTRA_DETAIL = "detail"
         const val STATE_AWAITING_APPROVAL = "AWAITING_APPROVAL"

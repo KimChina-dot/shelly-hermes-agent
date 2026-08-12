@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var messages: MutableList<String>
     private lateinit var messageAdapter: ArrayAdapter<String>
     private var lastPrompt: String = ""
+    private var currentMode: AgentMode = AgentMode.ACT
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri ?: return@registerForActivityResult
@@ -66,6 +67,10 @@ class MainActivity : ComponentActivity() {
             startActivity(Intent(this, HistoryActivity::class.java))
         }
         findViewById<Button>(R.id.settings).setOnClickListener { showModelSettingsDialog() }
+        findViewById<Button>(R.id.taskMode).setOnClickListener {
+            currentMode = if (currentMode == AgentMode.ACT) AgentMode.PLAN else AgentMode.ACT
+            renderMode()
+        }
         findViewById<Button>(R.id.startTask).setOnClickListener { startTask() }
         findViewById<Button>(R.id.stopTask).setOnClickListener { stopTask() }
         findViewById<Button>(R.id.retry).setOnClickListener {
@@ -81,6 +86,7 @@ class MainActivity : ComponentActivity() {
         ApprovalBridge.gateway.launcher = {
             runOnUiThread { startActivity(Intent(this, ApprovalActivity::class.java)) }
         }
+        renderMode()
         refreshConfigurationStatus()
     }
 
@@ -131,6 +137,7 @@ class MainActivity : ComponentActivity() {
             action = TaskForegroundService.ACTION_START
             putExtra(TaskForegroundService.EXTRA_TASK_ID, "task-${System.currentTimeMillis()}")
             putExtra(TaskForegroundService.EXTRA_PROMPT, prompt)
+            putExtra(TaskForegroundService.EXTRA_MODE, currentMode.wireValue)
         }
         ContextCompat.startForegroundService(this, intent)
     }
@@ -189,6 +196,11 @@ class MainActivity : ComponentActivity() {
         findViewById<Button>(R.id.startTask).visibility = if (running) View.GONE else View.VISIBLE
         findViewById<Button>(R.id.stopTask).visibility = if (running) View.VISIBLE else View.GONE
         findViewById<EditText>(R.id.taskInput).isEnabled = !running
+        findViewById<Button>(R.id.taskMode).isEnabled = !running
+    }
+
+    private fun renderMode() {
+        findViewById<Button>(R.id.taskMode).text = if (currentMode == AgentMode.PLAN) "PLAN" else "ACT"
     }
 
     private fun refreshConfigurationStatus() {

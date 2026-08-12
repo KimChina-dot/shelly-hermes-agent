@@ -88,6 +88,14 @@
                 android:layout_height="48dp"
                 android:text="选择项目"
                 android:textAllCaps="false" />
+
+            <Button
+                android:id="@+id/taskMode"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="ACT"
+                android:textAllCaps="false"
+                android:contentDescription="Task mode: PLAN analyzes only; ACT can modify files" />
         </LinearLayout>
     </HorizontalScrollView>
 

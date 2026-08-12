@@ -11,6 +11,7 @@ import org.json.JSONObject
 /** Maps the portable agent model contract to an OpenAI-compatible chat-completions endpoint. */
 class OpenAiAgentModelGateway(
     private val client: OpenAiModelGateway,
+    private val mode: AgentMode = AgentMode.ACT,
 ) : ModelGateway {
     private val assistantByToolCallId = mutableMapOf<String, JSONObject>()
 
@@ -30,7 +31,7 @@ class OpenAiAgentModelGateway(
 
         val request = JSONObject()
             .put("messages", requestMessages)
-            .put("tools", TOOL_DEFINITIONS)
+            .put("tools", if (mode == AgentMode.PLAN) PLAN_TOOL_DEFINITIONS else TOOL_DEFINITIONS)
             .put("tool_choice", "auto")
 
         val response = JSONObject(client.chatCompletions(request.toString()))
@@ -90,6 +91,32 @@ class OpenAiAgentModelGateway(
     }
 
     companion object {
+        private val PLAN_TOOL_DEFINITIONS = JSONArray().apply {
+            put(tool("read_file", "Read a UTF-8 text file inside the selected workspace", false))
+            put(tool("exists", "Check whether a path exists inside the selected workspace", false))
+            put(
+                toolWithProperties(
+                    name = "list_files",
+                    description = "Recursively list files and directories below a workspace-relative directory",
+                    properties = JSONObject()
+                        .put("path", JSONObject().put("type", "string").put("description", "Optional workspace-relative directory; omit for workspace root"))
+                        .put("max_results", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 500)),
+                    required = JSONArray(),
+                ),
+            )
+            put(
+                toolWithProperties(
+                    name = "search_files",
+                    description = "Search UTF-8 text files for a case-insensitive literal string",
+                    properties = JSONObject()
+                        .put("query", JSONObject().put("type", "string").put("minLength", 1).put("maxLength", 512))
+                        .put("path", JSONObject().put("type", "string").put("description", "Optional workspace-relative directory"))
+                        .put("max_results", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 100)),
+                    required = JSONArray().put("query"),
+                ),
+            )
+        }
+
         private val TOOL_DEFINITIONS = JSONArray().apply {
             put(tool("read_file", "Read a UTF-8 text file inside the selected workspace", false))
             put(tool("exists", "Check whether a path exists inside the selected workspace", false))
