@@ -93,6 +93,37 @@ class OpenAiAgentModelGateway(
         private val TOOL_DEFINITIONS = JSONArray().apply {
             put(tool("read_file", "Read a UTF-8 text file inside the selected workspace", false))
             put(tool("exists", "Check whether a path exists inside the selected workspace", false))
+            put(
+                toolWithProperties(
+                    name = "list_files",
+                    description = "Recursively list files and directories below a workspace-relative directory",
+                    properties = JSONObject()
+                        .put("path", JSONObject().put("type", "string").put("description", "Optional workspace-relative directory; omit for workspace root"))
+                        .put("max_results", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 500)),
+                    required = JSONArray(),
+                ),
+            )
+            put(
+                toolWithProperties(
+                    name = "search_files",
+                    description = "Search UTF-8 text files for a case-insensitive literal string",
+                    properties = JSONObject()
+                        .put("query", JSONObject().put("type", "string").put("minLength", 1).put("maxLength", 512))
+                        .put("path", JSONObject().put("type", "string").put("description", "Optional workspace-relative directory"))
+                        .put("max_results", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 100)),
+                    required = JSONArray().put("query"),
+                ),
+            )
+            put(
+                toolWithProperties(
+                    name = "apply_patch",
+                    description = "Apply a unified diff to an existing UTF-8 file; fails if old context is stale",
+                    properties = JSONObject()
+                        .put("path", JSONObject().put("type", "string").put("description", "Workspace-relative logical path"))
+                        .put("patch", JSONObject().put("type", "string").put("description", "Unified diff containing one or more @@ hunks")),
+                    required = JSONArray().put("path").put("patch"),
+                ),
+            )
             put(tool("create_file", "Create a new UTF-8 text file", true))
             put(tool("overwrite_file", "Create or replace a UTF-8 text file", true))
             put(tool("append_file", "Append UTF-8 text to a file", true))
@@ -106,6 +137,15 @@ class OpenAiAgentModelGateway(
                 properties.put("content", JSONObject().put("type", "string"))
                 required.put("content")
             }
+            return toolWithProperties(name, description, properties, required)
+        }
+
+        private fun toolWithProperties(
+            name: String,
+            description: String,
+            properties: JSONObject,
+            required: JSONArray,
+        ): JSONObject {
             return JSONObject()
                 .put("type", "function")
                 .put(
