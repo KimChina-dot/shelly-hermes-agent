@@ -36,7 +36,8 @@ class SafWorkspaceFileExecutor(
 
     /** Recursively lists a bounded view of the workspace, excluding generated/vendor trees. */
     fun listFiles(path: String? = null, maxResults: Int = DEFAULT_LIST_LIMIT): ListingResult {
-        val limit = maxResults.coerceIn(1, MAX_LIST_LIMIT)
+        require(maxResults in 1..MAX_LIST_LIMIT) { "List result limit must be between 1 and $MAX_LIST_LIMIT" }
+        val limit = maxResults
         val basePath = path?.takeIf { it.isNotBlank() }?.let(LogicalPath::validate)
         val baseDocument = if (basePath == null) {
             rootDocumentUri()
@@ -80,7 +81,8 @@ class SafWorkspaceFileExecutor(
     ): SearchResult {
         require(query.isNotBlank()) { "Search query must not be blank" }
         require(query.length <= MAX_QUERY_CHARS) { "Search query is too long" }
-        val limit = maxResults.coerceIn(1, MAX_SEARCH_LIMIT)
+        require(maxResults in 1..MAX_SEARCH_LIMIT) { "Search result limit must be between 1 and $MAX_SEARCH_LIMIT" }
+        val limit = maxResults
         val listing = listFiles(path, MAX_SEARCH_FILES)
         val matches = mutableListOf<WorkspaceSearchMatch>()
         var truncated = listing.truncated
