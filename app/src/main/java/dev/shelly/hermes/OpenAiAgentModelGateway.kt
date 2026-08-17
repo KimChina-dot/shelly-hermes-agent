@@ -31,7 +31,7 @@ class OpenAiAgentModelGateway(
 
         val request = JSONObject()
             .put("messages", requestMessages)
-            .put("tools", if (mode == AgentMode.PLAN) PLAN_TOOL_DEFINITIONS else TOOL_DEFINITIONS)
+            .put("tools", enabledToolDefinitions(mode))
             .put("tool_choice", "auto")
 
         val response = JSONObject(client.chatCompletions(request.toString()))
@@ -91,6 +91,26 @@ class OpenAiAgentModelGateway(
     }
 
     companion object {
+        private fun enabledToolDefinitions(mode: AgentMode): JSONArray {
+            val enabled = AndroidWorkspaceToolPlugins.manifests.mapTo(hashSetOf()) { it.name }
+            val definitions = if (mode == AgentMode.PLAN) PLAN_TOOL_DEFINITIONS else TOOL_DEFINITIONS
+            return JSONArray().apply {
+                for (index in 0 until definitions.length()) {
+                    val definition = definitions.getJSONObject(index)
+                    if (definition.getJSONObject("function").getString("name") in enabled) {
+                        put(definition)
+                    }
+                }
+            }
+        }
+
+        internal fun toolDefinitionNames(mode: AgentMode): Set<String> = buildSet {
+            val definitions = enabledToolDefinitions(mode)
+            for (index in 0 until definitions.length()) {
+                add(definitions.getJSONObject(index).getJSONObject("function").getString("name"))
+            }
+        }
+
         private val PLAN_TOOL_DEFINITIONS = JSONArray().apply {
             put(tool("read_file", "Read a UTF-8 text file inside the selected workspace", false))
             put(tool("exists", "Check whether a path exists inside the selected workspace", false))

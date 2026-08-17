@@ -15,7 +15,6 @@ import dev.shelly.hermes.core.AgentEvent
 import dev.shelly.hermes.core.AgentObserver
 import dev.shelly.hermes.core.AgentCheckpoint
 import dev.shelly.hermes.core.CheckpointStore
-import dev.shelly.hermes.core.ToolApprovalPolicy
 import dev.shelly.hermes.core.MessageRole
 
 /** Runs one user-started agent task in a foreground service. */
@@ -195,7 +194,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                 legacyCheckpoints.save(checkpoint)
                 eventStore.append(SessionEvent(SessionEventType.CHECKPOINT, checkpoint = checkpoint))
             },
-            approvalPolicy = ToolApprovalPolicy.autoApproveReadOnly(),
+            approvalPolicy = tools.approvalPolicy(),
             observer = AgentObserver { event ->
                 runCatching { eventStore.append(event.toSessionEvent()) }
                 when (event) {
