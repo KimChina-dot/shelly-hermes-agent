@@ -19,7 +19,6 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import dev.shelly.hermes.core.AgentProfile
 import dev.shelly.hermes.core.AgentProfileMode
 import dev.shelly.hermes.core.AgentProfileRegistry
 
@@ -81,9 +80,9 @@ class MainActivity : ComponentActivity() {
             selectProfile(if (currentMode == AgentMode.ACT) "planner" else "coding")
         }
         findViewById<Button>(R.id.agentProfile).setOnClickListener {
-            val available = profiles.profiles()
-            val index = available.indexOfFirst { it.id == currentProfileId }.coerceAtLeast(0)
-            selectProfile(available[(index + 1) % available.size].id)
+            val available = profiles.profiles().map { it.id } + TEAM_PROFILE_ID
+            val index = available.indexOf(currentProfileId).coerceAtLeast(0)
+            selectProfile(available[(index + 1) % available.size])
         }
         findViewById<Button>(R.id.startTask).setOnClickListener { startTask() }
         findViewById<Button>(R.id.resumeTask).setOnClickListener { resumeTask() }
@@ -103,7 +102,7 @@ class MainActivity : ComponentActivity() {
         }
         currentProfileId = getSharedPreferences(PUBLIC_CONFIG, MODE_PRIVATE)
             .getString(AGENT_PROFILE_ID, "coding")
-            ?.takeIf { profiles.findProfile(it) != null }
+            ?.takeIf { profiles.findProfile(it) != null || it == TEAM_PROFILE_ID }
             ?: "coding"
         renderProfile()
         refreshConfigurationStatus()
@@ -249,20 +248,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun renderProfile() {
-        val profile = currentProfile()
-        currentMode = if (profile.mode == AgentProfileMode.ACT) AgentMode.ACT else AgentMode.PLAN
+        val profile = profiles.findProfile(currentProfileId)
+        currentMode = if (profile == null || profile.mode == AgentProfileMode.ACT) AgentMode.ACT else AgentMode.PLAN
         findViewById<Button>(R.id.taskMode).text = if (currentMode == AgentMode.PLAN) "PLAN" else "ACT"
-        findViewById<Button>(R.id.agentProfile).text = profile.name
+        findViewById<Button>(R.id.agentProfile).text = profile?.name ?: "Team"
     }
 
     private fun selectProfile(id: String) {
-        profiles.requireProfile(id)
+        require(profiles.findProfile(id) != null || id == TEAM_PROFILE_ID) { "Unknown Agent profile" }
         currentProfileId = id
         getSharedPreferences(PUBLIC_CONFIG, MODE_PRIVATE).edit().putString(AGENT_PROFILE_ID, id).apply()
         renderProfile()
     }
-
-    private fun currentProfile(): AgentProfile = profiles.requireProfile(currentProfileId)
 
     private fun refreshConfigurationStatus() {
         val workspace = workspaceUri()
@@ -349,5 +346,6 @@ class MainActivity : ComponentActivity() {
         const val PUBLIC_CONFIG = "public_config"
         const val WORKSPACE_URI = "workspace_uri"
         const val AGENT_PROFILE_ID = "agent_profile_id"
+        const val TEAM_PROFILE_ID = "bundle:standard"
     }
 }

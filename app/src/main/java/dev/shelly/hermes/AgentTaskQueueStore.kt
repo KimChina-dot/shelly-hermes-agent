@@ -54,6 +54,8 @@ class AgentTaskQueueStore(
             val existing = tasks[existingIndex]
             if (existing.state in TERMINAL_STATES && task.action == QueuedTaskAction.RESUME) {
                 val resumed = task.copy(
+                    mode = existing.mode,
+                    profileId = existing.profileId,
                     state = QueuedTaskState.PENDING,
                     attempts = existing.attempts,
                     createdAt = task.createdAt.takeIf { it > 0L } ?: clock(),

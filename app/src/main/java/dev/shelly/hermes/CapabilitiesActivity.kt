@@ -52,6 +52,6 @@ class CapabilitiesActivity : Activity() {
         }
         val approvals = manifests.count { it.requiresApproval }
         findViewById<TextView>(R.id.securityCapability).text =
-            "当前角色：${profile?.name ?: "Coding"}。已注册 ${manifests.size} 个工具插件，其中 $approvals 个写入工具强制审批。每个插件独立声明能力、风险、超时、输出上限、checkpoint 和熔断策略；工具不接受绝对路径、路径穿越或 shell 命令。"
+            "当前角色：${profile?.name ?: if (profileId == MainActivity.TEAM_PROFILE_ID) "Standard Team" else "Coding"}。已注册 ${manifests.size} 个工具插件，其中 $approvals 个写入工具强制审批。每个插件独立声明能力、风险、超时、输出上限、checkpoint 和熔断策略；工具不接受绝对路径、路径穿越或 shell 命令。"
     }
 }

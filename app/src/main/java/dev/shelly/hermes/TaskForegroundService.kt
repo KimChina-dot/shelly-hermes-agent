@@ -14,9 +14,12 @@ import dev.shelly.hermes.core.AgentResult
 import dev.shelly.hermes.core.AgentEvent
 import dev.shelly.hermes.core.AgentObserver
 import dev.shelly.hermes.core.AgentCheckpoint
+import dev.shelly.hermes.core.AgentBundle
+import dev.shelly.hermes.core.AgentBundleOrchestrator
 import dev.shelly.hermes.core.AgentProfile
 import dev.shelly.hermes.core.AgentProfileMode
 import dev.shelly.hermes.core.AgentProfileRegistry
+import dev.shelly.hermes.core.AgentProfileRunner
 import dev.shelly.hermes.core.CheckpointStore
 import dev.shelly.hermes.core.MessageRole
 
@@ -28,6 +31,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
     private var currentTaskId: String? = null
     private var currentMode: AgentMode = AgentMode.ACT
     private var currentProfile: AgentProfile = profiles.requireProfile("coding")
+    private var currentBundle: AgentBundle? = null
     @Volatile private var currentModelClient: OpenAiModelGateway? = null
     @Volatile private var currentEventStore: SessionEventStore? = null
     @Volatile private var destroying = false
@@ -40,7 +44,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         runCatching { queue.recoverInterrupted() }
 
         coordinator = AgentCoreAndroidCoordinator(
-            agentFactory = { taskId -> createAgent(taskId) },
+            agentFactory = { taskId -> createTaskRunner(taskId) },
             foregroundService = this,
             listener = this,
         )
@@ -81,7 +85,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
 
         try {
             val request = intent.toQueuedTask()
-            profiles.requireProfile(request.profileId)
+            requireSelection(request.profileId)
             val queued = queue.enqueue(request)
             broadcastStatus(STATE_QUEUED, "任务已进入队列，前方 ${queue.pendingCount() - 1} 项")
             broadcastQueueState()
@@ -108,6 +112,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             currentTaskId = null
             currentEventStore = null
             currentModelClient = null
+            currentBundle = null
             queue.finish(task.id, QueuedTaskState.FAILED, failure.message.orEmpty())
             broadcastStatus(TaskState.FAILED.name, failure.message ?: "任务启动失败")
         }
@@ -118,7 +123,10 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         val isFork = task.action == QueuedTaskAction.FORK
         val taskId = task.id
         val prompt = task.prompt
-        val profile = profiles.requireProfile(task.profileId)
+        val bundle = task.profileId.takeIf { it.startsWith(BUNDLE_PREFIX) }
+            ?.removePrefix(BUNDLE_PREFIX)
+            ?.let(profiles::requireBundle)
+        val profile = bundle?.defaultProfile ?: profiles.requireProfile(task.profileId)
         val mode = if (profile.mode == AgentProfileMode.ACT) AgentMode.ACT else AgentMode.PLAN
         val eventStore = if (isFork) {
             SessionEventStore(this, requireNotNull(task.sourceSessionId))
@@ -138,6 +146,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         currentTaskId = taskId
         currentMode = mode
         currentProfile = profile
+        currentBundle = bundle
         currentEventStore = eventStore
         val sessionPrompt = when {
             prompt.isNotBlank() -> prompt.take(120)
@@ -148,7 +157,9 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         val initialMessages = if (resumeCheckpoint != null) {
             emptyList()
         } else {
-            buildInitialMessages(profile, prompt).also { messages ->
+            (if (bundle == null) buildInitialMessages(profile, prompt) else {
+                listOf(AgentMessage(MessageRole.USER, prompt))
+            }).also { messages ->
                 eventStore.append(SessionEvent(SessionEventType.SESSION_STARTED, detail = prompt))
                 eventStore.append(
                     SessionEvent(
@@ -240,35 +251,54 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             currentTaskId = null
             currentEventStore = null
             currentModelClient = null
+            currentBundle = null
             broadcastQueueState()
             drainQueue()
         }
     }
 
-    private fun createAgent(taskId: String): AgentCore {
+    private fun createTaskRunner(taskId: String): AgentTaskRunner {
+        val bundle = currentBundle
+        if (bundle == null) {
+            val profile = currentProfile
+            return AgentTaskRunner { messages, cancellation, resumeFrom ->
+                createAgent(taskId, profile).run(messages, cancellation, resumeFrom)
+            }
+        }
+        val checkpoints = checkpointStore(taskId)
+        val orchestrator = AgentBundleOrchestrator(
+            runner = AgentProfileRunner { profile, messages, cancellation, resumeFrom ->
+                broadcastStatus(TaskState.RUNNING.name, "${profile.name} Agent 正在执行")
+                createAgent(taskId, profile).run(messages, cancellation, resumeFrom)
+            },
+            checkpoints = checkpoints,
+        )
+        return AgentTaskRunner { messages, cancellation, resumeFrom ->
+            orchestrator.run(bundle, messages, cancellation, resumeFrom)
+        }
+    }
+
+    private fun createAgent(taskId: String, profile: AgentProfile): AgentCore {
         val workspaceValue = getSharedPreferences(MainActivity.PUBLIC_CONFIG, MODE_PRIVATE)
             .getString(MainActivity.WORKSPACE_URI, null)
             ?: error("尚未选择项目目录")
         val workspace = Uri.parse(workspaceValue)
         val modelClient = OpenAiModelGateway(AndroidKeyStoreModelConfig(this))
         currentModelClient = modelClient
-        val model = OpenAiAgentModelGateway(modelClient, currentMode, currentProfile.toolNames)
+        val mode = if (profile.mode == AgentProfileMode.ACT) AgentMode.ACT else AgentMode.PLAN
+        val model = OpenAiAgentModelGateway(modelClient, mode, profile.toolNames)
         val tools = SafWorkspaceToolExecutor(
             SafWorkspaceFileExecutor(applicationContext, workspace),
-            currentProfile.allowedCapabilities,
-            currentProfile.toolNames,
+            profile.allowedCapabilities,
+            profile.toolNames,
         )
-        val legacyCheckpoints = AgentCheckpointStore(this)
         val eventStore = SessionEventStore(this, taskId)
         return AgentCore(
             model = model,
             tools = tools,
             approvals = ApprovalBridge.gateway,
-            checkpoints = CheckpointStore { checkpoint ->
-                legacyCheckpoints.save(checkpoint)
-                eventStore.append(SessionEvent(SessionEventType.CHECKPOINT, checkpoint = checkpoint))
-            },
-            limits = currentProfile.limits,
+            checkpoints = checkpointStore(taskId),
+            limits = profile.limits,
             approvalPolicy = tools.approvalPolicy(),
             observer = AgentObserver { event ->
                 runCatching { eventStore.append(event.toSessionEvent()) }
@@ -282,6 +312,20 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                 }
             },
         )
+    }
+
+    private fun checkpointStore(taskId: String): CheckpointStore {
+        val legacyCheckpoints = AgentCheckpointStore(this)
+        val eventStore = SessionEventStore(this, taskId)
+        return CheckpointStore { checkpoint ->
+            legacyCheckpoints.save(checkpoint)
+            eventStore.append(SessionEvent(SessionEventType.CHECKPOINT, checkpoint = checkpoint))
+        }
+    }
+
+    private fun requireSelection(id: String) {
+        if (id.startsWith(BUNDLE_PREFIX)) profiles.requireBundle(id.removePrefix(BUNDLE_PREFIX))
+        else profiles.requireProfile(id)
     }
 
     private fun buildInitialMessages(profile: AgentProfile, prompt: String): List<AgentMessage> = buildList {
@@ -401,6 +445,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         const val STATE_QUEUED = "QUEUED"
         const val STATE_QUEUE_UPDATED = "QUEUE_UPDATED"
         private const val NOTIFICATION_ID = 7
+        const val BUNDLE_PREFIX = "bundle:"
         private val TERMINAL_TASK_STATES = setOf(TaskState.COMPLETED, TaskState.STOPPED, TaskState.FAILED)
     }
 }

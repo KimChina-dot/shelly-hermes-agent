@@ -21,7 +21,7 @@ import kotlin.coroutines.startCoroutine
  * notification creation and calls [onForegroundServiceStopped] when Android destroys the service.
  */
 class AgentCoreAndroidCoordinator(
-    private val agentFactory: (taskId: String) -> AgentCore,
+    private val agentFactory: (taskId: String) -> AgentTaskRunner,
     private val foregroundService: ForegroundServiceConnection,
     private val listener: TaskStateListener,
     private val executor: Executor = Executors.newCachedThreadPool()
@@ -113,6 +113,14 @@ class AgentCoreAndroidCoordinator(
         override val isCancelled: Boolean
             get() = cancelled.get()
     }
+}
+
+fun interface AgentTaskRunner {
+    suspend fun run(
+        messages: List<AgentMessage>,
+        cancellation: CancellationSignal,
+        resumeFrom: AgentCheckpoint?,
+    ): AgentResult
 }
 
 enum class TaskState {
