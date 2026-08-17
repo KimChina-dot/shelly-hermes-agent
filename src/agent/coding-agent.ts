@@ -55,56 +55,82 @@ export class CodingAgent {
     const usage = { inputTokens: 0, outputTokens: 0 };
     let toolCalls = 0;
 
-    for (let turn = 1; turn <= maxTurns; turn += 1) {
-      options.onEvent?.({ type: "model_start", turn });
-      const completion = await this.model.complete({
-        messages,
-        tools: Array.from(this.tools.values(), (tool) => tool.definition),
-        ...(options.signal ? { signal: options.signal } : {}),
-      });
-      addUsage(usage, completion.usage);
-      messages.push(completion.message);
-      const calls = completion.message.toolCalls ?? [];
-      if (calls.length === 0) {
-        return {
-          answer: completion.message.content,
-          messages,
-          turns: turn,
-          toolCalls,
-          usage,
-        };
-      }
+    await options.sessionLog?.append({ type: "turn_start", prompt });
+    for (const message of messages.slice(0, -1)) {
+      await options.sessionLog?.append({ type: "context_message", message });
+    }
+    await options.sessionLog?.append({ type: "user_message", message: messages.at(-1)! });
 
-      for (const call of calls) {
-        toolCalls += 1;
-        if (toolCalls > maxToolCalls) {
-          throw new AgentLimitError(`Tool-call limit exceeded (${maxToolCalls})`);
+    try {
+      for (let turn = 1; turn <= maxTurns; turn += 1) {
+        options.onEvent?.({ type: "model_start", turn });
+        await options.sessionLog?.append({ type: "step_start", turn });
+        const completion = await this.model.complete({
+          messages,
+          tools: Array.from(this.tools.values(), (tool) => tool.definition),
+          ...(options.signal ? { signal: options.signal } : {}),
+        });
+        addUsage(usage, completion.usage);
+        messages.push(completion.message);
+        await options.sessionLog?.append({ type: "assistant_message", message: completion.message });
+        const calls = completion.message.toolCalls ?? [];
+        if (calls.length === 0) {
+          await options.sessionLog?.append({ type: "step_end", turn, ...(completion.usage ? { usage: completion.usage } : {}) });
+          await options.sessionLog?.append({ type: "turn_end", reason: "completed" });
+          return {
+            answer: completion.message.content,
+            messages,
+            turns: turn,
+            toolCalls,
+            usage,
+          };
         }
-        options.onEvent?.({ type: "tool_start", name: call.name, id: call.id });
-        const tool = this.tools.get(call.name);
-        let output: unknown;
-        let ok = false;
-        try {
-          if (!tool) throw new Error(`Unknown tool '${call.name}'`);
-          const input = parseArguments(call.arguments);
-          output = await tool.execute(input, {
-            confirm,
-            ...(options.signal ? { signal: options.signal } : {}),
-          });
-          ok = true;
-        } catch (error) {
-          output = { error: errorMessage(error) };
+
+        for (const call of calls) {
+          toolCalls += 1;
+          if (toolCalls > maxToolCalls) {
+            throw new AgentLimitError(`Tool-call limit exceeded (${maxToolCalls})`);
+          }
+          await options.sessionLog?.append({ type: "tool_call", call });
+          options.onEvent?.({ type: "tool_start", name: call.name, id: call.id });
+          const tool = this.tools.get(call.name);
+          let output: unknown;
+          let ok = false;
+          try {
+            if (!tool) throw new Error(`Unknown tool '${call.name}'`);
+            const input = parseArguments(call.arguments);
+            output = await tool.execute(input, {
+              confirm,
+              ...(options.signal ? { signal: options.signal } : {}),
+            });
+            ok = true;
+          } catch (error) {
+            output = { error: errorMessage(error) };
+          }
+          options.onEvent?.({ type: "tool_finish", name: call.name, id: call.id, ok });
+          const resultMessage: ChatMessage = {
+            role: "tool",
+            name: call.name,
+            toolCallId: call.id,
+            content: serializeToolOutput(output),
+          };
+          messages.push(resultMessage);
+          await options.sessionLog?.append({ type: "tool_result", message: resultMessage });
         }
-        options.onEvent?.({ type: "tool_finish", name: call.name, id: call.id, ok });
-        messages.push({
-          role: "tool",
-          name: call.name,
-          toolCallId: call.id,
-          content: serializeToolOutput(output),
+        await options.sessionLog?.append({ type: "step_end", turn, ...(completion.usage ? { usage: completion.usage } : {}) });
+      }
+      throw new AgentLimitError(`Turn limit exceeded (${maxTurns})`);
+    } catch (error) {
+      if (error instanceof AgentLimitError) {
+        await options.sessionLog?.append({ type: "turn_end", reason: "limit" });
+      } else {
+        await options.sessionLog?.append({
+          type: "turn_end",
+          reason: options.signal?.aborted ? "cancelled" : "failed",
         });
       }
+      throw error;
     }
-    throw new AgentLimitError(`Turn limit exceeded (${maxTurns})`);
   }
 }
 
