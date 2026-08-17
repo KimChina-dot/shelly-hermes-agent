@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="surface_background">#FF171816</color>
+    <color name="surface_glass">#FF20221F</color>
+    <color name="surface_glass_pressed">#FF30332E</color>
+    <color name="surface_subtle">#FF282A26</color>
+    <color name="border_subtle">#FF3B3E38</color>
+    <color name="text_primary">#FFF1F2EE</color>
+    <color name="text_secondary">#FFB5B8B0</color>
+    <color name="text_tertiary">#FF898D84</color>
+    <color name="accent_primary">#FF4DAF93</color>
+    <color name="accent_primary_pressed">#FF3B957B</color>
+    <color name="accent_subtle">#FF213B34</color>
+    <color name="accent_foreground">#FF101A16</color>
+    <color name="status_success">#FF63C29F</color>
+    <color name="status_warning">#FFE0A34A</color>
+    <color name="status_error">#FFFF8B82</color>
+    <color name="risk_background">#FF402623</color>
+    <color name="divider_subtle">#FF3B3E38</color>
+</resources>

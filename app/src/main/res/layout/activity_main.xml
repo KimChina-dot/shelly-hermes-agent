@@ -2,125 +2,164 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:background="@color/surface_background"
-    android:importantForAccessibility="yes">
+    android:importantForAccessibility="yes"
+    android:orientation="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:minHeight="64dp"
+        android:layout_height="56dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="8dp">
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp">
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Luma"
-            android:textAppearance="@style/TextAppearance.Luma.Title"
-            android:textStyle="bold" />
+            android:textAppearance="@style/TextAppearance.Luma.Title" />
 
         <Button
             android:id="@+id/capabilities"
-            android:layout_width="wrap_content"
+            style="@style/Widget.Luma.ToolbarButton"
+            android:layout_width="48dp"
             android:layout_height="48dp"
-            android:text="能力"
-            android:textAllCaps="false"
-            android:contentDescription="查看已启用的能力" />
+            android:contentDescription="能力与权限"
+            android:drawableTop="@android:drawable/ic_menu_manage"
+            android:text="" />
 
         <Button
             android:id="@+id/history"
-            android:layout_width="wrap_content"
+            style="@style/Widget.Luma.ToolbarButton"
+            android:layout_width="48dp"
             android:layout_height="48dp"
-            android:text="历史"
-            android:textAllCaps="false"
-            android:contentDescription="查看任务历史" />
+            android:contentDescription="会话历史"
+            android:drawableTop="@android:drawable/ic_menu_recent_history"
+            android:text="" />
 
         <Button
             android:id="@+id/settings"
-            android:layout_width="wrap_content"
+            style="@style/Widget.Luma.ToolbarButton"
+            android:layout_width="48dp"
             android:layout_height="48dp"
-            android:text="设置"
-            android:textAllCaps="false"
-            android:contentDescription="打开模型设置" />
+            android:contentDescription="模型设置"
+            android:drawableTop="@android:drawable/ic_menu_preferences"
+            android:text="" />
     </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider_subtle" />
 
     <HorizontalScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="56dp"
         android:fillViewport="false"
         android:scrollbars="none">
 
         <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="12dp"
-            android:paddingBottom="8dp">
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp">
 
             <TextView
                 android:id="@+id/workspace"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
                 android:gravity="center_vertical"
-                android:paddingHorizontal="12dp"
+                android:maxWidth="220dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:singleLine="true"
                 android:text="尚未选择项目"
-                android:textColor="@color/text_secondary"
-                android:contentDescription="当前项目" />
+                android:textAppearance="@style/TextAppearance.Luma.Caption" />
+
+            <Button
+                android:id="@+id/chooseWorkspace"
+                style="@style/Widget.Luma.ToolbarButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="项目" />
 
             <TextView
                 android:id="@+id/modelStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
                 android:gravity="center_vertical"
-                android:paddingHorizontal="12dp"
+                android:maxWidth="180dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:singleLine="true"
                 android:text="模型未连接"
-                android:textColor="@color/text_secondary"
-                android:contentDescription="模型状态" />
-
-            <Button
-                android:id="@+id/chooseWorkspace"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
-                android:text="选择项目"
-                android:textAllCaps="false" />
+                android:textAppearance="@style/TextAppearance.Luma.Caption" />
 
             <Button
                 android:id="@+id/taskMode"
+                style="@style/Widget.Luma.ToolbarButton"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:text="ACT"
-                android:textAllCaps="false"
-                android:contentDescription="Task mode: PLAN analyzes only; ACT can modify files" />
+                android:text="ACT" />
 
             <Button
                 android:id="@+id/agentProfile"
+                style="@style/Widget.Luma.ToolbarButton"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:text="Coding"
-                android:textAllCaps="false"
-                android:contentDescription="选择 Agent 角色" />
+                android:text="Coding" />
 
             <Button
                 android:id="@+id/taskQueue"
+                style="@style/Widget.Luma.ToolbarButton"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:text="任务 0"
-                android:textAllCaps="false"
-                android:contentDescription="查看任务队列" />
+                android:text="任务 0" />
+
+            <Button
+                android:id="@+id/resumeTask"
+                style="@style/Widget.Luma.ToolbarButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="恢复" />
         </LinearLayout>
     </HorizontalScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:minHeight="36dp"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
+
+        <ProgressBar
+            android:id="@+id/progress"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="8dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/taskStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:singleLine="true"
+            android:textAppearance="@style/TextAppearance.Luma.Caption"
+            android:visibility="gone" />
+    </LinearLayout>
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginHorizontal="12dp"
-        android:background="@drawable/bg_glass_card">
+        android:layout_weight="1">
 
         <ListView
             android:id="@+id/messageList"
@@ -128,49 +167,31 @@
             android:layout_height="match_parent"
             android:clipToPadding="false"
             android:divider="@android:color/transparent"
-            android:dividerHeight="8dp"
-            android:padding="12dp"
+            android:dividerHeight="0dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="16dp"
             android:scrollbars="vertical" />
-
-        <ProgressBar
-            android:id="@+id/progress"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:visibility="gone"
-            android:contentDescription="正在处理" />
-
-        <TextView
-            android:id="@+id/taskStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="top|center_horizontal"
-            android:padding="8dp"
-            android:text="就绪"
-            android:textColor="@color/text_secondary"
-            android:visibility="gone" />
 
         <TextView
             android:id="@+id/emptyState"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:gravity="center"
             android:padding="24dp"
-            android:text="从一个任务开始"
-            android:textColor="@color/text_secondary"
-            android:visibility="visible" />
+            android:text="开始一个任务"
+            android:textAppearance="@style/TextAppearance.Luma.Caption" />
     </FrameLayout>
 
     <LinearLayout
         android:id="@+id/errorContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="12dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="8dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="12dp"
+        android:padding="10dp"
         android:visibility="gone">
 
         <TextView
@@ -178,70 +199,70 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="操作失败，请稍后重试"
             android:textColor="@color/status_error" />
 
         <Button
             android:id="@+id/retry"
+            style="@style/Widget.Luma.ToolbarButton"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
-            android:text="重试"
-            android:textAllCaps="false" />
+            android:text="重试" />
     </LinearLayout>
+
+    <Button
+        android:id="@+id/approval"
+        style="@style/Widget.Luma.ToolbarButton"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="8dp"
+        android:text="查看变更并审批"
+        android:textColor="@color/status_warning"
+        android:visibility="gone" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_composer"
         android:gravity="bottom"
+        android:minHeight="64dp"
         android:orientation="horizontal"
-        android:padding="12dp">
+        android:padding="8dp">
 
         <EditText
             android:id="@+id/taskInput"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:minHeight="48dp"
-            android:maxLines="5"
+            android:background="@android:color/transparent"
             android:gravity="top|start"
-            android:hint="描述你想完成的任务"
+            android:hint="交给 Luma 一个任务"
             android:inputType="textCapSentences|textMultiLine"
-            android:padding="12dp" />
+            android:maxLines="6"
+            android:minHeight="48dp"
+            android:padding="10dp"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_tertiary" />
 
         <Button
             android:id="@+id/startTask"
+            style="@style/Widget.Luma.PrimaryButton"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
-            android:layout_marginStart="8dp"
-            android:text="发送"
-            android:textAllCaps="false"
-            android:contentDescription="开始任务" />
+            android:text="发送" />
 
         <Button
             android:id="@+id/stopTask"
+            style="@style/Widget.Luma.ToolbarButton"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="6dp"
             android:text="停止"
-            android:textAllCaps="false"
+            android:textColor="@color/status_error"
             android:visibility="gone" />
     </LinearLayout>
-
-    <Button
-        android:id="@+id/approval"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginHorizontal="12dp"
-        android:layout_marginBottom="8dp"
-        android:text="查看变更并审批"
-        android:textAllCaps="false"
-        android:contentDescription="打开 Diff 分块预览和审批页面" />
-    <Button
-        android:id="@+id/resumeTask"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginHorizontal="12dp"
-        android:layout_marginBottom="8dp"
-        android:text="Resume latest checkpoint"
-        android:textAllCaps="false" />
 </LinearLayout>

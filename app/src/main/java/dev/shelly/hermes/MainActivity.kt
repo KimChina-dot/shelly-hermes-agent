@@ -8,7 +8,6 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -23,8 +22,8 @@ import dev.shelly.hermes.core.AgentProfileMode
 import dev.shelly.hermes.core.AgentProfileRegistry
 
 class MainActivity : ComponentActivity() {
-    private lateinit var messages: MutableList<String>
-    private lateinit var messageAdapter: ArrayAdapter<String>
+    private lateinit var messages: MutableList<UiMessage>
+    private lateinit var messageAdapter: AgentMessageAdapter
     private val profiles = AgentProfileRegistry()
     private var lastPrompt: String = ""
     private var currentMode: AgentMode = AgentMode.ACT
@@ -62,7 +61,7 @@ class MainActivity : ComponentActivity() {
         setContentView(R.layout.activity_main)
 
         messages = mutableListOf()
-        messageAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, messages)
+        messageAdapter = AgentMessageAdapter(this, messages)
         findViewById<ListView>(R.id.messageList).adapter = messageAdapter
 
         findViewById<Button>(R.id.chooseWorkspace).setOnClickListener { picker.launch(null) }
@@ -149,7 +148,7 @@ class MainActivity : ComponentActivity() {
         }
 
         lastPrompt = prompt
-        appendMessage("你：$prompt")
+        appendMessage(UiMessageRole.USER, prompt)
         input.text.clear()
         findViewById<View>(R.id.errorContainer).visibility = View.GONE
 
@@ -199,19 +198,21 @@ class MainActivity : ComponentActivity() {
         }
         when (state) {
             TaskState.STARTING.name, TaskState.RUNNING.name -> setRunning(true)
-            TaskForegroundService.STATE_QUEUED -> appendMessage("任务已加入执行队列")
+            TaskForegroundService.STATE_QUEUED -> appendMessage(UiMessageRole.STATUS, "任务已加入执行队列")
             TaskForegroundService.STATE_QUEUE_UPDATED -> setRunning(activeTaskId.isNotBlank())
             TaskForegroundService.STATE_AWAITING_APPROVAL -> {
                 setRunning(true)
+                findViewById<Button>(R.id.approval).visibility = View.VISIBLE
                 startActivity(Intent(this, ApprovalActivity::class.java))
             }
             TaskState.COMPLETED.name -> {
                 setRunning(false)
-                appendMessage("Luma：${detail.ifBlank { "任务已完成" }}")
+                findViewById<Button>(R.id.approval).visibility = View.GONE
+                appendMessage(UiMessageRole.ASSISTANT, detail.ifBlank { "任务已完成" })
             }
             TaskState.STOPPED.name, TaskState.CANCELLING.name, TaskState.STOPPING.name -> {
                 setRunning(state == TaskState.CANCELLING.name || state == TaskState.STOPPING.name)
-                if (state == TaskState.STOPPED.name) appendMessage("任务已停止")
+                if (state == TaskState.STOPPED.name) appendMessage(UiMessageRole.STATUS, "任务已停止")
             }
             TaskState.FAILED.name -> {
                 setRunning(false)
@@ -230,8 +231,8 @@ class MainActivity : ComponentActivity() {
         else -> state
     }
 
-    private fun appendMessage(text: String) {
-        messages += text
+    private fun appendMessage(role: UiMessageRole, text: String) {
+        messages += UiMessage(role, text)
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
         findViewById<ListView>(R.id.messageList).setSelection(messages.lastIndex)
