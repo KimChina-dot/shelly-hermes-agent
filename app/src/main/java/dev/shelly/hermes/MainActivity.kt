@@ -150,14 +150,20 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun resumeTask() {
-        if (!AgentCheckpointStore(this).hasCheckpoint()) {
+        val durableSession = FileSessionStore(this).list().firstOrNull { session ->
+            runCatching { SessionEventStore(this, session.id).hasCheckpoint() }.getOrDefault(false)
+        }
+        if (durableSession == null && !AgentCheckpointStore(this).hasCheckpoint()) {
             Toast.makeText(this, "No task checkpoint is available", Toast.LENGTH_SHORT).show()
             return
         }
         setRunning(true)
         ContextCompat.startForegroundService(this, Intent(this, TaskForegroundService::class.java).apply {
             action = TaskForegroundService.ACTION_RESUME
-            putExtra(TaskForegroundService.EXTRA_TASK_ID, "resume-${System.currentTimeMillis()}")
+            putExtra(
+                TaskForegroundService.EXTRA_TASK_ID,
+                durableSession?.id ?: "resume-${System.currentTimeMillis()}",
+            )
             putExtra(TaskForegroundService.EXTRA_MODE, currentMode.wireValue)
         })
     }

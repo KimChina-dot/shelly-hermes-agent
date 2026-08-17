@@ -13,6 +13,8 @@ import dev.shelly.hermes.core.AgentMessage
 import dev.shelly.hermes.core.AgentResult
 import dev.shelly.hermes.core.AgentEvent
 import dev.shelly.hermes.core.AgentObserver
+import dev.shelly.hermes.core.AgentCheckpoint
+import dev.shelly.hermes.core.CheckpointStore
 import dev.shelly.hermes.core.ToolApprovalPolicy
 import dev.shelly.hermes.core.MessageRole
 
@@ -22,6 +24,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
     private var currentTaskId: String? = null
     private var currentMode: AgentMode = AgentMode.ACT
     @Volatile private var currentModelClient: OpenAiModelGateway? = null
+    @Volatile private var currentEventStore: SessionEventStore? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -29,7 +32,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
 
         coordinator = AgentCoreAndroidCoordinator(
-            agentFactory = { createAgent() },
+            agentFactory = { taskId -> createAgent(taskId) },
             foregroundService = this,
             listener = this,
         )
@@ -50,16 +53,17 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                 currentTaskId?.let(coordinator::cancel)
                 return START_NOT_STICKY
             }
-            ACTION_START, ACTION_RESUME -> Unit
+            ACTION_START, ACTION_RESUME, ACTION_FORK_TASK -> Unit
             else -> return START_NOT_STICKY
         }
 
-        val isResume = intent.action == ACTION_RESUME
-        val resumeCheckpoint = if (isResume) AgentCheckpointStore(this).load() else null
+        val action = intent.action
+        val isResume = action == ACTION_RESUME
+        val isFork = action == ACTION_FORK_TASK
         val taskId = intent.getStringExtra(EXTRA_TASK_ID)?.takeIf { it.isNotBlank() }
         val prompt = intent.getStringExtra(EXTRA_PROMPT)?.trim().orEmpty()
         val mode = AgentMode.fromWireValue(intent.getStringExtra(EXTRA_MODE))
-        if (taskId == null || (!isResume && prompt.isBlank()) || (isResume && resumeCheckpoint == null)) {
+        if (taskId == null || (action == ACTION_START && prompt.isBlank())) {
             broadcastStatus(TaskState.FAILED.name, "任务参数不完整")
             stopSelf(startId)
             return START_NOT_STICKY
@@ -69,21 +73,61 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             return START_NOT_STICKY
         }
 
+        val eventStore: SessionEventStore
+        val resumeCheckpoint: AgentCheckpoint?
+        try {
+            eventStore = if (isFork) {
+                val sourceId = intent.getStringExtra(EXTRA_SOURCE_SESSION_ID)
+                    ?.takeIf { it.isNotBlank() }
+                    ?: error("缺少源会话")
+                val sourceSequence = intent.getLongExtra(EXTRA_SOURCE_SEQUENCE, -1L)
+                SessionEventStore(this, sourceId).fork(taskId, sourceSequence)
+            } else {
+                SessionEventStore(this, taskId)
+            }
+            val durableCheckpoint = eventStore.latestCheckpoint()
+            resumeCheckpoint = when {
+                isFork -> durableCheckpoint ?: error("分支中没有可恢复的 checkpoint")
+                isResume -> durableCheckpoint ?: migrateLegacyCheckpoint(eventStore)
+                action == ACTION_START && durableCheckpoint != null -> durableCheckpoint
+                else -> null
+            }
+            if (isResume && resumeCheckpoint == null) error("没有可恢复的 checkpoint")
+        } catch (error: Throwable) {
+            broadcastStatus(TaskState.FAILED.name, error.message ?: "会话恢复失败")
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+
         currentTaskId = taskId
         currentMode = mode
-        FileSessionStore(this).save(Session(taskId, prompt.take(120).ifBlank { "Resumed task" }, System.currentTimeMillis()))
-        val initialMessages = buildList {
-            if (mode == AgentMode.PLAN) {
-                add(AgentMessage(MessageRole.SYSTEM, "Plan mode: analyze the task and inspect the workspace using read-only tools only. Do not modify files."))
+        currentEventStore = eventStore
+        val sessionPrompt = when {
+            prompt.isNotBlank() -> prompt.take(120)
+            isFork -> sourcePrompt(intent.getStringExtra(EXTRA_SOURCE_SESSION_ID)).let { "$it（分支）" }
+            else -> FileSessionStore(this).list().firstOrNull { it.id == taskId }?.prompt ?: "Resumed task"
+        }
+        FileSessionStore(this).save(Session(taskId, sessionPrompt, System.currentTimeMillis()))
+        val initialMessages = if (resumeCheckpoint != null) {
+            emptyList()
+        } else {
+            buildInitialMessages(mode, prompt).also { messages ->
+                eventStore.append(SessionEvent(SessionEventType.SESSION_STARTED, detail = prompt))
+                eventStore.append(
+                    SessionEvent(
+                        SessionEventType.CHECKPOINT,
+                        checkpoint = AgentCheckpoint(messages, 0, 0, 0),
+                    ),
+                )
             }
-            add(AgentMessage(MessageRole.USER, prompt))
         }
         if (!coordinator.start(taskId, initialMessages, resumeCheckpoint)) {
             currentTaskId = null
+            currentEventStore = null
             broadcastStatus(TaskState.FAILED.name, "任务未能启动")
             stopSelf(startId)
         }
-        return START_NOT_STICKY
+        return START_REDELIVER_INTENT
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -124,10 +168,15 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                 summary = detail,
             ),
         )
+        runCatching {
+            currentEventStore?.append(
+                SessionEvent(SessionEventType.STATUS, detail = status.state.name + ":" + detail),
+            )
+        }
         broadcastStatus(status.state.name, detail)
     }
 
-    private fun createAgent(): AgentCore {
+    private fun createAgent(taskId: String): AgentCore {
         val workspaceValue = getSharedPreferences(MainActivity.PUBLIC_CONFIG, MODE_PRIVATE)
             .getString(MainActivity.WORKSPACE_URI, null)
             ?: error("尚未选择项目目录")
@@ -136,13 +185,19 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         currentModelClient = modelClient
         val model = OpenAiAgentModelGateway(modelClient, currentMode)
         val tools = SafWorkspaceToolExecutor(SafWorkspaceFileExecutor(applicationContext, workspace))
+        val legacyCheckpoints = AgentCheckpointStore(this)
+        val eventStore = SessionEventStore(this, taskId)
         return AgentCore(
             model = model,
             tools = tools,
             approvals = ApprovalBridge.gateway,
-            checkpoints = AgentCheckpointStore(this),
+            checkpoints = CheckpointStore { checkpoint ->
+                legacyCheckpoints.save(checkpoint)
+                eventStore.append(SessionEvent(SessionEventType.CHECKPOINT, checkpoint = checkpoint))
+            },
             approvalPolicy = ToolApprovalPolicy.autoApproveReadOnly(),
             observer = AgentObserver { event ->
+                runCatching { eventStore.append(event.toSessionEvent()) }
                 when (event) {
                     is AgentEvent.ModelStarted -> broadcastStatus(TaskState.RUNNING.name, "正在请求模型（第 ${event.round} 轮）")
                     is AgentEvent.ModelFinished -> broadcastStatus(TaskState.RUNNING.name, "模型响应耗时 ${event.durationMillis}ms")
@@ -152,6 +207,50 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                     is AgentEvent.ToolFinished -> broadcastStatus(TaskState.RUNNING.name, "${event.toolName} 完成（${event.durationMillis}ms）")
                 }
             },
+        )
+    }
+
+    private fun buildInitialMessages(mode: AgentMode, prompt: String): List<AgentMessage> = buildList {
+        if (mode == AgentMode.PLAN) {
+            add(AgentMessage(MessageRole.SYSTEM, "Plan mode: analyze the task and inspect the workspace using read-only tools only. Do not modify files."))
+        }
+        add(AgentMessage(MessageRole.USER, prompt))
+    }
+
+    private fun migrateLegacyCheckpoint(eventStore: SessionEventStore): AgentCheckpoint? =
+        AgentCheckpointStore(this).load()?.also { checkpoint ->
+            eventStore.append(
+                SessionEvent(SessionEventType.MIGRATED_CHECKPOINT, checkpoint = checkpoint),
+            )
+        }
+
+    private fun sourcePrompt(sourceId: String?): String = FileSessionStore(this).list()
+        .firstOrNull { it.id == sourceId }
+        ?.prompt
+        ?.takeIf { it.isNotBlank() }
+        ?: "会话分支"
+
+    private fun AgentEvent.toSessionEvent(): SessionEvent = when (this) {
+        is AgentEvent.ModelStarted -> SessionEvent(SessionEventType.MODEL_STARTED, "round=$round")
+        is AgentEvent.ModelFinished -> SessionEvent(
+            SessionEventType.MODEL_FINISHED,
+            "round=$round,durationMillis=$durationMillis,succeeded=$succeeded",
+        )
+        is AgentEvent.ApprovalWaiting -> SessionEvent(
+            SessionEventType.APPROVAL_WAITING,
+            "toolCallId=${call.id},tool=${call.name}",
+        )
+        is AgentEvent.ApprovalFinished -> SessionEvent(
+            SessionEventType.APPROVAL_FINISHED,
+            "toolCallId=${call.id},durationMillis=$durationMillis,decision=${decision?.name.orEmpty()}",
+        )
+        is AgentEvent.ToolStarted -> SessionEvent(
+            SessionEventType.TOOL_STARTED,
+            "toolCallId=$toolCallId,tool=$toolName",
+        )
+        is AgentEvent.ToolFinished -> SessionEvent(
+            SessionEventType.TOOL_FINISHED,
+            "toolCallId=$toolCallId,tool=$toolName,durationMillis=$durationMillis,succeeded=$succeeded",
         )
     }
 
@@ -199,11 +298,14 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         const val CHANNEL = "luma_tasks"
         const val ACTION_START = "dev.shelly.hermes.action.START_TASK"
         const val ACTION_RESUME = "dev.shelly.hermes.action.RESUME_TASK"
+        const val ACTION_FORK_TASK = "dev.shelly.hermes.action.FORK_TASK"
         const val ACTION_STOP = "dev.shelly.hermes.action.STOP_TASK"
         const val ACTION_STATUS = "dev.shelly.hermes.action.TASK_STATUS"
         const val EXTRA_TASK_ID = "task_id"
         const val EXTRA_PROMPT = "prompt"
         const val EXTRA_MODE = "mode"
+        const val EXTRA_SOURCE_SESSION_ID = "source_session_id"
+        const val EXTRA_SOURCE_SEQUENCE = "source_sequence"
         const val EXTRA_STATE = "state"
         const val EXTRA_DETAIL = "detail"
         const val STATE_AWAITING_APPROVAL = "AWAITING_APPROVAL"

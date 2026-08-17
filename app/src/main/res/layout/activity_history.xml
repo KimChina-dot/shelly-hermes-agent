@@ -31,10 +31,11 @@
     </LinearLayout>
 
     <TextView
+        android:id="@+id/historySummary"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="最近 100 个任务保存在本机"
+        android:text="会话事件保存在本机，可随时恢复或创建分支"
         android:textAppearance="@style/TextAppearance.Luma.Caption" />
 
     <TextView
