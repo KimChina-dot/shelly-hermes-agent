@@ -14,21 +14,30 @@ import dev.shelly.hermes.core.AgentResult
 import dev.shelly.hermes.core.AgentEvent
 import dev.shelly.hermes.core.AgentObserver
 import dev.shelly.hermes.core.AgentCheckpoint
+import dev.shelly.hermes.core.AgentProfile
+import dev.shelly.hermes.core.AgentProfileMode
+import dev.shelly.hermes.core.AgentProfileRegistry
 import dev.shelly.hermes.core.CheckpointStore
 import dev.shelly.hermes.core.MessageRole
 
 /** Runs one user-started agent task in a foreground service. */
 class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateListener {
     private lateinit var coordinator: AgentCoreAndroidCoordinator
+    private lateinit var queue: AgentTaskQueueStore
+    private val profiles = AgentProfileRegistry()
     private var currentTaskId: String? = null
     private var currentMode: AgentMode = AgentMode.ACT
+    private var currentProfile: AgentProfile = profiles.requireProfile("coding")
     @Volatile private var currentModelClient: OpenAiModelGateway? = null
     @Volatile private var currentEventStore: SessionEventStore? = null
+    @Volatile private var destroying = false
 
     override fun onCreate() {
         super.onCreate()
         val channel = NotificationChannel(CHANNEL, "Luma 任务", NotificationManager.IMPORTANCE_LOW)
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        queue = AgentTaskQueueStore(this)
+        runCatching { queue.recoverInterrupted() }
 
         coordinator = AgentCoreAndroidCoordinator(
             agentFactory = { taskId -> createAgent(taskId) },
@@ -52,65 +61,94 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                 currentTaskId?.let(coordinator::cancel)
                 return START_NOT_STICKY
             }
+            ACTION_CANCEL_QUEUED -> {
+                val id = intent.getStringExtra(EXTRA_TASK_ID).orEmpty()
+                queue.cancelPending(id)
+                broadcastQueueState()
+                drainQueue()
+                return START_NOT_STICKY
+            }
+            ACTION_RETRY_QUEUED -> {
+                val id = intent.getStringExtra(EXTRA_TASK_ID).orEmpty()
+                queue.retry(id)
+                broadcastQueueState()
+                drainQueue()
+                return START_REDELIVER_INTENT
+            }
             ACTION_START, ACTION_RESUME, ACTION_FORK_TASK -> Unit
             else -> return START_NOT_STICKY
         }
 
-        val action = intent.action
-        val isResume = action == ACTION_RESUME
-        val isFork = action == ACTION_FORK_TASK
-        val taskId = intent.getStringExtra(EXTRA_TASK_ID)?.takeIf { it.isNotBlank() }
-        val prompt = intent.getStringExtra(EXTRA_PROMPT)?.trim().orEmpty()
-        val mode = AgentMode.fromWireValue(intent.getStringExtra(EXTRA_MODE))
-        if (taskId == null || (action == ACTION_START && prompt.isBlank())) {
-            broadcastStatus(TaskState.FAILED.name, "任务参数不完整")
-            stopSelf(startId)
-            return START_NOT_STICKY
-        }
-        if (currentTaskId != null) {
-            broadcastStatus(TaskState.FAILED.name, "已有任务正在执行，请先停止当前任务")
-            return START_NOT_STICKY
-        }
-
-        val eventStore: SessionEventStore
-        val resumeCheckpoint: AgentCheckpoint?
         try {
-            eventStore = if (isFork) {
-                val sourceId = intent.getStringExtra(EXTRA_SOURCE_SESSION_ID)
-                    ?.takeIf { it.isNotBlank() }
-                    ?: error("缺少源会话")
-                val sourceSequence = intent.getLongExtra(EXTRA_SOURCE_SEQUENCE, -1L)
-                SessionEventStore(this, sourceId).fork(taskId, sourceSequence)
-            } else {
-                SessionEventStore(this, taskId)
-            }
-            val durableCheckpoint = eventStore.latestCheckpoint()
-            resumeCheckpoint = when {
-                isFork -> durableCheckpoint ?: error("分支中没有可恢复的 checkpoint")
-                isResume -> durableCheckpoint ?: migrateLegacyCheckpoint(eventStore)
-                action == ACTION_START && durableCheckpoint != null -> durableCheckpoint
-                else -> null
-            }
-            if (isResume && resumeCheckpoint == null) error("没有可恢复的 checkpoint")
+            val request = intent.toQueuedTask()
+            profiles.requireProfile(request.profileId)
+            val queued = queue.enqueue(request)
+            broadcastStatus(STATE_QUEUED, "任务已进入队列，前方 ${queue.pendingCount() - 1} 项")
+            broadcastQueueState()
         } catch (error: Throwable) {
-            broadcastStatus(TaskState.FAILED.name, error.message ?: "会话恢复失败")
-            stopSelf(startId)
+            broadcastStatus(TaskState.FAILED.name, error.message ?: "任务入队失败")
             return START_NOT_STICKY
         }
+        drainQueue()
+        return START_REDELIVER_INTENT
+    }
+
+    @Synchronized
+    private fun drainQueue() {
+        if (currentTaskId != null) return
+        while (true) {
+            val task = queue.claimNext() ?: run {
+                broadcastQueueState()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return
+            }
+            val failure = runCatching { startQueuedTask(task) }.exceptionOrNull()
+            if (failure == null) return
+            currentTaskId = null
+            currentEventStore = null
+            currentModelClient = null
+            queue.finish(task.id, QueuedTaskState.FAILED, failure.message.orEmpty())
+            broadcastStatus(TaskState.FAILED.name, failure.message ?: "任务启动失败")
+        }
+    }
+
+    private fun startQueuedTask(task: QueuedAgentTask) {
+        val isResume = task.action == QueuedTaskAction.RESUME
+        val isFork = task.action == QueuedTaskAction.FORK
+        val taskId = task.id
+        val prompt = task.prompt
+        val profile = profiles.requireProfile(task.profileId)
+        val mode = if (profile.mode == AgentProfileMode.ACT) AgentMode.ACT else AgentMode.PLAN
+        val eventStore = if (isFork) {
+            SessionEventStore(this, requireNotNull(task.sourceSessionId))
+                .fork(taskId, requireNotNull(task.sourceSequence))
+        } else {
+            SessionEventStore(this, taskId)
+        }
+        val durableCheckpoint = eventStore.latestCheckpoint()
+        val resumeCheckpoint = when {
+            isFork -> durableCheckpoint ?: error("分支中没有可恢复的 checkpoint")
+            isResume -> durableCheckpoint ?: migrateLegacyCheckpoint(eventStore)
+            task.action == QueuedTaskAction.START && durableCheckpoint != null -> durableCheckpoint
+            else -> null
+        }
+        if (isResume && resumeCheckpoint == null) error("没有可恢复的 checkpoint")
 
         currentTaskId = taskId
         currentMode = mode
+        currentProfile = profile
         currentEventStore = eventStore
         val sessionPrompt = when {
             prompt.isNotBlank() -> prompt.take(120)
-            isFork -> sourcePrompt(intent.getStringExtra(EXTRA_SOURCE_SESSION_ID)).let { "$it（分支）" }
+            isFork -> sourcePrompt(task.sourceSessionId).let { "$it（分支）" }
             else -> FileSessionStore(this).list().firstOrNull { it.id == taskId }?.prompt ?: "Resumed task"
         }
         FileSessionStore(this).save(Session(taskId, sessionPrompt, System.currentTimeMillis()))
         val initialMessages = if (resumeCheckpoint != null) {
             emptyList()
         } else {
-            buildInitialMessages(mode, prompt).also { messages ->
+            buildInitialMessages(profile, prompt).also { messages ->
                 eventStore.append(SessionEvent(SessionEventType.SESSION_STARTED, detail = prompt))
                 eventStore.append(
                     SessionEvent(
@@ -123,15 +161,36 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         if (!coordinator.start(taskId, initialMessages, resumeCheckpoint)) {
             currentTaskId = null
             currentEventStore = null
-            broadcastStatus(TaskState.FAILED.name, "任务未能启动")
-            stopSelf(startId)
+            error("任务未能启动")
         }
-        return START_REDELIVER_INTENT
+    }
+
+    private fun Intent.toQueuedTask(): QueuedAgentTask {
+        val actionValue = when (action) {
+            ACTION_START -> QueuedTaskAction.START
+            ACTION_RESUME -> QueuedTaskAction.RESUME
+            ACTION_FORK_TASK -> QueuedTaskAction.FORK
+            else -> error("不支持的任务动作")
+        }
+        val mode = AgentMode.fromWireValue(getStringExtra(EXTRA_MODE))
+        val profileId = getStringExtra(EXTRA_PROFILE_ID)?.takeIf { it.isNotBlank() }
+            ?: if (mode == AgentMode.PLAN) "planner" else "coding"
+        return QueuedAgentTask(
+            id = getStringExtra(EXTRA_TASK_ID)?.takeIf { it.isNotBlank() } ?: error("缺少任务 ID"),
+            action = actionValue,
+            prompt = getStringExtra(EXTRA_PROMPT)?.trim().orEmpty(),
+            mode = mode,
+            profileId = profileId,
+            createdAt = System.currentTimeMillis(),
+            sourceSessionId = getStringExtra(EXTRA_SOURCE_SESSION_ID),
+            sourceSequence = getLongExtra(EXTRA_SOURCE_SEQUENCE, -1L).takeIf { it > 0L },
+        )
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        destroying = true
         currentModelClient?.cancelCurrentRequest()
         currentTaskId?.let(coordinator::onForegroundServiceStopped)
         super.onDestroy()
@@ -147,9 +206,6 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
 
     override fun stop(taskId: String) {
         currentModelClient = null
-        currentTaskId = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
     }
 
     override fun onStateChanged(status: TaskStatus) {
@@ -173,6 +229,20 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             )
         }
         broadcastStatus(status.state.name, detail)
+        if (status.state in TERMINAL_TASK_STATES) {
+            if (destroying) return
+            val queueState = when (status.state) {
+                TaskState.COMPLETED -> QueuedTaskState.COMPLETED
+                TaskState.STOPPED -> if (detail == "cancelled") QueuedTaskState.CANCELLED else QueuedTaskState.FAILED
+                else -> QueuedTaskState.FAILED
+            }
+            runCatching { queue.finish(status.taskId, queueState, detail) }
+            currentTaskId = null
+            currentEventStore = null
+            currentModelClient = null
+            broadcastQueueState()
+            drainQueue()
+        }
     }
 
     private fun createAgent(taskId: String): AgentCore {
@@ -182,8 +252,12 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         val workspace = Uri.parse(workspaceValue)
         val modelClient = OpenAiModelGateway(AndroidKeyStoreModelConfig(this))
         currentModelClient = modelClient
-        val model = OpenAiAgentModelGateway(modelClient, currentMode)
-        val tools = SafWorkspaceToolExecutor(SafWorkspaceFileExecutor(applicationContext, workspace))
+        val model = OpenAiAgentModelGateway(modelClient, currentMode, currentProfile.toolNames)
+        val tools = SafWorkspaceToolExecutor(
+            SafWorkspaceFileExecutor(applicationContext, workspace),
+            currentProfile.allowedCapabilities,
+            currentProfile.toolNames,
+        )
         val legacyCheckpoints = AgentCheckpointStore(this)
         val eventStore = SessionEventStore(this, taskId)
         return AgentCore(
@@ -194,6 +268,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                 legacyCheckpoints.save(checkpoint)
                 eventStore.append(SessionEvent(SessionEventType.CHECKPOINT, checkpoint = checkpoint))
             },
+            limits = currentProfile.limits,
             approvalPolicy = tools.approvalPolicy(),
             observer = AgentObserver { event ->
                 runCatching { eventStore.append(event.toSessionEvent()) }
@@ -209,11 +284,21 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         )
     }
 
-    private fun buildInitialMessages(mode: AgentMode, prompt: String): List<AgentMessage> = buildList {
-        if (mode == AgentMode.PLAN) {
-            add(AgentMessage(MessageRole.SYSTEM, "Plan mode: analyze the task and inspect the workspace using read-only tools only. Do not modify files."))
-        }
+    private fun buildInitialMessages(profile: AgentProfile, prompt: String): List<AgentMessage> = buildList {
+        add(AgentMessage(MessageRole.SYSTEM, profile.systemPrompt))
         add(AgentMessage(MessageRole.USER, prompt))
+    }
+
+    private fun broadcastQueueState() {
+        val pending = queue.pendingCount()
+        val active = queue.activeCount()
+        sendBroadcast(Intent(ACTION_STATUS).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_STATE, STATE_QUEUE_UPDATED)
+            putExtra(EXTRA_DETAIL, "运行和等待共 $active 项，其中 $pending 项等待")
+            putExtra(EXTRA_QUEUE_COUNT, active)
+            putExtra(EXTRA_ACTIVE_TASK_ID, currentTaskId.orEmpty())
+        })
     }
 
     private fun migrateLegacyCheckpoint(eventStore: SessionEventStore): AgentCheckpoint? =
@@ -299,15 +384,23 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         const val ACTION_RESUME = "dev.shelly.hermes.action.RESUME_TASK"
         const val ACTION_FORK_TASK = "dev.shelly.hermes.action.FORK_TASK"
         const val ACTION_STOP = "dev.shelly.hermes.action.STOP_TASK"
+        const val ACTION_CANCEL_QUEUED = "dev.shelly.hermes.action.CANCEL_QUEUED_TASK"
+        const val ACTION_RETRY_QUEUED = "dev.shelly.hermes.action.RETRY_QUEUED_TASK"
         const val ACTION_STATUS = "dev.shelly.hermes.action.TASK_STATUS"
         const val EXTRA_TASK_ID = "task_id"
         const val EXTRA_PROMPT = "prompt"
         const val EXTRA_MODE = "mode"
+        const val EXTRA_PROFILE_ID = "profile_id"
         const val EXTRA_SOURCE_SESSION_ID = "source_session_id"
         const val EXTRA_SOURCE_SEQUENCE = "source_sequence"
         const val EXTRA_STATE = "state"
         const val EXTRA_DETAIL = "detail"
+        const val EXTRA_QUEUE_COUNT = "queue_count"
+        const val EXTRA_ACTIVE_TASK_ID = "active_task_id"
         const val STATE_AWAITING_APPROVAL = "AWAITING_APPROVAL"
+        const val STATE_QUEUED = "QUEUED"
+        const val STATE_QUEUE_UPDATED = "QUEUE_UPDATED"
         private const val NOTIFICATION_ID = 7
+        private val TERMINAL_TASK_STATES = setOf(TaskState.COMPLETED, TaskState.STOPPED, TaskState.FAILED)
     }
 }

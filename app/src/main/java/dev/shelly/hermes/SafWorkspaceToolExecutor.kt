@@ -11,16 +11,19 @@ import kotlinx.coroutines.sync.Mutex
 /** ToolExecutor compatibility adapter backed by the Android workspace plugin registry. */
 class SafWorkspaceToolExecutor(
     files: SafWorkspaceFileExecutor,
+    allowedCapabilities: Set<String> = AndroidWorkspaceToolPlugins.manifests.mapTo(linkedSetOf<String>()) { it.capability },
+    private val allowedToolNames: Set<String> = AndroidWorkspaceToolPlugins.manifests.mapTo(linkedSetOf<String>()) { it.name },
 ) : ToolExecutor {
     private val catalog = AndroidWorkspaceToolPlugins.manifests
     private val runtime = ToolPluginRuntime(
-        ToolCapabilityAuthorizer.granted(catalog.mapTo(linkedSetOf<String>()) { it.capability }),
+        ToolCapabilityAuthorizer.granted(allowedCapabilities),
     ).also {
         AndroidWorkspaceToolPlugins.registerAll(it, files)
     }
     private val lifecycleLock = Mutex()
 
     override suspend fun execute(call: ToolCall): String {
+        require(call.name in allowedToolNames) { "Tool '${call.name}' is not enabled for this agent profile" }
         // Serialize one-time lifecycle transitions without blocking an Android worker thread.
         lifecycleLock.lock()
         try {
@@ -31,7 +34,7 @@ class SafWorkspaceToolExecutor(
         return runtime.execute(call)
     }
 
-    fun manifests(): List<ToolPluginManifest> = runtime.manifests()
+    fun manifests(): List<ToolPluginManifest> = runtime.manifests().filter { it.name in allowedToolNames }
 
     fun approvalPolicy(): ToolApprovalPolicy = runtime.approvalPolicy()
 }

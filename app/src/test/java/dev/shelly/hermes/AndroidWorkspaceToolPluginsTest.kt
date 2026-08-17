@@ -7,6 +7,7 @@ import dev.shelly.hermes.core.ToolPluginException
 import dev.shelly.hermes.core.ToolPluginManifest
 import dev.shelly.hermes.core.ToolPluginRuntime
 import dev.shelly.hermes.core.ToolRisk
+import dev.shelly.hermes.core.AgentProfiles
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -56,6 +57,15 @@ class AndroidWorkspaceToolPluginsTest {
             setOf("read_file", "exists", "list_files", "search_files"),
             OpenAiAgentModelGateway.toolDefinitionNames(AgentMode.PLAN),
         )
+    }
+
+    @Test fun builtInProfilesCannotGrantUndeclaredAndroidToolsOrCapabilities() {
+        val byName = AndroidWorkspaceToolPlugins.manifests.associateBy { it.name }
+        AgentProfiles.builtIns.forEach { profile ->
+            assertTrue(profile.toolNames.all(byName::containsKey))
+            assertTrue(profile.toolNames.map { byName.getValue(it).capability }.toSet()
+                .containsAll(profile.allowedCapabilities))
+        }
     }
 
     @Test fun runtimeRejectsUnknownToolsAndTruncatesPluginOutput() {

@@ -96,6 +96,22 @@
                 android:text="ACT"
                 android:textAllCaps="false"
                 android:contentDescription="Task mode: PLAN analyzes only; ACT can modify files" />
+
+            <Button
+                android:id="@+id/agentProfile"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="Coding"
+                android:textAllCaps="false"
+                android:contentDescription="选择 Agent 角色" />
+
+            <Button
+                android:id="@+id/taskQueue"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="任务 0"
+                android:textAllCaps="false"
+                android:contentDescription="查看任务队列" />
         </LinearLayout>
     </HorizontalScrollView>
 

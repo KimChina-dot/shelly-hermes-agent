@@ -12,6 +12,7 @@ import org.json.JSONObject
 class OpenAiAgentModelGateway(
     private val client: OpenAiModelGateway,
     private val mode: AgentMode = AgentMode.ACT,
+    private val allowedToolNames: Set<String> = AndroidWorkspaceToolPlugins.manifests.mapTo(linkedSetOf<String>()) { it.name },
 ) : ModelGateway {
     private val assistantByToolCallId = mutableMapOf<String, JSONObject>()
 
@@ -31,7 +32,7 @@ class OpenAiAgentModelGateway(
 
         val request = JSONObject()
             .put("messages", requestMessages)
-            .put("tools", enabledToolDefinitions(mode))
+            .put("tools", enabledToolDefinitions(mode, allowedToolNames))
             .put("tool_choice", "auto")
 
         val response = JSONObject(client.chatCompletions(request.toString()))
@@ -91,13 +92,17 @@ class OpenAiAgentModelGateway(
     }
 
     companion object {
-        private fun enabledToolDefinitions(mode: AgentMode): JSONArray {
+        private fun enabledToolDefinitions(
+            mode: AgentMode,
+            allowedToolNames: Set<String> = AndroidWorkspaceToolPlugins.manifests.mapTo(hashSetOf()) { it.name },
+        ): JSONArray {
             val enabled = AndroidWorkspaceToolPlugins.manifests.mapTo(hashSetOf()) { it.name }
             val definitions = if (mode == AgentMode.PLAN) PLAN_TOOL_DEFINITIONS else TOOL_DEFINITIONS
             return JSONArray().apply {
                 for (index in 0 until definitions.length()) {
                     val definition = definitions.getJSONObject(index)
-                    if (definition.getJSONObject("function").getString("name") in enabled) {
+                    val name = definition.getJSONObject("function").getString("name")
+                    if (name in enabled && name in allowedToolNames) {
                         put(definition)
                     }
                 }

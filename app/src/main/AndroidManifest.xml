@@ -8,6 +8,7 @@
         <activity android:name=".ApprovalActivity" android:exported="false" />
         <activity android:name=".CapabilitiesActivity" android:exported="false" />
         <activity android:name=".HistoryActivity" android:exported="false" />
+        <activity android:name=".TaskQueueActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

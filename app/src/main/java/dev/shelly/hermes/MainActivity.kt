@@ -19,12 +19,17 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import dev.shelly.hermes.core.AgentProfile
+import dev.shelly.hermes.core.AgentProfileMode
+import dev.shelly.hermes.core.AgentProfileRegistry
 
 class MainActivity : ComponentActivity() {
     private lateinit var messages: MutableList<String>
     private lateinit var messageAdapter: ArrayAdapter<String>
+    private val profiles = AgentProfileRegistry()
     private var lastPrompt: String = ""
     private var currentMode: AgentMode = AgentMode.ACT
+    private var currentProfileId: String = "coding"
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri ?: return@registerForActivityResult
@@ -47,7 +52,9 @@ class MainActivity : ComponentActivity() {
             if (intent?.action != TaskForegroundService.ACTION_STATUS) return
             val state = intent.getStringExtra(TaskForegroundService.EXTRA_STATE).orEmpty()
             val detail = intent.getStringExtra(TaskForegroundService.EXTRA_DETAIL).orEmpty()
-            renderTaskState(state, detail)
+            val activeTaskId = intent.getStringExtra(TaskForegroundService.EXTRA_ACTIVE_TASK_ID).orEmpty()
+            val queueCount = intent.getIntExtra(TaskForegroundService.EXTRA_QUEUE_COUNT, -1)
+            renderTaskState(state, detail, activeTaskId, queueCount)
         }
     }
 
@@ -66,10 +73,17 @@ class MainActivity : ComponentActivity() {
         findViewById<Button>(R.id.history).setOnClickListener {
             startActivity(Intent(this, HistoryActivity::class.java))
         }
+        findViewById<Button>(R.id.taskQueue).setOnClickListener {
+            startActivity(Intent(this, TaskQueueActivity::class.java))
+        }
         findViewById<Button>(R.id.settings).setOnClickListener { showModelSettingsDialog() }
         findViewById<Button>(R.id.taskMode).setOnClickListener {
-            currentMode = if (currentMode == AgentMode.ACT) AgentMode.PLAN else AgentMode.ACT
-            renderMode()
+            selectProfile(if (currentMode == AgentMode.ACT) "planner" else "coding")
+        }
+        findViewById<Button>(R.id.agentProfile).setOnClickListener {
+            val available = profiles.profiles()
+            val index = available.indexOfFirst { it.id == currentProfileId }.coerceAtLeast(0)
+            selectProfile(available[(index + 1) % available.size].id)
         }
         findViewById<Button>(R.id.startTask).setOnClickListener { startTask() }
         findViewById<Button>(R.id.resumeTask).setOnClickListener { resumeTask() }
@@ -87,7 +101,11 @@ class MainActivity : ComponentActivity() {
         ApprovalBridge.gateway.launcher = {
             runOnUiThread { startActivity(Intent(this, ApprovalActivity::class.java)) }
         }
-        renderMode()
+        currentProfileId = getSharedPreferences(PUBLIC_CONFIG, MODE_PRIVATE)
+            .getString(AGENT_PROFILE_ID, "coding")
+            ?.takeIf { profiles.findProfile(it) != null }
+            ?: "coding"
+        renderProfile()
         refreshConfigurationStatus()
     }
 
@@ -109,6 +127,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         refreshConfigurationStatus()
+        runCatching { AgentTaskQueueStore(this).activeCount() }.onSuccess { count ->
+            findViewById<Button>(R.id.taskQueue).text = "任务 $count"
+        }
     }
 
     private fun startTask() {
@@ -131,7 +152,6 @@ class MainActivity : ComponentActivity() {
         lastPrompt = prompt
         appendMessage("你：$prompt")
         input.text.clear()
-        setRunning(true)
         findViewById<View>(R.id.errorContainer).visibility = View.GONE
 
         val intent = Intent(this, TaskForegroundService::class.java).apply {
@@ -139,6 +159,7 @@ class MainActivity : ComponentActivity() {
             putExtra(TaskForegroundService.EXTRA_TASK_ID, "task-${System.currentTimeMillis()}")
             putExtra(TaskForegroundService.EXTRA_PROMPT, prompt)
             putExtra(TaskForegroundService.EXTRA_MODE, currentMode.wireValue)
+            putExtra(TaskForegroundService.EXTRA_PROFILE_ID, currentProfileId)
         }
         ContextCompat.startForegroundService(this, intent)
     }
@@ -157,7 +178,6 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "No task checkpoint is available", Toast.LENGTH_SHORT).show()
             return
         }
-        setRunning(true)
         ContextCompat.startForegroundService(this, Intent(this, TaskForegroundService::class.java).apply {
             action = TaskForegroundService.ACTION_RESUME
             putExtra(
@@ -165,16 +185,23 @@ class MainActivity : ComponentActivity() {
                 durableSession?.id ?: "resume-${System.currentTimeMillis()}",
             )
             putExtra(TaskForegroundService.EXTRA_MODE, currentMode.wireValue)
+            putExtra(TaskForegroundService.EXTRA_PROFILE_ID, currentProfileId)
         })
     }
 
-    private fun renderTaskState(state: String, detail: String) {
+    private fun renderTaskState(state: String, detail: String, activeTaskId: String, queueCount: Int) {
+        if (queueCount >= 0) findViewById<Button>(R.id.taskQueue).text = "任务 $queueCount"
         findViewById<TextView>(R.id.taskStatus).apply {
             text = detail.ifBlank { stateDescription(state) }
-            visibility = if (state == TaskState.COMPLETED.name || state == TaskState.FAILED.name || state == TaskState.STOPPED.name) View.GONE else View.VISIBLE
+            visibility = if (
+                state == TaskState.COMPLETED.name || state == TaskState.FAILED.name ||
+                state == TaskState.STOPPED.name || state == TaskForegroundService.STATE_QUEUE_UPDATED && activeTaskId.isBlank() && queueCount == 0
+            ) View.GONE else View.VISIBLE
         }
         when (state) {
             TaskState.STARTING.name, TaskState.RUNNING.name -> setRunning(true)
+            TaskForegroundService.STATE_QUEUED -> appendMessage("任务已加入执行队列")
+            TaskForegroundService.STATE_QUEUE_UPDATED -> setRunning(activeTaskId.isNotBlank())
             TaskForegroundService.STATE_AWAITING_APPROVAL -> {
                 setRunning(true)
                 startActivity(Intent(this, ApprovalActivity::class.java))
@@ -213,16 +240,29 @@ class MainActivity : ComponentActivity() {
 
     private fun setRunning(running: Boolean) {
         findViewById<ProgressBar>(R.id.progress).visibility = if (running) View.VISIBLE else View.GONE
-        findViewById<Button>(R.id.startTask).visibility = if (running) View.GONE else View.VISIBLE
+        findViewById<Button>(R.id.startTask).visibility = View.VISIBLE
         findViewById<Button>(R.id.stopTask).visibility = if (running) View.VISIBLE else View.GONE
-        findViewById<EditText>(R.id.taskInput).isEnabled = !running
-        findViewById<Button>(R.id.taskMode).isEnabled = !running
-        findViewById<Button>(R.id.resumeTask).isEnabled = !running
+        findViewById<EditText>(R.id.taskInput).isEnabled = true
+        findViewById<Button>(R.id.taskMode).isEnabled = true
+        findViewById<Button>(R.id.agentProfile).isEnabled = true
+        findViewById<Button>(R.id.resumeTask).isEnabled = true
     }
 
-    private fun renderMode() {
+    private fun renderProfile() {
+        val profile = currentProfile()
+        currentMode = if (profile.mode == AgentProfileMode.ACT) AgentMode.ACT else AgentMode.PLAN
         findViewById<Button>(R.id.taskMode).text = if (currentMode == AgentMode.PLAN) "PLAN" else "ACT"
+        findViewById<Button>(R.id.agentProfile).text = profile.name
     }
+
+    private fun selectProfile(id: String) {
+        profiles.requireProfile(id)
+        currentProfileId = id
+        getSharedPreferences(PUBLIC_CONFIG, MODE_PRIVATE).edit().putString(AGENT_PROFILE_ID, id).apply()
+        renderProfile()
+    }
+
+    private fun currentProfile(): AgentProfile = profiles.requireProfile(currentProfileId)
 
     private fun refreshConfigurationStatus() {
         val workspace = workspaceUri()
@@ -308,5 +348,6 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val PUBLIC_CONFIG = "public_config"
         const val WORKSPACE_URI = "workspace_uri"
+        const val AGENT_PROFILE_ID = "agent_profile_id"
     }
 }
