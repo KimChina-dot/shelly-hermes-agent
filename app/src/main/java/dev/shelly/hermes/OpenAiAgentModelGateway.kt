@@ -202,7 +202,7 @@ class OpenAiAgentModelGateway(
         }
     }
 
-    private class ToolCallChunk {
+    private inner class ToolCallChunk {
         val id = StringBuilder()
         val name = StringBuilder()
         val arguments = StringBuilder()
