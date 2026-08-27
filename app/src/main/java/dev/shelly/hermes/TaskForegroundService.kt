@@ -306,7 +306,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                 }.getOrDefault("")
                 !ShellToolExecutor.isSafeCommand(command)
             } else {
-                baseApprovalPolicy(call)
+                baseApprovalPolicy.requiresApproval(call)
             }
         }
         return AgentCore(
