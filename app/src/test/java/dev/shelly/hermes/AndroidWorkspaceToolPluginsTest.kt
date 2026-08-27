@@ -25,6 +25,8 @@ class AndroidWorkspaceToolPluginsTest {
         assertEquals(
             listOf(
                 "read_file", "exists", "list_files", "search_files",
+                "repo_map", "batch_read",
+                "run_command",
                 "apply_patch", "create_file", "overwrite_file", "append_file",
             ),
             manifests.map { it.name },
