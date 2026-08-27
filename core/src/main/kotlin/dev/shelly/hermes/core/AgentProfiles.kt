@@ -163,6 +163,8 @@ object AgentProfiles {
         "workspace.path.inspect",
         "workspace.tree.list",
         "workspace.text.search",
+        "workspace.tree.map",
+        "workspace.file.batch_read",
     )
     private val readTools = setOf("read_file", "exists", "list_files", "search_files")
     private val extendedReadTools = readTools + setOf("repo_map", "batch_read")
