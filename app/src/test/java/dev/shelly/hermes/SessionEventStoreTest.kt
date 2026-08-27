@@ -6,9 +6,6 @@ import dev.shelly.hermes.core.PendingToolCall
 import dev.shelly.hermes.core.MessageRole
 import dev.shelly.hermes.core.ToolCall
 import dev.shelly.hermes.core.ToolExecutionStage
-import dev.shelly.hermes.core.PendingToolCall
-import dev.shelly.hermes.core.ToolCall
-import dev.shelly.hermes.core.ToolExecutionStage
 import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
