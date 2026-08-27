@@ -11,6 +11,7 @@ import kotlinx.coroutines.sync.Mutex
 /** ToolExecutor compatibility adapter backed by the Android workspace plugin registry. */
 class SafWorkspaceToolExecutor(
     files: SafWorkspaceFileExecutor,
+    shell: ShellToolExecutor? = null,
     allowedCapabilities: Set<String> = AndroidWorkspaceToolPlugins.manifests.mapTo(linkedSetOf<String>()) { it.capability },
     private val allowedToolNames: Set<String> = AndroidWorkspaceToolPlugins.manifests.mapTo(linkedSetOf<String>()) { it.name },
 ) : ToolExecutor {
@@ -18,7 +19,7 @@ class SafWorkspaceToolExecutor(
     private val runtime = ToolPluginRuntime(
         ToolCapabilityAuthorizer.granted(allowedCapabilities),
     ).also {
-        AndroidWorkspaceToolPlugins.registerAll(it, files)
+        AndroidWorkspaceToolPlugins.registerAll(it, files, shell)
     }
     private val lifecycleLock = Mutex()
 

@@ -19,13 +19,16 @@ object AndroidWorkspaceToolPlugins {
         manifest("exists", "workspace.path.inspect", ToolRisk.LOW, false, 5_000, 256),
         manifest("list_files", "workspace.tree.list", ToolRisk.LOW, false, 20_000, 250_000),
         manifest("search_files", "workspace.text.search", ToolRisk.LOW, false, 30_000, 250_000),
+        manifest("repo_map", "workspace.tree.list", ToolRisk.LOW, false, 20_000, 250_000),
+        manifest("batch_read", "workspace.file.read", ToolRisk.LOW, false, 30_000, MAX_FILE_CHARS * 4 + 1024),
+        manifest("run_command", "workspace.shell.execute", ToolRisk.MEDIUM, true, 30_000, 64_000),
         manifest("apply_patch", "workspace.file.patch", ToolRisk.MEDIUM, true, 20_000, 512, writes = true),
         manifest("create_file", "workspace.file.create", ToolRisk.HIGH, true, 20_000, 256, writes = true),
         manifest("overwrite_file", "workspace.file.overwrite", ToolRisk.HIGH, true, 20_000, 256, writes = true),
         manifest("append_file", "workspace.file.append", ToolRisk.HIGH, true, 20_000, 256, writes = true),
     )
 
-    fun registerAll(runtime: ToolPluginRuntime, files: SafWorkspaceFileExecutor) {
+    fun registerAll(runtime: ToolPluginRuntime, files: SafWorkspaceFileExecutor, shell: ShellToolExecutor? = null) {
         val handlers = mapOf<String, suspend (ToolCall) -> String>(
             "read_file" to { call ->
                 val arguments = call.arguments()
@@ -77,7 +80,74 @@ object AndroidWorkspaceToolPlugins {
                             .put("preview", match.preview)
                     }))
                     .put("truncated", result.truncated)
+                .toString()
+            },
+            "repo_map" to { call ->
+                val arguments = call.arguments()
+                val result = files.listFiles(
+                    path = null,
+                    maxResults = arguments.boundedLimit(
+                        default = 100,
+                        maximum = 500,
+                    ),
+                )
+                val tree = StringBuilder()
+                tree.appendLine("PROJECT STRUCTURE:")
+                val filesByDir = result.entries.filter { !it.isDirectory }
+                    .groupBy { it.path.substringBeforeLast('/', "") }
+                    .toSortedMap()
+                for ((dir, dirFiles) in filesByDir) {
+                    val depth = if (dir.isBlank()) 0 else dir.split('/').size
+                    val indent = "  ".repeat(depth)
+                    tree.appendLine("$indent${dir.ifBlank { "." }}/")
+                    for (entry in dirFiles.sortedBy { it.path }) {
+                        val name = entry.path.substringAfterLast('/')
+                        val ext = name.substringAfterLast('.', "")
+                        val size = entry.size ?: 0
+                        val sizeLabel = when {
+                            size < 1024 -> "${size}B"
+                            size < 1024 * 1024 -> "${size / 1024}KB"
+                            else -> "${size / (1024 * 1024)}MB"
+                        }
+                        tree.appendLine("$indent  $name [$ext $sizeLabel]")
+                    }
+                }
+                if (result.truncated) tree.appendLine("(truncated)")
+                JSONObject()
+                    .put("tree", tree.toString().trimEnd())
+                    .put("truncated", result.truncated)
                     .toString()
+            },
+            "batch_read" to { call ->
+                val arguments = call.arguments()
+                val pathsJson = arguments.optJSONArray("paths")
+                    ?: throw IllegalArgumentException("Tool argument paths must be a JSON array")
+                require(pathsJson.length() in 1..20) { "batch_read accepts 1-20 paths" }
+                val results = JSONArray()
+                var totalChars = 0
+                for (index in 0 until pathsJson.length()) {
+                    val path = pathsJson.getString(index)
+                    if (totalChars >= MAX_FILE_CHARS * 4) {
+                        results.put(JSONObject().put("path", path).put("skipped", "budget exhausted"))
+                        continue
+                    }
+                    val content = files.readText(LogicalPath.validate(path))
+                    val contentOrError = if (content == null) {
+                        JSONObject().put("path", path).put("exists", false)
+                    } else {
+                        val budget = MAX_FILE_CHARS * 4 - totalChars
+                        val truncated = content.length > budget
+                        val clipped = if (truncated) content.take(budget) else content
+                        totalChars += clipped.length
+                        JSONObject()
+                            .put("path", path)
+                            .put("exists", true)
+                            .put("content", clipped)
+                            .put("truncated", truncated)
+                    }
+                    results.put(contentOrError)
+                }
+                JSONObject().put("files", results).toString()
             },
             "apply_patch" to { call ->
                 val arguments = call.arguments()
@@ -96,7 +166,22 @@ object AndroidWorkspaceToolPlugins {
             "append_file" to writeHandler { files.appendText(it.first, it.second) },
         )
 
+        if (shell != null) {
+            val shellHandler: suspend (ToolCall) -> String = { call ->
+                val arguments = call.arguments()
+                val command = arguments.requiredString("command")
+                val timeoutMs = if (arguments.has("timeout_ms") && !arguments.isNull("timeout_ms")) {
+                    arguments.getLong("timeout_ms")
+                } else {
+                    15_000L
+                }
+                shell.execute(command, timeoutMs)
+            }
+            runtime.register(plugin(manifests.first { it.name == "run_command" }, shellHandler))
+        }
+
         manifests.forEach { pluginManifest ->
+            if (pluginManifest.name == "run_command") return@forEach
             runtime.register(plugin(pluginManifest, handlers.getValue(pluginManifest.name)))
         }
     }

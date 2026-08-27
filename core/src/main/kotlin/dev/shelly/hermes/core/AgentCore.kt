@@ -50,7 +50,9 @@ fun interface ToolApprovalPolicy {
          * Callers should only add tools that cannot mutate state or leak data.
          */
         fun autoApproveReadOnly(
-            toolNames: Set<String> = setOf("read_file", "exists", "list_files", "search_files")
+            toolNames: Set<String> = setOf(
+                "read_file", "exists", "list_files", "search_files", "repo_map", "batch_read",
+            )
         ) = ToolApprovalPolicy { call -> call.name !in toolNames }
     }
 }

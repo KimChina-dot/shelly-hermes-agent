@@ -294,6 +294,39 @@ class OpenAiAgentModelGateway(
             )
             put(
                 toolWithProperties(
+                    name = "repo_map",
+                    description = "Generate a compact project tree with file names, extensions, and sizes for context",
+                    properties = JSONObject()
+                        .put("max_results", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 500).put("description", "Maximum files to show (default 100)")),
+                    required = JSONArray(),
+                ),
+            )
+            put(
+                toolWithProperties(
+                    name = "batch_read",
+                    description = "Read up to 20 files in one call to reduce round trips; each file is capped and may be truncated",
+                    properties = JSONObject()
+                        .put("paths", JSONObject()
+                            .put("type", "array")
+                            .put("items", JSONObject().put("type", "string"))
+                            .put("minItems", 1)
+                            .put("maxItems", 20)
+                            .put("description", "Workspace-relative file paths to read")),
+                    required = JSONArray().put("paths"),
+                ),
+            )
+            put(
+                toolWithProperties(
+                    name = "run_command",
+                    description = "Run a shell command in the app sandbox and return stdout, stderr, and exit code",
+                    properties = JSONObject()
+                        .put("command", JSONObject().put("type", "string").put("description", "Shell command to execute").put("minLength", 1))
+                        .put("timeout_ms", JSONObject().put("type", "integer").put("description", "Optional timeout in milliseconds (1000-30000, default 15000)").put("minimum", 1000).put("maximum", 30000)),
+                    required = JSONArray().put("command"),
+                ),
+            )
+            put(
+                toolWithProperties(
                     name = "apply_patch",
                     description = "Apply a unified diff to an existing UTF-8 file; fails if old context is stale",
                     properties = JSONObject()

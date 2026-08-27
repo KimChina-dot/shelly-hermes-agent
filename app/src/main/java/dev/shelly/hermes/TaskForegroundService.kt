@@ -22,6 +22,7 @@ import dev.shelly.hermes.core.AgentProfileRegistry
 import dev.shelly.hermes.core.AgentProfileRunner
 import dev.shelly.hermes.core.CheckpointStore
 import dev.shelly.hermes.core.MessageRole
+import java.io.File
 
 /** Runs one user-started agent task in a foreground service. */
 class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateListener {
@@ -287,8 +288,11 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         currentModelClient = modelClient
         val mode = if (profile.mode == AgentProfileMode.ACT) AgentMode.ACT else AgentMode.PLAN
         val model = OpenAiAgentModelGateway(modelClient, mode, profile.toolNames)
+        val shellDir = File(filesDir, "shell-workdir").also { it.mkdirs() }
+        val shell = ShellToolExecutor(shellDir)
         val tools = SafWorkspaceToolExecutor(
             SafWorkspaceFileExecutor(applicationContext, workspace),
+            shell,
             profile.allowedCapabilities,
             profile.toolNames,
         )

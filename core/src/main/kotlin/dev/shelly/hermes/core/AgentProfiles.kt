@@ -165,6 +165,7 @@ object AgentProfiles {
         "workspace.text.search",
     )
     private val readTools = setOf("read_file", "exists", "list_files", "search_files")
+    private val extendedReadTools = readTools + setOf("repo_map", "batch_read")
 
     val CODING = AgentProfile(
         id = "coding",
@@ -176,9 +177,10 @@ object AgentProfiles {
             "workspace.file.create",
             "workspace.file.overwrite",
             "workspace.file.append",
+            "workspace.shell.execute",
         ),
         limits = AgentLimits(),
-        toolNames = readTools + setOf("apply_patch", "create_file", "overwrite_file", "append_file"),
+        toolNames = extendedReadTools + setOf("run_command", "apply_patch", "create_file", "overwrite_file", "append_file"),
     )
 
     val PLANNER = AgentProfile(
@@ -188,7 +190,7 @@ object AgentProfiles {
         mode = AgentProfileMode.PLAN,
         allowedCapabilities = readCapabilities,
         limits = AgentLimits(maxRounds = 10, maxTokens = 32_000, maxToolCalls = 20),
-        toolNames = readTools,
+        toolNames = extendedReadTools,
     )
 
     val REVIEWER = AgentProfile(
@@ -198,7 +200,7 @@ object AgentProfiles {
         mode = AgentProfileMode.REVIEW,
         allowedCapabilities = readCapabilities,
         limits = AgentLimits(maxRounds = 12, maxTokens = 48_000, maxToolCalls = 24),
-        toolNames = readTools,
+        toolNames = extendedReadTools,
     )
 
     val builtIns: List<AgentProfile> = immutableList(listOf(CODING, PLANNER, REVIEWER))
