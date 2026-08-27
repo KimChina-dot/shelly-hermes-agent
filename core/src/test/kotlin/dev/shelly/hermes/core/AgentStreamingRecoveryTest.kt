@@ -51,7 +51,12 @@ class AgentStreamingRecoveryTest {
         assertIs<AgentResult.Completed>(result)
         assertEquals(1, modelCalls)
         assertEquals(listOf(call), executed)
-        assertEquals(MessageRole.TOOL, result.checkpoint.messages.last().role)
+        assertEquals(MessageRole.ASSISTANT, result.checkpoint.messages.last().role)
+        assertTrue(
+            result.checkpoint.messages.any {
+                it.role == MessageRole.TOOL && it.toolCallId == call.id
+            },
+        )
         assertTrue(result.checkpoint.pendingToolCalls.isEmpty())
     }
 
