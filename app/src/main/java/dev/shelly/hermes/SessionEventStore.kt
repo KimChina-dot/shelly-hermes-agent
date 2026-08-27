@@ -4,6 +4,9 @@ import android.content.Context
 import dev.shelly.hermes.core.AgentCheckpoint
 import dev.shelly.hermes.core.AgentMessage
 import dev.shelly.hermes.core.MessageRole
+import dev.shelly.hermes.core.PendingToolCall
+import dev.shelly.hermes.core.ToolCall
+import dev.shelly.hermes.core.ToolExecutionStage
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -18,6 +21,7 @@ enum class SessionEventType {
     CHECKPOINT,
     STATUS,
     MODEL_STARTED,
+    MODEL_DELTA,
     MODEL_FINISHED,
     APPROVAL_WAITING,
     APPROVAL_FINISHED,
@@ -167,7 +171,7 @@ class SessionEventStore(
 }
 
 object SessionEventCodec {
-    private const val FORMAT_VERSION = 1
+    private const val FORMAT_VERSION = 2
 
     fun encode(envelope: SessionEventEnvelope): String = JSONObject().apply {
         put("version", FORMAT_VERSION)
@@ -183,7 +187,7 @@ object SessionEventCodec {
 
     fun decode(value: String): SessionEventEnvelope {
         val json = JSONObject(value)
-        require(json.getInt("version") == FORMAT_VERSION) { "Unsupported event format" }
+        require(json.getInt("version") in 1..FORMAT_VERSION) { "Unsupported event format" }
         val checkpoint = json.optJSONObject("checkpoint")?.let(::decodeCheckpoint)
         return SessionEventEnvelope(
             sessionId = json.getString("sessionId"),
@@ -209,9 +213,24 @@ object SessionEventCodec {
                     put("role", message.role.name)
                     put("content", message.content)
                     message.toolCallId?.let { put("toolCallId", it) }
+                    if (message.toolCalls.isNotEmpty()) {
+                        put("toolCalls", JSONArray().apply {
+                            message.toolCalls.forEach { call -> put(encodeToolCall(call)) }
+                        })
+                    }
                 })
             }
         })
+        if (checkpoint.pendingToolCalls.isNotEmpty()) {
+            put("pendingToolCalls", JSONArray().apply {
+                checkpoint.pendingToolCalls.forEach { pending ->
+                    put(JSONObject().apply {
+                        put("call", encodeToolCall(pending.call))
+                        put("stage", pending.stage.name)
+                    })
+                }
+            })
+        }
     }
 
     private fun decodeCheckpoint(json: JSONObject): AgentCheckpoint {
@@ -225,6 +244,7 @@ object SessionEventCodec {
                         role = MessageRole.valueOf(message.getString("role")),
                         content = message.getString("content"),
                         toolCallId = message.optString("toolCallId").takeIf { it.isNotBlank() },
+                        toolCalls = message.optJSONArray("toolCalls")?.let(::decodeToolCalls).orEmpty(),
                     ),
                 )
             }
@@ -234,6 +254,37 @@ object SessionEventCodec {
             round = json.getInt("round").also { require(it >= 0) },
             consumedTokens = json.getInt("consumedTokens").also { require(it >= 0) },
             toolCalls = json.getInt("toolCalls").also { require(it >= 0) },
+            pendingToolCalls = buildList {
+                json.optJSONArray("pendingToolCalls")?.let { pending ->
+                    for (index in 0 until pending.length()) {
+                        val item = pending.getJSONObject(index)
+                        add(
+                            PendingToolCall(
+                                call = decodeToolCall(item.getJSONObject("call")),
+                                stage = ToolExecutionStage.valueOf(item.getString("stage")),
+                            ),
+                        )
+                    }
+                }
+            },
         )
     }
+
+    private fun encodeToolCall(call: ToolCall): JSONObject = JSONObject().apply {
+        put("id", call.id)
+        put("name", call.name)
+        put("arguments", call.argumentsJson)
+    }
+
+    private fun decodeToolCalls(values: JSONArray): List<ToolCall> = buildList {
+        for (index in 0 until values.length()) {
+            add(decodeToolCall(values.getJSONObject(index)))
+        }
+    }
+
+    private fun decodeToolCall(json: JSONObject): ToolCall = ToolCall(
+        id = json.getString("id"),
+        name = json.getString("name"),
+        argumentsJson = json.optString("arguments", "{}"),
+    )
 }

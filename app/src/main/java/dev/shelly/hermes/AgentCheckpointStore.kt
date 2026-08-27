@@ -5,6 +5,9 @@ import dev.shelly.hermes.core.AgentCheckpoint
 import dev.shelly.hermes.core.AgentMessage
 import dev.shelly.hermes.core.CheckpointStore
 import dev.shelly.hermes.core.MessageRole
+import dev.shelly.hermes.core.PendingToolCall
+import dev.shelly.hermes.core.ToolCall
+import dev.shelly.hermes.core.ToolExecutionStage
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
@@ -37,6 +40,13 @@ class AgentCheckpointStore(private val directory: File) : CheckpointStore {
                     output.writeUTF(message.content)
                     output.writeBoolean(message.toolCallId != null)
                     message.toolCallId?.let(output::writeUTF)
+                    output.writeInt(message.toolCalls.size)
+                    message.toolCalls.forEach { call -> writeToolCall(output, call) }
+                }
+                output.writeInt(checkpoint.pendingToolCalls.size)
+                checkpoint.pendingToolCalls.forEach { pending ->
+                    output.writeUTF(pending.stage.name)
+                    writeToolCall(output, pending.call)
                 }
             }
             if (target.exists() && !target.delete()) {
@@ -56,7 +66,8 @@ class AgentCheckpointStore(private val directory: File) : CheckpointStore {
         if (!source.isFile) return null
         return runCatching {
             DataInputStream(FileInputStream(source).buffered()).use { input ->
-                require(input.readInt() == FORMAT_VERSION) { "Unsupported checkpoint format" }
+                val version = input.readInt()
+                require(version in 1..FORMAT_VERSION) { "Unsupported checkpoint format" }
                 val round = input.readInt()
                 val consumedTokens = input.readInt()
                 val toolCalls = input.readInt()
@@ -69,19 +80,46 @@ class AgentCheckpointStore(private val directory: File) : CheckpointStore {
                         ?: error("Unknown message role: $roleOrdinal")
                     val content = input.readUTF()
                     val toolCallId = if (input.readBoolean()) input.readUTF() else null
-                    AgentMessage(role, content, toolCallId)
+                    val messageToolCalls = if (version >= 2) {
+                        List(input.readInt()) { readToolCall(input) }
+                    } else {
+                        emptyList()
+                    }
+                    AgentMessage(role, content, toolCallId, messageToolCalls)
                 }
-                AgentCheckpoint(messages, round, consumedTokens, toolCalls)
+                val pending = if (version >= 2) {
+                    List(input.readInt()) {
+                        PendingToolCall(
+                            call = readToolCall(input),
+                            stage = ToolExecutionStage.valueOf(input.readUTF()),
+                        )
+                    }
+                } else {
+                    emptyList()
+                }
+                AgentCheckpoint(messages, round, consumedTokens, toolCalls, pending)
             }
         }.getOrNull()
     }
 
     fun hasCheckpoint(): Boolean = load() != null
 
+    private fun writeToolCall(output: DataOutputStream, call: ToolCall) {
+        output.writeUTF(call.id)
+        output.writeUTF(call.name)
+        output.writeUTF(call.argumentsJson)
+    }
+
+    private fun readToolCall(input: DataInputStream): ToolCall = ToolCall(
+        id = input.readUTF(),
+        name = input.readUTF(),
+        argumentsJson = input.readUTF(),
+    )
+
     companion object {
         private const val DIRECTORY_NAME = "agent-checkpoints"
         private const val FILE_NAME = "latest.checkpoint"
-        private const val FORMAT_VERSION = 1
+        private const val FORMAT_VERSION = 2
         private const val MAX_MESSAGES = 100_000
     }
 }

@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -28,6 +30,10 @@ class MainActivity : ComponentActivity() {
     private var lastPrompt: String = ""
     private var currentMode: AgentMode = AgentMode.ACT
     private var currentProfileId: String = "coding"
+    private val streamHandler = Handler(Looper.getMainLooper())
+    private val streamBuffer = StringBuilder()
+    private var streamingMessage: UiMessage? = null
+    private var streamFlushScheduled = false
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri ?: return@registerForActivityResult
@@ -52,7 +58,10 @@ class MainActivity : ComponentActivity() {
             val detail = intent.getStringExtra(TaskForegroundService.EXTRA_DETAIL).orEmpty()
             val activeTaskId = intent.getStringExtra(TaskForegroundService.EXTRA_ACTIVE_TASK_ID).orEmpty()
             val queueCount = intent.getIntExtra(TaskForegroundService.EXTRA_QUEUE_COUNT, -1)
-            renderTaskState(state, detail, activeTaskId, queueCount)
+            val toolName = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_NAME).orEmpty()
+            val toolCallId = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_CALL_ID).orEmpty()
+            val toolState = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_STATE).orEmpty()
+            renderTaskState(state, detail, activeTaskId, queueCount, toolName, toolCallId, toolState)
         }
     }
 
@@ -122,6 +131,11 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
+    override fun onDestroy() {
+        streamHandler.removeCallbacksAndMessages(null)
+        super.onDestroy()
+    }
+
     override fun onResume() {
         super.onResume()
         refreshConfigurationStatus()
@@ -148,6 +162,8 @@ class MainActivity : ComponentActivity() {
         }
 
         lastPrompt = prompt
+        flushStreaming()
+        streamingMessage = null
         appendMessage(UiMessageRole.USER, prompt)
         input.text.clear()
         findViewById<View>(R.id.errorContainer).visibility = View.GONE
@@ -187,7 +203,15 @@ class MainActivity : ComponentActivity() {
         })
     }
 
-    private fun renderTaskState(state: String, detail: String, activeTaskId: String, queueCount: Int) {
+    private fun renderTaskState(
+        state: String,
+        detail: String,
+        activeTaskId: String,
+        queueCount: Int,
+        toolName: String = "",
+        toolCallId: String = "",
+        toolState: String = "",
+    ) {
         if (queueCount >= 0) findViewById<Button>(R.id.taskQueue).text = "任务 $queueCount"
         findViewById<TextView>(R.id.taskStatus).apply {
             text = detail.ifBlank { stateDescription(state) }
@@ -197,24 +221,44 @@ class MainActivity : ComponentActivity() {
             ) View.GONE else View.VISIBLE
         }
         when (state) {
-            TaskState.STARTING.name, TaskState.RUNNING.name -> setRunning(true)
+            TaskState.STARTING.name -> setRunning(true)
+            TaskForegroundService.STATE_MODEL_DELTA -> appendStreamDelta(detail)
             TaskForegroundService.STATE_QUEUED -> appendMessage(UiMessageRole.STATUS, "任务已加入执行队列")
             TaskForegroundService.STATE_QUEUE_UPDATED -> setRunning(activeTaskId.isNotBlank())
             TaskForegroundService.STATE_AWAITING_APPROVAL -> {
+                flushStreaming()
                 setRunning(true)
                 findViewById<Button>(R.id.approval).visibility = View.VISIBLE
                 startActivity(Intent(this, ApprovalActivity::class.java))
             }
+            TaskState.RUNNING.name -> {
+                setRunning(true)
+                when (toolState) {
+                    "RUNNING" -> appendToolMessage(toolName, toolCallId, detail, toolState)
+                    "FINISHED", "FAILED" -> updateToolMessage(toolCallId, detail, toolState)
+                    else -> if (detail.startsWith("正在请求模型")) {
+                        flushStreaming()
+                        streamingMessage = null
+                    }
+                }
+            }
             TaskState.COMPLETED.name -> {
                 setRunning(false)
                 findViewById<Button>(R.id.approval).visibility = View.GONE
-                appendMessage(UiMessageRole.ASSISTANT, detail.ifBlank { "任务已完成" })
+                val completion = detail.ifBlank { "任务已完成" }
+                flushStreaming()
+                if (streamingMessage?.text != completion) {
+                    appendMessage(UiMessageRole.ASSISTANT, completion)
+                }
+                streamingMessage = null
             }
             TaskState.STOPPED.name, TaskState.CANCELLING.name, TaskState.STOPPING.name -> {
                 setRunning(state == TaskState.CANCELLING.name || state == TaskState.STOPPING.name)
                 if (state == TaskState.STOPPED.name) appendMessage(UiMessageRole.STATUS, "任务已停止")
             }
             TaskState.FAILED.name -> {
+                flushStreaming()
+                streamingMessage = null
                 setRunning(false)
                 findViewById<View>(R.id.errorContainer).visibility = View.VISIBLE
                 findViewById<TextView>(R.id.errorText).text = detail.ifBlank { "任务执行失败" }
@@ -232,7 +276,67 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun appendMessage(role: UiMessageRole, text: String) {
+        flushStreaming()
         messages += UiMessage(role, text)
+        messageAdapter.notifyDataSetChanged()
+        findViewById<View>(R.id.emptyState).visibility = View.GONE
+        findViewById<ListView>(R.id.messageList).setSelection(messages.lastIndex)
+    }
+
+    private fun appendToolMessage(toolName: String, toolCallId: String, detail: String, state: String) {
+        if (toolName.isBlank()) return
+        flushStreaming()
+        streamingMessage = null
+        messages += UiMessage(
+            role = UiMessageRole.TOOL,
+            text = detail,
+            title = toolName,
+            toolCallId = toolCallId,
+            toolState = state,
+        )
+        messageAdapter.notifyDataSetChanged()
+        findViewById<View>(R.id.emptyState).visibility = View.GONE
+        findViewById<ListView>(R.id.messageList).setSelection(messages.lastIndex)
+    }
+
+    private fun updateToolMessage(toolCallId: String, detail: String, state: String) {
+        if (toolCallId.isBlank()) return
+        val index = messages.indexOfLast { it.role == UiMessageRole.TOOL && it.toolCallId == toolCallId }
+        if (index < 0) return
+        messages[index] = messages[index].copy(text = detail, toolState = state)
+        messageAdapter.notifyDataSetChanged()
+    }
+
+    private fun appendStreamDelta(text: String) {
+        if (text.isEmpty()) return
+        streamBuffer.append(text)
+        if (!streamFlushScheduled) {
+            streamFlushScheduled = true
+            streamHandler.postDelayed({ flushStreaming() }, 80L)
+        }
+    }
+
+    private fun flushStreaming() {
+        if (streamFlushScheduled) {
+            streamHandler.removeCallbacksAndMessages(null)
+            streamFlushScheduled = false
+        }
+        val delta = streamBuffer.toString()
+        streamBuffer.clear()
+        if (delta.isEmpty()) return
+        val current = streamingMessage
+        val updated = if (current == null) {
+            UiMessage(UiMessageRole.ASSISTANT, delta, streaming = true)
+        } else {
+            current.copy(text = current.text + delta)
+        }
+        if (current == null) {
+            messages += updated
+        } else {
+            val index = messages.indexOf(current)
+            if (index >= 0) messages[index] = updated else messages += updated
+        }
+        streamingMessage = updated
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
         findViewById<ListView>(R.id.messageList).setSelection(messages.lastIndex)

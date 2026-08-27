@@ -21,6 +21,26 @@ object DiffHunkApproval {
         }
     }
 
+    /** Rebuilds a full apply_patch invocation from the hunks a user approved. */
+    fun collapse(approvedHunks: List<ToolCall>): ToolCall {
+        require(approvedHunks.isNotEmpty()) { "At least one approved hunk is required" }
+        require(approvedHunks.all { it.name == "apply_patch_hunk" }) {
+            "Only apply_patch hunks can be collapsed"
+        }
+        val path = approvedHunks.first().let { jsonString(it.argumentsJson, "path") }
+        require(!path.isNullOrBlank()) { "Approved hunk is missing a path" }
+        require(approvedHunks.all { jsonString(it.argumentsJson, "path") == path }) {
+            "Approved hunks must belong to one file"
+        }
+        val ordered = approvedHunks.sortedBy { jsonString(it.argumentsJson, "hunk_index")?.toIntOrNull() ?: Int.MAX_VALUE }
+        val patch = ordered.joinToString("\n") { jsonString(it.argumentsJson, "hunk").orEmpty() }
+        return ToolCall(
+            id = approvedHunks.first().id.substringBefore(":hunk-"),
+            name = "apply_patch",
+            argumentsJson = "{\"path\":\"${escape(path)}\",\"patch\":\"${escape(patch)}\"}",
+        )
+    }
+
     private fun jsonString(json: String, key: String): String? {
         val match = Regex("\\\"${Regex.escape(key)}\\\"\\s*:\\s*\\\"((?:\\\\.|[^\\\"\\\\])*)\\\"").find(json)
             ?: return null

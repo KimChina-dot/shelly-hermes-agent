@@ -164,6 +164,23 @@ class AgentCoreTest {
     }
 
     @Test
+    fun `streaming gateway emits model deltas before final reply`() = kotlinx.coroutines.test.runTest {
+        val events = mutableListOf<AgentEvent>()
+        val core = AgentCore(
+            model = StreamingGateway(listOf("Hello ", "world")),
+            tools = ToolExecutor { "unused" },
+            approvals = ApprovalGateway { error("no tools requested") },
+            checkpoints = CheckpointStore { },
+            observer = AgentObserver { events += it },
+        )
+
+        val result = assertIs<AgentResult.Completed>(core.run(emptyList(), neverCancelled()))
+        assertEquals("Hello world", result.message)
+        val deltaTexts = events.filterIsInstance<AgentEvent.ModelDelta>().map(AgentEvent.ModelDelta::text)
+        assertEquals(listOf("Hello ", "world"), deltaTexts)
+    }
+
+    @Test
     fun `failed tool still emits completion event`() = kotlinx.coroutines.test.runTest {
         val events = mutableListOf<AgentEvent>()
         val core = AgentCore(
@@ -197,5 +214,20 @@ class AgentCoreTest {
 
     private fun neverCancelled() = object : CancellationSignal {
         override val isCancelled = false
+    }
+
+    private class StreamingGateway(
+        private val chunks: List<String>,
+    ) : ModelGateway, StreamingModelGateway {
+        override suspend fun complete(messages: List<AgentMessage>): ModelReply =
+            ModelReply(content = chunks.joinToString(""))
+
+        override suspend fun completeStreaming(
+            messages: List<AgentMessage>,
+            onDelta: (String) -> Unit,
+        ): ModelReply {
+            chunks.forEach(onDelta)
+            return ModelReply(content = chunks.joinToString(""))
+        }
     }
 }

@@ -2,7 +2,13 @@ package dev.shelly.hermes
 
 import dev.shelly.hermes.core.AgentCheckpoint
 import dev.shelly.hermes.core.AgentMessage
+import dev.shelly.hermes.core.PendingToolCall
 import dev.shelly.hermes.core.MessageRole
+import dev.shelly.hermes.core.ToolCall
+import dev.shelly.hermes.core.ToolExecutionStage
+import dev.shelly.hermes.core.PendingToolCall
+import dev.shelly.hermes.core.ToolCall
+import dev.shelly.hermes.core.ToolExecutionStage
 import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
@@ -63,6 +69,71 @@ class SessionEventStoreTest {
         )
 
         assertEquals(envelope, SessionEventCodec.decode(SessionEventCodec.encode(envelope)))
+    }
+
+    @Test fun codecPreservesAssistantToolCallsAndPendingWork() {
+        val checkpoint = AgentCheckpoint(
+            messages = listOf(
+                AgentMessage(
+                    MessageRole.ASSISTANT,
+                    "",
+                    toolCalls = listOf(ToolCall("call-1", "apply_patch", "{\"path\":\"a.txt\"}")),
+                ),
+            ),
+            round = 1,
+            consumedTokens = 5,
+            toolCalls = 1,
+            pendingToolCalls = listOf(
+                PendingToolCall(ToolCall("call-1", "apply_patch", "{}"), ToolExecutionStage.RUNNING),
+            ),
+        )
+        val envelope = SessionEventEnvelope("session-v2", 1, 5, SessionEvent(SessionEventType.CHECKPOINT, checkpoint = checkpoint))
+
+        val restored = SessionEventCodec.decode(SessionEventCodec.encode(envelope))
+
+        assertEquals(checkpoint, restored.event.checkpoint)
+    }
+
+    @Test fun codecPreservesAssistantToolCallsAndPendingQueue() {
+        val checkpoint = AgentCheckpoint(
+            messages = listOf(
+                AgentMessage(
+                    MessageRole.ASSISTANT,
+                    "",
+                    toolCalls = listOf(ToolCall("call-2", "apply_patch", "{\"path\":\"a.txt\"}")),
+                ),
+                AgentMessage(MessageRole.TOOL, "applied", "call-2"),
+            ),
+            round = 3,
+            consumedTokens = 20,
+            toolCalls = 1,
+            pendingToolCalls = listOf(
+                PendingToolCall(ToolCall("call-3", "create_file", "{}"), ToolExecutionStage.AWAITING_EXECUTION),
+            ),
+        )
+        val envelope = SessionEventEnvelope(
+            "session-v2",
+            1,
+            3,
+            SessionEvent(SessionEventType.CHECKPOINT, checkpoint = checkpoint),
+        )
+
+        assertEquals(envelope, SessionEventCodec.decode(SessionEventCodec.encode(envelope)))
+    }
+
+    @Test fun codecReadsVersionOneCheckpoint() {
+        val json = """
+            {"version":1,"sessionId":"session-v1","sequence":1,"timestamp":4,
+             "type":"CHECKPOINT","detail":"","checkpoint":{"round":2,"consumedTokens":8,
+             "toolCalls":1,"messages":[{"role":"ASSISTANT","content":"doing"},{"role":"TOOL","content":"done","toolCallId":"call-1"}]}}
+        """.trimIndent()
+
+        val checkpoint = SessionEventCodec.decode(json).event.checkpoint!!
+        assertEquals(2, checkpoint.round)
+        assertEquals("doing", checkpoint.messages[0].content)
+        assertEquals("call-1", checkpoint.messages[1].toolCallId)
+        assertEquals(0, checkpoint.messages[0].toolCalls.size)
+        assertEquals(0, checkpoint.pendingToolCalls.size)
     }
 
     private fun checkpoint(content: String) = AgentCheckpoint(

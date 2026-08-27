@@ -5,7 +5,8 @@ enum class MessageRole { SYSTEM, USER, ASSISTANT, TOOL }
 data class AgentMessage(
     val role: MessageRole,
     val content: String,
-    val toolCallId: String? = null
+    val toolCallId: String? = null,
+    val toolCalls: List<ToolCall> = emptyList()
 )
 
 data class ToolCall(
@@ -31,12 +32,23 @@ data class AgentCheckpoint(
     val messages: List<AgentMessage>,
     val round: Int,
     val consumedTokens: Int,
-    val toolCalls: Int
+    val toolCalls: Int,
+    val pendingToolCalls: List<PendingToolCall> = emptyList(),
 )
+
+/** Durable execution queue used to restore a task after Android kills the process. */
+data class PendingToolCall(
+    val call: ToolCall,
+    val stage: ToolExecutionStage,
+)
+
+enum class ToolExecutionStage { AWAITING_APPROVAL, AWAITING_EXECUTION, RUNNING }
 
 /** Lightweight lifecycle signals for progress UI, metrics, and diagnostics. */
 sealed interface AgentEvent {
     data class ModelStarted(val round: Int) : AgentEvent
+
+    data class ModelDelta(val text: String) : AgentEvent
 
     data class ModelFinished(
         val round: Int,

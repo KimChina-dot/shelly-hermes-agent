@@ -4,6 +4,7 @@ import dev.shelly.hermes.core.AgentMessage
 import dev.shelly.hermes.core.MessageRole
 import dev.shelly.hermes.core.ModelGateway
 import dev.shelly.hermes.core.ModelReply
+import dev.shelly.hermes.core.StreamingModelGateway
 import dev.shelly.hermes.core.ToolCall
 import org.json.JSONException
 import org.json.JSONArray
@@ -14,53 +15,122 @@ class OpenAiAgentModelGateway(
     private val client: OpenAiModelGateway,
     private val mode: AgentMode = AgentMode.ACT,
     private val allowedToolNames: Set<String> = AndroidWorkspaceToolPlugins.manifests.mapTo(linkedSetOf<String>()) { it.name },
-) : ModelGateway {
-    private val assistantByToolCallId = mutableMapOf<String, JSONObject>()
+) : ModelGateway, StreamingModelGateway {
+    private val assistantByToolCallId = java.util.concurrent.ConcurrentHashMap<String, JSONObject>()
+
+    init {
+        require(allowedToolNames.isNotEmpty()) { "At least one model tool must be allowed" }
+    }
 
     override suspend fun complete(messages: List<AgentMessage>): ModelReply {
+        return completeStreaming(messages) { }
+    }
+
+    override suspend fun completeStreaming(
+        messages: List<AgentMessage>,
+        onDelta: (String) -> Unit,
+    ): ModelReply {
+        val request = JSONObject()
+            .put("messages", buildRequestMessages(messages))
+            .put("tools", enabledToolDefinitions(mode, allowedToolNames))
+            .put("tool_choice", "auto")
+            .put(
+                "stream_options",
+                JSONObject().put("include_usage", true),
+            )
+
+        val content = StringBuilder()
+        val toolCallBuilders = linkedMapOf<Int, ToolCallChunk>()
+        var inputTokens = 0
+        var outputTokens = 0
+
+        client.chatCompletionsStream(request.toString()) { event ->
+            if (event.isDone) return@chatCompletionsStream
+            val payload = try {
+                JSONObject(event.data)
+            } catch (error: JSONException) {
+                throw ModelGatewayException.InvalidResponse(
+                    "Model streaming response contained invalid JSON",
+                    error,
+                )
+            }
+            payload.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }?.let {
+                throw ModelGatewayException.Upstream("Model streaming request failed: $it", null)
+            }
+            val delta = payload.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("delta")
+            val contentDelta = delta?.opt("content")
+            if (contentDelta is String && contentDelta.isNotEmpty()) {
+                content.append(contentDelta)
+                onDelta(contentDelta)
+            }
+            delta?.optJSONArray("tool_calls")?.let { calls ->
+                for (index in 0 until calls.length()) {
+                    val item = calls.optJSONObject(index) ?: continue
+                    val position = item.optInt("index", toolCallBuilders.size)
+                    val chunk = toolCallBuilders.getOrPut(position) { ToolCallChunk() }
+                    item.optString("id").takeIf { it.isNotBlank() }?.let(chunk.id::append)
+                    item.optJSONObject("function")?.let { function ->
+                        function.optString("name").takeIf { it.isNotBlank() }?.let(chunk.name::append)
+                        function.optString("arguments").takeIf { it.isNotBlank() }?.let(chunk.arguments::append)
+                    }
+                }
+            }
+            payload.optJSONObject("usage")?.let { usage ->
+                inputTokens = usage.optInt("prompt_tokens", inputTokens)
+                outputTokens = usage.optInt("completion_tokens", outputTokens)
+            }
+        }
+
+        val toolCalls = toolCallBuilders.toSortedMap().map { (_, builder) -> builder.build() }
+        val finalContent = content.toString()
+        rememberAssistantForToolResults(finalContent, toolCalls)
+        return ModelReply(
+            content = if (toolCalls.isEmpty()) finalContent else "",
+            toolCalls = toolCalls,
+            inputTokens = inputTokens,
+            outputTokens = outputTokens,
+        )
+    }
+
+    private fun buildRequestMessages(messages: List<AgentMessage>): JSONArray {
         val requestMessages = JSONArray()
-        val emittedAssistantMessages = mutableSetOf<String>()
         for (message in messages) {
-            if (message.role == MessageRole.TOOL) {
-                val assistant = message.toolCallId?.let(assistantByToolCallId::get)
-                val serialized = assistant?.toString()
-                if (assistant != null && serialized != null && emittedAssistantMessages.add(serialized)) {
-                    requestMessages.put(assistant)
+            if (message.role == MessageRole.ASSISTANT && message.toolCalls.isNotEmpty()) {
+                val assistant = message.toJson()
+                val toolCalls = assistant.optJSONArray("tool_calls") ?: JSONArray()
+                for (index in 0 until toolCalls.length()) {
+                    val callId = toolCalls.getJSONObject(index).optString("id").takeIf { it.isNotBlank() }
+                    if (callId != null) {
+                        assistantByToolCallId[callId] = assistant
+                    }
                 }
             }
             requestMessages.put(message.toJson())
         }
+        return requestMessages
+    }
 
-        val request = JSONObject()
-            .put("messages", requestMessages)
-            .put("tools", enabledToolDefinitions(mode, allowedToolNames))
-            .put("tool_choice", "auto")
-
-        val response = JSONObject(client.chatCompletions(request.toString()))
-        val choices = response.optJSONArray("choices")
-            ?: throw ModelGatewayException.InvalidResponse("Model response is missing choices")
-        if (choices.length() == 0) {
-            throw ModelGatewayException.InvalidResponse("Model response contains no choices")
-        }
-        val message = choices.optJSONObject(0)?.optJSONObject("message")
-            ?: throw ModelGatewayException.InvalidResponse("Model response is missing choices[0].message")
-
-        val toolCalls = parseToolCalls(message.optJSONArray("tool_calls"))
-        if (toolCalls.isNotEmpty()) {
-            val assistant = JSONObject(message.toString())
-            toolCalls.forEach { assistantByToolCallId[it.id] = assistant }
-        }
-        val usage = response.optJSONObject("usage")
-        return ModelReply(
-            content = if (toolCalls.isEmpty()) {
-                message.optString("content").takeUnless { it == "null" }.orEmpty()
-            } else {
-                ""
-            },
-            toolCalls = toolCalls,
-            inputTokens = usage?.optInt("prompt_tokens", 0) ?: 0,
-            outputTokens = usage?.optInt("completion_tokens", 0) ?: 0,
-        )
+    private fun rememberAssistantForToolResults(content: String, toolCalls: List<ToolCall>) {
+        if (toolCalls.isEmpty()) return
+        val assistant = JSONObject()
+            .put("role", "assistant")
+            .put("content", content)
+            .put("tool_calls", JSONArray().apply {
+                toolCalls.forEach { call ->
+                    put(
+                        JSONObject()
+                            .put("id", call.id)
+                            .put("type", "function")
+                            .put(
+                                "function",
+                                JSONObject()
+                                    .put("name", call.name)
+                                    .put("arguments", call.argumentsJson),
+                            ),
+                    )
+                }
+            })
+        toolCalls.forEach { assistantByToolCallId[it.id] = assistant }
     }
 
     private fun parseToolCallArguments(raw: String): String = try {
@@ -71,7 +141,29 @@ class OpenAiAgentModelGateway(
 
     private fun AgentMessage.toJson(): JSONObject = JSONObject().apply {
         put("role", role.name.lowercase())
-        put("content", content)
+        if (role == MessageRole.ASSISTANT && toolCalls.isNotEmpty()) {
+            put("content", if (content.isBlank()) JSONObject.NULL else content)
+            put(
+                "tool_calls",
+                JSONArray().apply {
+                    toolCalls.forEach { call ->
+                        put(
+                            JSONObject()
+                                .put("id", call.id)
+                                .put("type", "function")
+                                .put(
+                                    "function",
+                                    JSONObject()
+                                        .put("name", call.name)
+                                        .put("arguments", call.argumentsJson),
+                                ),
+                        )
+                    }
+                },
+            )
+        } else {
+            put("content", content)
+        }
         if (role == MessageRole.TOOL) {
             val id = toolCallId?.takeIf { it.isNotBlank() }
                 ?: throw ModelGatewayException.InvalidRequest("Tool result is missing toolCallId")
@@ -107,6 +199,21 @@ class OpenAiAgentModelGateway(
             is JSONObject, is JSONArray -> value.toString()
             null -> throw ModelGatewayException.InvalidResponse("Missing required parameter \"$name\"")
             else -> throw ModelGatewayException.InvalidResponse("Unsupported parameter type for \"$name\"")
+        }
+    }
+
+    private class ToolCallChunk {
+        val id = StringBuilder()
+        val name = StringBuilder()
+        val arguments = StringBuilder()
+
+        fun build(): ToolCall {
+            val callId = id.toString()
+            val callName = name.toString()
+            if (callId.isBlank() || callName.isBlank()) {
+                throw ModelGatewayException.InvalidResponse("Model streaming response had incomplete tool call")
+            }
+            return ToolCall(callId, callName, parseToolCallArguments(arguments.toString()))
         }
     }
 

@@ -301,14 +301,39 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             limits = profile.limits,
             approvalPolicy = tools.approvalPolicy(),
             observer = AgentObserver { event ->
-                runCatching { eventStore.append(event.toSessionEvent()) }
+                if (event !is AgentEvent.ModelDelta) {
+                    runCatching { eventStore.append(event.toSessionEvent()) }
+                }
                 when (event) {
+                    is AgentEvent.ModelDelta -> {
+                        broadcastModelDelta(event.text)
+                    }
                     is AgentEvent.ModelStarted -> broadcastStatus(TaskState.RUNNING.name, "正在请求模型（第 ${event.round} 轮）")
                     is AgentEvent.ModelFinished -> broadcastStatus(TaskState.RUNNING.name, "模型响应耗时 ${event.durationMillis}ms")
-                    is AgentEvent.ApprovalWaiting -> broadcastStatus(STATE_AWAITING_APPROVAL, "等待审批：${event.call.name}")
-                    is AgentEvent.ApprovalFinished -> broadcastStatus(TaskState.RUNNING.name, "审批结果：${event.decision}")
-                    is AgentEvent.ToolStarted -> broadcastStatus(TaskState.RUNNING.name, "正在执行：${event.toolName}")
-                    is AgentEvent.ToolFinished -> broadcastStatus(TaskState.RUNNING.name, "${event.toolName} 完成（${event.durationMillis}ms）")
+                    is AgentEvent.ApprovalWaiting -> broadcastStatus(
+                        STATE_AWAITING_APPROVAL,
+                        "等待审批：${event.call.name}",
+                        event.call.name,
+                    )
+                    is AgentEvent.ApprovalFinished -> broadcastStatus(
+                        TaskState.RUNNING.name,
+                        "审批结果：${event.decision}",
+                        event.call.name,
+                    )
+                    is AgentEvent.ToolStarted -> broadcastStatus(
+                        TaskState.RUNNING.name,
+                        "正在执行：${event.toolName}",
+                        event.toolName,
+                        event.toolCallId,
+                        "RUNNING",
+                    )
+                    is AgentEvent.ToolFinished -> broadcastStatus(
+                        TaskState.RUNNING.name,
+                        "${event.toolName} 完成（${event.durationMillis}ms）",
+                        event.toolName,
+                        event.toolCallId,
+                        if (event.succeeded) "FINISHED" else "FAILED",
+                    )
                 }
             },
         )
@@ -359,6 +384,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         ?: "会话分支"
 
     private fun AgentEvent.toSessionEvent(): SessionEvent = when (this) {
+        is AgentEvent.ModelDelta -> SessionEvent(SessionEventType.MODEL_DELTA, "characters=${text.length}")
         is AgentEvent.ModelStarted -> SessionEvent(SessionEventType.MODEL_STARTED, "round=$round")
         is AgentEvent.ModelFinished -> SessionEvent(
             SessionEventType.MODEL_FINISHED,
@@ -383,10 +409,31 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
     }
 
     private fun broadcastStatus(state: String, detail: String) {
+        broadcastStatus(state, detail, null, null, null)
+    }
+
+    private fun broadcastStatus(
+        state: String,
+        detail: String,
+        toolName: String? = null,
+        toolCallId: String? = null,
+        toolState: String? = null,
+    ) {
         sendBroadcast(Intent(ACTION_STATUS).apply {
             setPackage(packageName)
             putExtra(EXTRA_STATE, state)
             putExtra(EXTRA_DETAIL, detail)
+            putExtra(EXTRA_TOOL_NAME, toolName.orEmpty())
+            putExtra(EXTRA_TOOL_CALL_ID, toolCallId.orEmpty())
+            putExtra(EXTRA_TOOL_STATE, toolState.orEmpty())
+        })
+    }
+
+    private fun broadcastModelDelta(text: String) {
+        sendBroadcast(Intent(ACTION_STATUS).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_STATE, STATE_MODEL_DELTA)
+            putExtra(EXTRA_DETAIL, text)
         })
     }
 
@@ -441,7 +488,11 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         const val EXTRA_DETAIL = "detail"
         const val EXTRA_QUEUE_COUNT = "queue_count"
         const val EXTRA_ACTIVE_TASK_ID = "active_task_id"
+        const val EXTRA_TOOL_NAME = "tool_name"
+        const val EXTRA_TOOL_CALL_ID = "tool_call_id"
+        const val EXTRA_TOOL_STATE = "tool_state"
         const val STATE_AWAITING_APPROVAL = "AWAITING_APPROVAL"
+        const val STATE_MODEL_DELTA = "MODEL_DELTA"
         const val STATE_QUEUED = "QUEUED"
         const val STATE_QUEUE_UPDATED = "QUEUE_UPDATED"
         private const val NOTIFICATION_ID = 7

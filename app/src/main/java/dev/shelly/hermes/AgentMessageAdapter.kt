@@ -9,9 +9,16 @@ import android.widget.BaseAdapter
 import android.widget.LinearLayout
 import android.widget.TextView
 
-enum class UiMessageRole { USER, ASSISTANT, STATUS }
+enum class UiMessageRole { USER, ASSISTANT, STATUS, TOOL }
 
-data class UiMessage(val role: UiMessageRole, val text: String)
+data class UiMessage(
+    val role: UiMessageRole,
+    val text: String,
+    val title: String? = null,
+    val toolCallId: String? = null,
+    val toolState: String? = null,
+    val streaming: Boolean = false,
+)
 
 class AgentMessageAdapter(
     private val context: Context,
@@ -30,16 +37,22 @@ class AgentMessageAdapter(
             UiMessageRole.USER -> "YOU"
             UiMessageRole.ASSISTANT -> "LUMA"
             UiMessageRole.STATUS -> "STATUS"
+            UiMessageRole.TOOL -> message.title ?: "TOOL"
         }
-        content.text = message.text
+        content.text = if (message.streaming) "${message.text}▍" else message.text
         row.gravity = if (message.role == UiMessageRole.USER) Gravity.END else Gravity.START
         content.setBackgroundResource(
-            if (message.role == UiMessageRole.USER) R.drawable.bg_user_message else android.R.color.transparent,
+            when (message.role) {
+                UiMessageRole.USER -> R.drawable.bg_user_message
+                UiMessageRole.ASSISTANT -> R.drawable.bg_glass_card
+                UiMessageRole.TOOL -> R.drawable.bg_surface_card
+                UiMessageRole.STATUS -> android.R.color.transparent
+            },
         )
         content.setPadding(
-            dp(if (message.role == UiMessageRole.USER) 14 else 0),
+            dp(if (message.role == UiMessageRole.USER) 14 else 12),
             dp(10),
-            dp(if (message.role == UiMessageRole.USER) 14 else 0),
+            dp(if (message.role == UiMessageRole.USER) 14 else 12),
             dp(10),
         )
         content.setTextColor(context.getColor(
