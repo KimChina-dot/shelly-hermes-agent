@@ -22,6 +22,7 @@ import dev.shelly.hermes.core.AgentProfileRegistry
 import dev.shelly.hermes.core.AgentProfileRunner
 import dev.shelly.hermes.core.CheckpointStore
 import dev.shelly.hermes.core.MessageRole
+import dev.shelly.hermes.core.ToolApprovalPolicy
 import java.io.File
 
 /** Runs one user-started agent task in a foreground service. */
@@ -298,7 +299,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         )
         val eventStore = SessionEventStore(this, taskId)
         val baseApprovalPolicy = tools.approvalPolicy()
-        val approvalPolicy = dev.shelly.hermes.core.ToolApprovalPolicy { call ->
+        val approvalPolicy = ToolApprovalPolicy { call ->
             if (call.name == "run_command") {
                 val command = runCatching {
                     org.json.JSONObject(call.argumentsJson.ifBlank { "{}" }).optString("command")
