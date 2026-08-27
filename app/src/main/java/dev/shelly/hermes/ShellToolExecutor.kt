@@ -18,6 +18,7 @@ class ShellToolExecutor(
     private val defaultTimeoutMs: Long = 15_000L,
     private val maxTimeoutMs: Long = 30_000L,
     private val maxOutputChars: Int = 32_000,
+    private val shellPath: String = detectShellPath(),
 ) {
 
     suspend fun execute(command: String, timeoutMs: Long = defaultTimeoutMs): String {
@@ -29,7 +30,7 @@ class ShellToolExecutor(
 
         return withContext(Dispatchers.IO) {
             withTimeout(boundedTimeout + 2_000L) {
-                val process = ProcessBuilder(SHELL_PATH, "-c", command)
+            val process = ProcessBuilder(shellPath, "-c", command)
                     .directory(workingDirectory)
                     .redirectErrorStream(false)
                     .start()
@@ -76,8 +77,12 @@ class ShellToolExecutor(
     }
 
     companion object {
-        private const val SHELL_PATH = "/system/bin/sh"
         private const val MAX_COMMAND_LENGTH = 4_096
+
+        fun detectShellPath(): String {
+            val candidates = listOf("/system/bin/sh", "/bin/sh")
+            return candidates.firstOrNull { java.io.File(it).canExecute() } ?: "/bin/sh"
+        }
 
         /** Commands safe enough for agent auto-execution without user approval. */
         val SAFE_COMMAND_PREFIXES = setOf(
