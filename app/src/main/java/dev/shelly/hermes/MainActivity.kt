@@ -17,13 +17,16 @@ import android.widget.ListView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import dev.shelly.hermes.core.AgentProfileMode
 import dev.shelly.hermes.core.AgentProfileRegistry
 
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     private lateinit var messages: MutableList<UiMessage>
     private lateinit var messageAdapter: AgentMessageAdapter
     private val profiles = AgentProfileRegistry()
@@ -71,15 +74,12 @@ class MainActivity : ComponentActivity() {
 
         messages = mutableListOf()
         messageAdapter = AgentMessageAdapter(this, messages)
-        findViewById<ListView>(R.id.messageList).adapter = messageAdapter
+        findViewById<RecyclerView>(R.id.messageList).apply {
+            layoutManager = LinearLayoutManager(this@MainActivity)
+            adapter = messageAdapter
+        }
 
         findViewById<Button>(R.id.chooseWorkspace).setOnClickListener { picker.launch(null) }
-        findViewById<Button>(R.id.capabilities).setOnClickListener {
-            startActivity(Intent(this, CapabilitiesActivity::class.java))
-        }
-        findViewById<Button>(R.id.history).setOnClickListener {
-            startActivity(Intent(this, HistoryActivity::class.java))
-        }
         findViewById<Button>(R.id.taskQueue).setOnClickListener {
             startActivity(Intent(this, TaskQueueActivity::class.java))
         }
@@ -103,6 +103,26 @@ class MainActivity : ComponentActivity() {
         }
         findViewById<Button>(R.id.approval).setOnClickListener {
             startActivity(Intent(this, ApprovalActivity::class.java))
+        }
+        findViewById<BottomNavigationView>(R.id.bottomNav).apply {
+            selectedItemId = R.id.nav_chat
+            setOnItemSelectedListener { item ->
+                when (item.itemId) {
+                    R.id.nav_tasks -> {
+                        startActivity(Intent(this@MainActivity, TaskQueueActivity::class.java))
+                        true
+                    }
+                    R.id.nav_history -> {
+                        startActivity(Intent(this@MainActivity, HistoryActivity::class.java))
+                        true
+                    }
+                    R.id.nav_capabilities -> {
+                        startActivity(Intent(this@MainActivity, CapabilitiesActivity::class.java))
+                        true
+                    }
+                    else -> true
+                }
+            }
         }
 
         ApprovalBridge.gateway.launcher = {
@@ -280,7 +300,7 @@ class MainActivity : ComponentActivity() {
         messages += UiMessage(role, text)
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
-        findViewById<ListView>(R.id.messageList).setSelection(messages.lastIndex)
+        scrollToLatest()
     }
 
     private fun appendToolMessage(toolName: String, toolCallId: String, detail: String, state: String) {
@@ -296,7 +316,7 @@ class MainActivity : ComponentActivity() {
         )
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
-        findViewById<ListView>(R.id.messageList).setSelection(messages.lastIndex)
+        scrollToLatest()
     }
 
     private fun updateToolMessage(toolCallId: String, detail: String, state: String) {
@@ -339,7 +359,7 @@ class MainActivity : ComponentActivity() {
         streamingMessage = updated
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
-        findViewById<ListView>(R.id.messageList).setSelection(messages.lastIndex)
+        scrollToLatest()
     }
 
     private fun setRunning(running: Boolean) {
@@ -350,6 +370,11 @@ class MainActivity : ComponentActivity() {
         findViewById<Button>(R.id.taskMode).isEnabled = true
         findViewById<Button>(R.id.agentProfile).isEnabled = true
         findViewById<Button>(R.id.resumeTask).isEnabled = true
+    }
+
+    private fun scrollToLatest() {
+        findViewById<RecyclerView>(R.id.messageList)
+            .scrollToPosition((messages.lastIndex).coerceAtLeast(0))
     }
 
     private fun renderProfile() {

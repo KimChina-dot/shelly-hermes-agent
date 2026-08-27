@@ -1,63 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/surface_background"
-    android:importantForAccessibility="yes"
     android:orientation="vertical">
 
-    <LinearLayout
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="8dp">
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/surface_background"
+        app:title="Luma"
+        app:titleTextAppearance="@style/TextAppearance.Luma.Title">
 
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Luma"
-            android:textAppearance="@style/TextAppearance.Luma.Title" />
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/capabilities"
-            style="@style/Widget.Luma.ToolbarButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="能力与权限"
-            android:drawableTop="@android:drawable/ic_menu_manage"
-            android:text="" />
-
-        <Button
-            android:id="@+id/history"
-            style="@style/Widget.Luma.ToolbarButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="会话历史"
-            android:drawableTop="@android:drawable/ic_menu_recent_history"
-            android:text="" />
-
-        <Button
-            android:id="@+id/settings"
-            style="@style/Widget.Luma.ToolbarButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="模型设置"
-            android:drawableTop="@android:drawable/ic_menu_preferences"
-            android:text="" />
-    </LinearLayout>
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/divider_subtle" />
+            <Button
+                android:id="@+id/settings"
+                style="@style/Widget.Luma.ToolbarButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/model_settings"
+                android:drawableTop="@android:drawable/ic_menu_preferences"
+                android:text="" />
+        </LinearLayout>
+    </com.google.android.material.appbar.MaterialToolbar>
 
     <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="56dp"
-        android:fillViewport="false"
+        android:background="@color/surface_background"
+        android:fillViewport="true"
         android:scrollbars="none">
 
         <LinearLayout
@@ -77,7 +55,7 @@
                 android:paddingStart="8dp"
                 android:paddingEnd="8dp"
                 android:singleLine="true"
-                android:text="尚未选择项目"
+                android:text="@string/no_project"
                 android:textAppearance="@style/TextAppearance.Luma.Caption" />
 
             <Button
@@ -85,7 +63,7 @@
                 style="@style/Widget.Luma.ToolbarButton"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:text="项目" />
+                android:text="@string/project" />
 
             <TextView
                 android:id="@+id/modelStatus"
@@ -96,7 +74,7 @@
                 android:paddingStart="10dp"
                 android:paddingEnd="10dp"
                 android:singleLine="true"
-                android:text="模型未连接"
+                android:text="@string/model_disconnected"
                 android:textAppearance="@style/TextAppearance.Luma.Caption" />
 
             <Button
@@ -118,14 +96,14 @@
                 style="@style/Widget.Luma.ToolbarButton"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:text="任务 0" />
+                android:text="@string/tasks_zero" />
 
             <Button
                 android:id="@+id/resumeTask"
                 style="@style/Widget.Luma.ToolbarButton"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:text="恢复" />
+                android:text="@string/resume" />
         </LinearLayout>
     </HorizontalScrollView>
 
@@ -161,13 +139,11 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <ListView
+        <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/messageList"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:divider="@android:color/transparent"
-            android:dividerHeight="0dp"
             android:paddingTop="8dp"
             android:paddingBottom="16dp"
             android:scrollbars="vertical" />
@@ -178,7 +154,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:padding="24dp"
-            android:text="开始一个任务"
+            android:text="@string/start_task"
             android:textAppearance="@style/TextAppearance.Luma.Caption" />
     </FrameLayout>
 
@@ -189,6 +165,7 @@
         android:layout_marginStart="12dp"
         android:layout_marginEnd="12dp"
         android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_surface_card"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:padding="10dp"
@@ -206,7 +183,7 @@
             style="@style/Widget.Luma.ToolbarButton"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
-            android:text="重试" />
+            android:text="@string/retry" />
     </LinearLayout>
 
     <Button
@@ -217,52 +194,70 @@
         android:layout_marginStart="12dp"
         android:layout_marginEnd="12dp"
         android:layout_marginBottom="8dp"
-        android:text="查看变更并审批"
-        android:textColor="@color/status_warning"
+        android:background="@drawable/bg_button_danger"
+        android:text="@string/review_and_approve"
+        android:textColor="@color/accent_foreground"
         android:visibility="gone" />
 
-    <LinearLayout
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="12dp"
         android:layout_marginEnd="12dp"
-        android:layout_marginBottom="12dp"
-        android:background="@drawable/bg_composer"
-        android:gravity="bottom"
-        android:minHeight="64dp"
-        android:orientation="horizontal"
-        android:padding="8dp">
+        android:layout_marginBottom="8dp"
+        app:cardBackgroundColor="@color/surface_glass"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp"
+        app:strokeColor="@color/border_subtle"
+        app:strokeWidth="1dp">
 
-        <EditText
-            android:id="@+id/taskInput"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="@android:color/transparent"
-            android:gravity="top|start"
-            android:hint="交给 Luma 一个任务"
-            android:inputType="textCapSentences|textMultiLine"
-            android:maxLines="6"
-            android:minHeight="48dp"
-            android:padding="10dp"
-            android:textColor="@color/text_primary"
-            android:textColorHint="@color/text_tertiary" />
+            android:gravity="bottom"
+            android:minHeight="64dp"
+            android:orientation="horizontal"
+            android:padding="8dp">
 
-        <Button
-            android:id="@+id/startTask"
-            style="@style/Widget.Luma.PrimaryButton"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:text="发送" />
+            <EditText
+                android:id="@+id/taskInput"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="@android:color/transparent"
+                android:gravity="top|start"
+                android:hint="@string/task_hint"
+                android:inputType="textCapSentences|textMultiLine"
+                android:maxLines="6"
+                android:minHeight="48dp"
+                android:padding="10dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_tertiary" />
 
-        <Button
-            android:id="@+id/stopTask"
-            style="@style/Widget.Luma.ToolbarButton"
-            android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:layout_marginStart="6dp"
-            android:text="停止"
-            android:textColor="@color/status_error"
-            android:visibility="gone" />
-    </LinearLayout>
+            <Button
+                android:id="@+id/startTask"
+                style="@style/Widget.Luma.PrimaryButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="@string/send" />
+
+            <Button
+                android:id="@+id/stopTask"
+                style="@style/Widget.Luma.ToolbarButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginStart="6dp"
+                android:text="@string/stop"
+                android:textColor="@color/status_error"
+                android:visibility="gone" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottomNav"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:background="@color/surface_glass"
+        app:labelVisibilityMode="labeled"
+        app:menu="@menu/menu_main_nav" />
 </LinearLayout>

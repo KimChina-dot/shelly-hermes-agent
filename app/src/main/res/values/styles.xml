@@ -1,6 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Luma</string>
+    <string name="nav_chat">对话</string>
+    <string name="nav_tasks">任务</string>
+    <string name="nav_history">历史</string>
+    <string name="nav_capabilities">能力</string>
+    <string name="model_settings">模型设置</string>
+    <string name="no_project">尚未选择项目</string>
+    <string name="project">项目</string>
+    <string name="model_disconnected">模型未连接</string>
+    <string name="tasks_zero">任务 0</string>
+    <string name="resume">恢复</string>
+    <string name="start_task">开始一个任务</string>
+    <string name="retry">重试</string>
+    <string name="review_and_approve">查看变更并审批</string>
+    <string name="task_hint">交给 Luma 一个任务</string>
+    <string name="send">发送</string>
+    <string name="stop">停止</string>
 
     <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>
