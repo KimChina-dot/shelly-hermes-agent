@@ -33,6 +33,7 @@ class HistoryActivity : Activity() {
         historyList = findViewById(R.id.historyList)
         historyScroll = findViewById(R.id.historyScroll)
         clearButton = findViewById(R.id.clearHistoryButton)
+        clearButton.background = ContextCompat.getDrawable(this, R.drawable.bg_button_danger)
         historySummary = findViewById(R.id.historySummary)
         clearButton.setOnClickListener {
             store.clear()
@@ -66,7 +67,7 @@ class HistoryActivity : Activity() {
         val maxSequence = events.lastOrNull()?.sequence ?: 0L
         val messages = runCatching { eventStore.deriveMessages() }.getOrDefault(emptyList())
         orientation = LinearLayout.VERTICAL
-        setBackgroundColor(getColor(R.color.surface_glass))
+        background = ContextCompat.getDrawable(context, R.drawable.bg_surface_card)
         setPadding(dp(16), dp(14), dp(16), dp(14))
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -108,13 +109,16 @@ class HistoryActivity : Activity() {
                         dev.shelly.hermes.core.MessageRole.ASSISTANT -> "Luma"
                         dev.shelly.hermes.core.MessageRole.TOOL -> "工具"
                     }
-                    "$role：${message.content}"
+                    "[$role] ${message.content}"
                 }
             }
         }
+        transcript.setTextColor(getColor(R.color.text_secondary))
         addView(Button(context).apply {
             text = "查看完整会话"
             isAllCaps = false
+            background = ContextCompat.getDrawable(context, R.drawable.bg_button_secondary)
+            setTextColor(getColor(R.color.text_primary))
             isEnabled = messages.isNotEmpty()
             setOnClickListener {
                 val showing = transcript.visibility == View.VISIBLE
@@ -132,12 +136,16 @@ class HistoryActivity : Activity() {
             addView(Button(context).apply {
                 text = "恢复"
                 isAllCaps = false
+                background = ContextCompat.getDrawable(context, R.drawable.bg_button_secondary)
+                setTextColor(getColor(R.color.text_primary))
                 contentDescription = "恢复会话 ${session.prompt.ifBlank { session.id }}"
                 setOnClickListener { resumeSession(session) }
             }, actionLayoutParams())
             addView(Button(context).apply {
                 text = "从事件分叉"
                 isAllCaps = false
+                background = ContextCompat.getDrawable(context, R.drawable.bg_button_secondary)
+                setTextColor(getColor(R.color.text_primary))
                 isEnabled = maxSequence > 0L
                 contentDescription = "从指定事件创建会话分支"
                 setOnClickListener { showForkDialog(session, maxSequence) }

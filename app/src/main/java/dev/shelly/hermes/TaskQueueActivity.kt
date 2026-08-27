@@ -9,6 +9,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import java.text.DateFormat
 import java.util.Date
 
@@ -52,7 +53,7 @@ class TaskQueueActivity : Activity() {
 
     private fun card(task: QueuedAgentTask): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setBackgroundColor(getColor(R.color.surface_glass))
+        background = ContextCompat.getDrawable(context, R.drawable.bg_surface_card)
         setPadding(dp(16), dp(14), dp(16), dp(14))
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -87,6 +88,8 @@ class TaskQueueActivity : Activity() {
     private fun actionButton(label: String, action: () -> Unit) = Button(this).apply {
         text = label
         isAllCaps = false
+        background = ContextCompat.getDrawable(this, R.drawable.bg_button_secondary)
+        setTextColor(getColor(R.color.text_primary))
         setOnClickListener { action() }
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,

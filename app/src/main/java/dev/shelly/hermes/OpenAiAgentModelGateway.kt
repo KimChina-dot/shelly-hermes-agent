@@ -5,6 +5,7 @@ import dev.shelly.hermes.core.MessageRole
 import dev.shelly.hermes.core.ModelGateway
 import dev.shelly.hermes.core.ModelReply
 import dev.shelly.hermes.core.ToolCall
+import org.json.JSONException
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -62,6 +63,12 @@ class OpenAiAgentModelGateway(
         )
     }
 
+    private fun parseToolCallArguments(raw: String): String = try {
+        JSONObject(raw.ifBlank { "{}" }).toString()
+    } catch (error: JSONException) {
+        throw ModelGatewayException.InvalidResponse("Model returned malformed tool arguments", error)
+    }
+
     private fun AgentMessage.toJson(): JSONObject = JSONObject().apply {
         put("role", role.name.lowercase())
         put("content", content)
@@ -82,12 +89,24 @@ class OpenAiAgentModelGateway(
                     ?: throw ModelGatewayException.InvalidResponse("tool_calls[$index].function is missing")
                 val id = item.optString("id")
                 val name = function.optString("name")
-                val arguments = function.optString("arguments", "{}")
+                val arguments = parseToolCallArguments(function.optString("arguments", "{}"))
                 if (id.isBlank() || name.isBlank()) {
                     throw ModelGatewayException.InvalidResponse("tool_calls[$index] has a blank id or name")
                 }
                 add(ToolCall(id, name, arguments))
             }
+        }
+    }
+
+    private fun JSONObject.requiredString(name: String): String {
+        val value = opt(name)
+        return when (value) {
+            is String -> value
+            is Number -> value.toString()
+            is Boolean -> value.toString()
+            is JSONObject, is JSONArray -> value.toString()
+            null -> throw ModelGatewayException.InvalidResponse("Missing required parameter \"$name\"")
+            else -> throw ModelGatewayException.InvalidResponse("Unsupported parameter type for \"$name\"")
         }
     }
 
