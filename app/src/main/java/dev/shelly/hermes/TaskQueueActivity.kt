@@ -88,7 +88,7 @@ class TaskQueueActivity : Activity() {
     private fun actionButton(label: String, action: () -> Unit) = Button(this).apply {
         text = label
         isAllCaps = false
-        background = ContextCompat.getDrawable(this, R.drawable.bg_button_secondary)
+        background = ContextCompat.getDrawable(this@TaskQueueActivity, R.drawable.bg_button_secondary)
         setTextColor(getColor(R.color.text_primary))
         setOnClickListener { action() }
         layoutParams = LinearLayout.LayoutParams(
