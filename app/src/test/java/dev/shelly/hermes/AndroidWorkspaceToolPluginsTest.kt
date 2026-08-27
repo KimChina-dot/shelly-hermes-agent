@@ -56,7 +56,7 @@ class AndroidWorkspaceToolPluginsTest {
         val catalogNames = AndroidWorkspaceToolPlugins.manifests.mapTo(linkedSetOf<String>()) { it.name }
         assertEquals(catalogNames, OpenAiAgentModelGateway.toolDefinitionNames(AgentMode.ACT))
         assertEquals(
-            setOf("read_file", "exists", "list_files", "search_files"),
+            setOf("read_file", "exists", "list_files", "search_files", "repo_map", "batch_read"),
             OpenAiAgentModelGateway.toolDefinitionNames(AgentMode.PLAN),
         )
     }

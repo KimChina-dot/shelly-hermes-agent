@@ -266,6 +266,29 @@ class OpenAiAgentModelGateway(
                     required = JSONArray().put("query"),
                 ),
             )
+            put(
+                toolWithProperties(
+                    name = "repo_map",
+                    description = "Generate a compact project tree with file names, extensions, and sizes for context",
+                    properties = JSONObject()
+                        .put("max_results", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 500).put("description", "Maximum files to show (default 100)")),
+                    required = JSONArray(),
+                ),
+            )
+            put(
+                toolWithProperties(
+                    name = "batch_read",
+                    description = "Read up to 20 files in one call to reduce round trips; each file is capped and may be truncated",
+                    properties = JSONObject()
+                        .put("paths", JSONObject()
+                            .put("type", "array")
+                            .put("items", JSONObject().put("type", "string"))
+                            .put("minItems", 1)
+                            .put("maxItems", 20)
+                            .put("description", "Workspace-relative file paths to read")),
+                    required = JSONArray().put("paths"),
+                ),
+            )
         }
 
         private val TOOL_DEFINITIONS = JSONArray().apply {

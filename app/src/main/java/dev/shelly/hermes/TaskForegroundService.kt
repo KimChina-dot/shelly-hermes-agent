@@ -297,13 +297,24 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             profile.toolNames,
         )
         val eventStore = SessionEventStore(this, taskId)
+        val baseApprovalPolicy = tools.approvalPolicy()
+        val approvalPolicy = dev.shelly.hermes.core.ToolApprovalPolicy { call ->
+            if (call.name == "run_command") {
+                val command = runCatching {
+                    org.json.JSONObject(call.argumentsJson.ifBlank { "{}" }).optString("command")
+                }.getOrDefault("")
+                !ShellToolExecutor.isSafeCommand(command)
+            } else {
+                baseApprovalPolicy(call)
+            }
+        }
         return AgentCore(
             model = model,
             tools = tools,
             approvals = ApprovalBridge.gateway,
             checkpoints = checkpointStore(taskId),
             limits = profile.limits,
-            approvalPolicy = tools.approvalPolicy(),
+            approvalPolicy = approvalPolicy,
             observer = AgentObserver { event ->
                 if (event !is AgentEvent.ModelDelta) {
                     runCatching { eventStore.append(event.toSessionEvent()) }
