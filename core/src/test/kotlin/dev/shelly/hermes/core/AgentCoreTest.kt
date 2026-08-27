@@ -212,6 +212,55 @@ class AgentCoreTest {
         assertEquals("done", result.message)
     }
 
+    @Test
+    fun `resume approved but unstarted tool call does not prompt again`() = kotlinx.coroutines.test.runTest {
+        var approvalCalls = 0
+        val executed = mutableListOf<String>()
+        val core = AgentCore(
+            model = ModelGateway { ModelReply(content = "done") },
+            tools = ToolExecutor { call -> executed += call.name; "written" },
+            approvals = ApprovalGateway { approvalCalls += 1; ApprovalDecision.APPROVE },
+            checkpoints = CheckpointStore { },
+        )
+        val checkpoint = AgentCheckpoint(
+            messages = listOf(AgentMessage(MessageRole.ASSISTANT, "", toolCalls = listOf(ToolCall("write-1", "overwrite_file", "{}")))),
+            round = 1,
+            consumedTokens = 0,
+            toolCalls = 1,
+            pendingToolCalls = listOf(PendingToolCall(ToolCall("write-1", "overwrite_file", "{}"), ToolExecutionStage.AWAITING_EXECUTION)),
+        )
+
+        assertIs<AgentResult.Completed>(core.run(emptyList(), neverCancelled(), checkpoint))
+        assertEquals(0, approvalCalls)
+        assertEquals(listOf("overwrite_file"), executed)
+    }
+
+    @Test
+    fun `resume interrupted running mutation asks user before retry`() = kotlinx.coroutines.test.runTest {
+        var approvalCalls = 0
+        val executed = mutableListOf<String>()
+        val core = AgentCore(
+            model = ModelGateway { ModelReply(content = "done") },
+            tools = ToolExecutor { call -> executed += call.name; "written again" },
+            approvals = ApprovalGateway {
+                approvalCalls += 1
+                ApprovalDecision.APPROVE
+            },
+            checkpoints = CheckpointStore { },
+        )
+        val checkpoint = AgentCheckpoint(
+            messages = emptyList(),
+            round = 1,
+            consumedTokens = 0,
+            toolCalls = 1,
+            pendingToolCalls = listOf(PendingToolCall(ToolCall("write-1", "overwrite_file", "{}"), ToolExecutionStage.RUNNING)),
+        )
+
+        assertIs<AgentResult.Completed>(core.run(emptyList(), neverCancelled(), checkpoint))
+        assertEquals(1, approvalCalls)
+        assertEquals(listOf("overwrite_file"), executed)
+    }
+
     private fun neverCancelled() = object : CancellationSignal {
         override val isCancelled = false
     }

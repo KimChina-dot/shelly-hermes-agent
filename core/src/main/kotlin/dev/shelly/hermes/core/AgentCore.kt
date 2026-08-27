@@ -170,9 +170,15 @@ class AgentCore(
         while (pendingToolCalls.isNotEmpty()) {
             if (cancellation.isCancelled) return AgentResult.Stopped("cancelled", snapshot())
             val pending = pendingToolCalls.removeFirst()
+            if (pending.stage == ToolExecutionStage.RUNNING) {
+                // The process died while execution may already have mutated the workspace.
+                // Do not silently rerun it; return to the user for an explicit decision.
+                pendingToolCalls.add(0, pending.copy(stage = ToolExecutionStage.AWAITING_APPROVAL))
+                checkpoints.save(snapshot())
+            }
             executePending(
                 pending.call,
-                approvedByResume = pending.stage != ToolExecutionStage.AWAITING_APPROVAL,
+                approvedByResume = pending.stage == ToolExecutionStage.AWAITING_EXECUTION,
             )
         }
 
