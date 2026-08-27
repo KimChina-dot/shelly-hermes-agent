@@ -10,6 +10,12 @@ import org.json.JSONException
 import org.json.JSONArray
 import org.json.JSONObject
 
+private fun parseToolCallArguments(raw: String): String = try {
+    JSONObject(raw.ifBlank { "{}" }).toString()
+} catch (error: JSONException) {
+    throw ModelGatewayException.InvalidResponse("Model returned malformed tool arguments", error)
+}
+
 /** Maps the portable agent model contract to an OpenAI-compatible chat-completions endpoint. */
 class OpenAiAgentModelGateway(
     private val client: OpenAiModelGateway,
@@ -131,12 +137,6 @@ class OpenAiAgentModelGateway(
                 }
             })
         toolCalls.forEach { assistantByToolCallId[it.id] = assistant }
-    }
-
-    private fun parseToolCallArguments(raw: String): String = try {
-        JSONObject(raw.ifBlank { "{}" }).toString()
-    } catch (error: JSONException) {
-        throw ModelGatewayException.InvalidResponse("Model returned malformed tool arguments", error)
     }
 
     private fun AgentMessage.toJson(): JSONObject = JSONObject().apply {
