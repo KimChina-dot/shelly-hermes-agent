@@ -64,7 +64,9 @@ class MainActivity : AppCompatActivity() {
             val toolName = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_NAME).orEmpty()
             val toolCallId = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_CALL_ID).orEmpty()
             val toolState = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_STATE).orEmpty()
-            renderTaskState(state, detail, activeTaskId, queueCount, toolName, toolCallId, toolState)
+            val toolArgs = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_ARGS).orEmpty()
+            val toolResult = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_RESULT).orEmpty()
+            renderTaskState(state, detail, activeTaskId, queueCount, toolName, toolCallId, toolState, toolArgs, toolResult)
         }
     }
 
@@ -231,6 +233,8 @@ class MainActivity : AppCompatActivity() {
         toolName: String = "",
         toolCallId: String = "",
         toolState: String = "",
+        toolArgs: String = "",
+        toolResult: String = "",
     ) {
         if (queueCount >= 0) findViewById<Button>(R.id.taskQueue).text = "任务 $queueCount"
         findViewById<TextView>(R.id.taskStatus).apply {
@@ -254,8 +258,8 @@ class MainActivity : AppCompatActivity() {
             TaskState.RUNNING.name -> {
                 setRunning(true)
                 when (toolState) {
-                    "RUNNING" -> appendToolMessage(toolName, toolCallId, detail, toolState)
-                    "FINISHED", "FAILED" -> updateToolMessage(toolCallId, detail, toolState)
+                    "RUNNING" -> appendToolMessage(toolName, toolCallId, detail, toolState, toolArgs)
+                    "FINISHED", "FAILED" -> updateToolMessage(toolCallId, detail, toolState, toolResult)
                     else -> if (detail.startsWith("正在请求模型")) {
                         flushStreaming()
                         streamingMessage = null
@@ -303,7 +307,7 @@ class MainActivity : AppCompatActivity() {
         scrollToLatest()
     }
 
-    private fun appendToolMessage(toolName: String, toolCallId: String, detail: String, state: String) {
+    private fun appendToolMessage(toolName: String, toolCallId: String, detail: String, state: String, args: String = "") {
         if (toolName.isBlank()) return
         flushStreaming()
         streamingMessage = null
@@ -313,17 +317,18 @@ class MainActivity : AppCompatActivity() {
             title = toolName,
             toolCallId = toolCallId,
             toolState = state,
+            toolArgs = args,
         )
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
         scrollToLatest()
     }
 
-    private fun updateToolMessage(toolCallId: String, detail: String, state: String) {
+    private fun updateToolMessage(toolCallId: String, detail: String, state: String, result: String = "") {
         if (toolCallId.isBlank()) return
         val index = messages.indexOfLast { it.role == UiMessageRole.TOOL && it.toolCallId == toolCallId }
         if (index < 0) return
-        messages[index] = messages[index].copy(text = detail, toolState = state)
+        messages[index] = messages[index].copy(text = detail, toolState = state, toolResult = result)
         messageAdapter.notifyDataSetChanged()
     }
 

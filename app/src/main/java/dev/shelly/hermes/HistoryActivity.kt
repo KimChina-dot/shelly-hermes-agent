@@ -79,6 +79,18 @@ class HistoryActivity : Activity() {
             text = session.prompt.ifBlank { "未命名任务" }
         })
         addView(TextView(context).apply {
+            text = session.status.ifBlank { "历史记录" }
+            textSize = 12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(getColor(R.color.text_secondary))
+            background = ContextCompat.getDrawable(context, R.drawable.bg_chip)
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(8) }
+        })
+        addView(TextView(context).apply {
             setTextAppearance(R.style.TextAppearance_Luma_Caption)
             setPadding(0, dp(4), 0, 0)
             text = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
@@ -88,9 +100,7 @@ class HistoryActivity : Activity() {
             setTextAppearance(R.style.TextAppearance_Luma_Body)
             setPadding(0, dp(10), 0, 0)
             text = buildString {
-                append("状态：")
-                append(session.status.ifBlank { "历史记录" })
-                append("\n事件摘要：")
+                append("事件摘要：")
                 append(session.summary.ifBlank { "旧版会话暂无事件摘要，可继续恢复此任务。" })
                 if (maxSequence > 0L) append("\n事件：$maxSequence 条")
             }

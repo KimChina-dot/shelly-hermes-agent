@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -18,12 +19,16 @@ data class UiMessage(
     val toolCallId: String? = null,
     val toolState: String? = null,
     val streaming: Boolean = false,
+    val toolArgs: String? = null,
+    val toolResult: String? = null,
 )
 
 class AgentMessageAdapter(
     private val context: Context,
     private val messages: List<UiMessage>,
 ) : RecyclerView.Adapter<AgentMessageAdapter.MessageViewHolder>() {
+
+    private val expandedToolCallIds = mutableSetOf<String>()
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
         val row = LayoutInflater.from(parent.context)
@@ -41,7 +46,9 @@ class AgentMessageAdapter(
         private val container = row
         private val label = row.findViewById<TextView>(R.id.roleLabel)
         private val stateChip = row.findViewById<TextView>(R.id.stateChip)
+        private val expandHint = row.findViewById<TextView>(R.id.expandHint)
         private val content = row.findViewById<TextView>(R.id.content)
+        private val details = row.findViewById<TextView>(R.id.details)
 
         fun bind(message: UiMessage) {
             label.text = when (message.role) {
@@ -88,6 +95,43 @@ class AgentMessageAdapter(
                     },
                 ),
             )
+            bindExpandable(message)
+        }
+
+        private fun bindExpandable(message: UiMessage) {
+            val position = bindingAdapterPosition
+            val hasDetails = message.role == UiMessageRole.TOOL &&
+                (!message.toolArgs.isNullOrBlank() || !message.toolResult.isNullOrBlank())
+            if (!hasDetails) {
+                expandHint.visibility = View.GONE
+                details.visibility = View.GONE
+                expandHint.setOnClickListener(null)
+                return
+            }
+            val key = message.toolCallId.orEmpty()
+            val expanded = expandedToolCallIds.contains(key)
+            expandHint.visibility = View.VISIBLE
+            expandHint.text = context.getString(
+                if (expanded) R.string.collapse_details else R.string.expand_details,
+            )
+            expandHint.setOnClickListener {
+                if (!expandedToolCallIds.add(key)) expandedToolCallIds.remove(key)
+                if (position >= 0) notifyItemChanged(position)
+            }
+            details.visibility = if (expanded) View.VISIBLE else View.GONE
+            if (expanded) {
+                details.text = buildString {
+                    if (!message.toolArgs.isNullOrBlank()) {
+                        append("输入\n")
+                        append(message.toolArgs)
+                    }
+                    if (!message.toolResult.isNullOrBlank()) {
+                        if (isNotEmpty()) append("\n\n")
+                        append("输出\n")
+                        append(message.toolResult)
+                    }
+                }
+            }
         }
 
         private fun visibleStateLabel(state: String?): String? = when (state) {

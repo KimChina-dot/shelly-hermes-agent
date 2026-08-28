@@ -66,13 +66,15 @@ sealed interface AgentEvent {
 
     data class ToolStarted(
         val toolCallId: String,
-        val toolName: String
+        val toolName: String,
+        val argumentsJson: String = "",
     ) : AgentEvent
 
     data class ToolFinished(
         val toolCallId: String,
         val toolName: String,
         val durationMillis: Long,
-        val succeeded: Boolean
+        val succeeded: Boolean,
+        val result: String? = null,
     ) : AgentEvent
 }

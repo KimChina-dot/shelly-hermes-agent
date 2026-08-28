@@ -37,6 +37,21 @@
             android:textSize="11sp"
             android:textStyle="bold"
             android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/expandHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:paddingStart="8dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="2dp"
+            android:text="@string/expand_details"
+            android:textColor="@color/accent_primary"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
     </LinearLayout>
 
     <TextView
@@ -49,4 +64,18 @@
         android:textColor="@color/text_primary"
         android:textIsSelectable="true"
         android:textSize="15sp" />
+
+    <TextView
+        android:id="@+id/details"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@color/surface_container"
+        android:fontFamily="monospace"
+        android:lineSpacingExtra="2dp"
+        android:padding="12dp"
+        android:textColor="@color/text_secondary"
+        android:textIsSelectable="true"
+        android:textSize="12sp"
+        android:visibility="gone" />
 </LinearLayout>

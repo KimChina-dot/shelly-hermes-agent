@@ -353,6 +353,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                         event.toolName,
                         event.toolCallId,
                         "RUNNING",
+                        event.argumentsJson,
                     )
                     is AgentEvent.ToolFinished -> broadcastStatus(
                         TaskState.RUNNING.name,
@@ -360,6 +361,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                         event.toolName,
                         event.toolCallId,
                         if (event.succeeded) "FINISHED" else "FAILED",
+                        event.result,
                     )
                 }
             },
@@ -445,6 +447,8 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         toolName: String? = null,
         toolCallId: String? = null,
         toolState: String? = null,
+        toolArgs: String? = null,
+        toolResult: String? = null,
     ) {
         sendBroadcast(Intent(ACTION_STATUS).apply {
             setPackage(packageName)
@@ -453,6 +457,8 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             putExtra(EXTRA_TOOL_NAME, toolName.orEmpty())
             putExtra(EXTRA_TOOL_CALL_ID, toolCallId.orEmpty())
             putExtra(EXTRA_TOOL_STATE, toolState.orEmpty())
+            putExtra(EXTRA_TOOL_ARGS, toolArgs.orEmpty())
+            putExtra(EXTRA_TOOL_RESULT, toolResult.orEmpty())
         })
     }
 
@@ -518,6 +524,8 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         const val EXTRA_TOOL_NAME = "tool_name"
         const val EXTRA_TOOL_CALL_ID = "tool_call_id"
         const val EXTRA_TOOL_STATE = "tool_state"
+        const val EXTRA_TOOL_ARGS = "tool_args"
+        const val EXTRA_TOOL_RESULT = "tool_result"
         const val STATE_AWAITING_APPROVAL = "AWAITING_APPROVAL"
         const val STATE_MODEL_DELTA = "MODEL_DELTA"
         const val STATE_QUEUED = "QUEUED"

@@ -153,14 +153,30 @@ class AgentCore(
             pendingToolCalls.clear()
             pendingToolCalls += PendingToolCall(executionCall, ToolExecutionStage.RUNNING)
             checkpoints.save(snapshot())
-            emit(AgentEvent.ToolStarted(executionCall.id, executionCall.name))
+            emit(AgentEvent.ToolStarted(executionCall.id, executionCall.name, executionCall.argumentsJson))
             val toolStarted = nanoTime()
             val result = try {
                 tools.execute(executionCall).also {
-                    emit(AgentEvent.ToolFinished(executionCall.id, executionCall.name, elapsedMillis(toolStarted), true))
+                    emit(
+                        AgentEvent.ToolFinished(
+                            executionCall.id,
+                            executionCall.name,
+                            elapsedMillis(toolStarted),
+                            true,
+                            it,
+                        ),
+                    )
                 }
             } catch (error: Throwable) {
-                emit(AgentEvent.ToolFinished(executionCall.id, executionCall.name, elapsedMillis(toolStarted), false))
+                emit(
+                    AgentEvent.ToolFinished(
+                        executionCall.id,
+                        executionCall.name,
+                        elapsedMillis(toolStarted),
+                        false,
+                        error.message,
+                    ),
+                )
                 throw error
             }
             pendingToolCalls.clear()

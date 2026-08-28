@@ -65,11 +65,21 @@ class TaskQueueActivity : Activity() {
             text = task.prompt.ifBlank { task.id }
         })
         addView(TextView(context).apply {
+            text = stateLabel(task.state)
+            textSize = 12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(getColor(stateColor(task.state)))
+            background = ContextCompat.getDrawable(context, stateBackground(task.state))
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(8) }
+        })
+        addView(TextView(context).apply {
             setTextAppearance(R.style.TextAppearance_Luma_Body)
             setPadding(0, dp(6), 0, 0)
             text = buildString {
-                append(stateLabel(task.state))
-                append(" · ")
                 append(task.profileId)
                 append(" · 尝试 ")
                 append(task.attempts)
@@ -121,6 +131,22 @@ class TaskQueueActivity : Activity() {
         QueuedTaskState.COMPLETED -> "已完成"
         QueuedTaskState.FAILED -> "失败"
         QueuedTaskState.CANCELLED -> "已取消"
+    }
+
+    private fun stateBackground(state: QueuedTaskState): Int = when (state) {
+        QueuedTaskState.PENDING -> R.drawable.bg_chip_warning
+        QueuedTaskState.RUNNING -> R.drawable.bg_chip_running
+        QueuedTaskState.COMPLETED -> R.drawable.bg_chip_success
+        QueuedTaskState.FAILED -> R.drawable.bg_chip_error
+        QueuedTaskState.CANCELLED -> R.drawable.bg_chip
+    }
+
+    private fun stateColor(state: QueuedTaskState): Int = when (state) {
+        QueuedTaskState.PENDING -> getColor(R.color.status_warning)
+        QueuedTaskState.RUNNING -> getColor(R.color.accent_primary)
+        QueuedTaskState.COMPLETED -> getColor(R.color.status_success)
+        QueuedTaskState.FAILED -> getColor(R.color.status_error)
+        QueuedTaskState.CANCELLED -> getColor(R.color.text_secondary)
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
