@@ -217,7 +217,15 @@ class AgentCore(
                 emit(AgentEvent.ModelFinished(modelRound, elapsedMillis(modelStarted), false))
                 throw error
             }
-            emit(AgentEvent.ModelFinished(modelRound, elapsedMillis(modelStarted), true))
+            emit(
+                AgentEvent.ModelFinished(
+                    round = modelRound,
+                    durationMillis = elapsedMillis(modelStarted),
+                    succeeded = true,
+                    inputTokens = reply.inputTokens,
+                    outputTokens = reply.outputTokens,
+                ),
+            )
             round += 1
             consumedTokens += reply.inputTokens + reply.outputTokens
             if (consumedTokens > limits.maxTokens) return AgentResult.Stopped("token_budget_exceeded", snapshot())

@@ -53,7 +53,9 @@ sealed interface AgentEvent {
     data class ModelFinished(
         val round: Int,
         val durationMillis: Long,
-        val succeeded: Boolean
+        val succeeded: Boolean,
+        val inputTokens: Int = 0,
+        val outputTokens: Int = 0,
     ) : AgentEvent
 
     data class ApprovalWaiting(val call: ToolCall) : AgentEvent

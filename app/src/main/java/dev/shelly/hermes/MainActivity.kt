@@ -71,6 +71,7 @@ class MainActivity : AppCompatActivity() {
 
     private val attachments = mutableListOf<AttachmentRef>()
     private val artifactMessages = mutableListOf<UiMessage>()
+    private var contextTokensFromModel = 0
 
     private val taskStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -84,6 +85,8 @@ class MainActivity : AppCompatActivity() {
             val toolState = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_STATE).orEmpty()
             val toolArgs = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_ARGS).orEmpty()
             val toolResult = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_RESULT).orEmpty()
+            val contextTokens = intent.getIntExtra(TaskForegroundService.EXTRA_CONTEXT_TOKENS, -1)
+            if (contextTokens > 0) contextTokensFromModel = contextTokens
             renderTaskState(state, detail, activeTaskId, queueCount, toolName, toolCallId, toolState, toolArgs, toolResult)
         }
     }
@@ -202,6 +205,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startTask() {
+        contextTokensFromModel = 0
         val input = findViewById<EditText>(R.id.taskInput)
         val prompt = input.text.toString().trim()
         if (prompt.isBlank()) {
@@ -725,6 +729,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun estimatedTokens(): Int {
+        if (contextTokensFromModel > 0) return contextTokensFromModel
         val chars = messages.sumOf { message ->
             message.text.length +
                 message.title.orEmpty().length +

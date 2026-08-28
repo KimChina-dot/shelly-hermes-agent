@@ -336,7 +336,11 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                         broadcastModelDelta(event.text)
                     }
                     is AgentEvent.ModelStarted -> broadcastStatus(TaskState.RUNNING.name, "正在请求模型（第 ${event.round} 轮）")
-                    is AgentEvent.ModelFinished -> broadcastStatus(TaskState.RUNNING.name, "模型响应耗时 ${event.durationMillis}ms")
+                    is AgentEvent.ModelFinished -> broadcastStatus(
+                        TaskState.RUNNING.name,
+                        "模型响应耗时 ${event.durationMillis}ms",
+                        contextTokens = event.inputTokens + event.outputTokens,
+                    )
                     is AgentEvent.ApprovalWaiting -> broadcastStatus(
                         STATE_AWAITING_APPROVAL,
                         "等待审批：${event.call.name}",
@@ -417,7 +421,8 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         is AgentEvent.ModelStarted -> SessionEvent(SessionEventType.MODEL_STARTED, "round=$round")
         is AgentEvent.ModelFinished -> SessionEvent(
             SessionEventType.MODEL_FINISHED,
-            "round=$round,durationMillis=$durationMillis,succeeded=$succeeded",
+            "round=$round,durationMillis=$durationMillis,succeeded=$succeeded," +
+                "inputTokens=$inputTokens,outputTokens=$outputTokens",
         )
         is AgentEvent.ApprovalWaiting -> SessionEvent(
             SessionEventType.APPROVAL_WAITING,
@@ -449,6 +454,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         toolState: String? = null,
         toolArgs: String? = null,
         toolResult: String? = null,
+        contextTokens: Int = -1,
     ) {
         sendBroadcast(Intent(ACTION_STATUS).apply {
             setPackage(packageName)
@@ -459,6 +465,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             putExtra(EXTRA_TOOL_STATE, toolState.orEmpty())
             putExtra(EXTRA_TOOL_ARGS, toolArgs.orEmpty())
             putExtra(EXTRA_TOOL_RESULT, toolResult.orEmpty())
+            putExtra(EXTRA_CONTEXT_TOKENS, contextTokens)
         })
     }
 
@@ -467,6 +474,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             setPackage(packageName)
             putExtra(EXTRA_STATE, STATE_MODEL_DELTA)
             putExtra(EXTRA_DETAIL, text)
+            putExtra(EXTRA_CONTEXT_TOKENS, -1)
         })
     }
 
@@ -526,6 +534,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         const val EXTRA_TOOL_STATE = "tool_state"
         const val EXTRA_TOOL_ARGS = "tool_args"
         const val EXTRA_TOOL_RESULT = "tool_result"
+        const val EXTRA_CONTEXT_TOKENS = "context_tokens"
         const val STATE_AWAITING_APPROVAL = "AWAITING_APPROVAL"
         const val STATE_MODEL_DELTA = "MODEL_DELTA"
         const val STATE_QUEUED = "QUEUED"
