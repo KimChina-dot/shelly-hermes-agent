@@ -14,6 +14,7 @@ import android.os.Looper
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
@@ -28,6 +29,8 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
 import dev.shelly.hermes.core.AgentProfileMode
 import dev.shelly.hermes.core.AgentProfileRegistry
 import org.json.JSONObject
+
+data class AttachmentRef(val name: String, val preview: String)
 
 class MainActivity : AppCompatActivity() {
     private lateinit var messages: MutableList<UiMessage>
@@ -57,6 +60,14 @@ class MainActivity : AppCompatActivity() {
         refreshConfigurationStatus()
     }
 
+    private val documentPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@registerForActivityResult
+        addAttachment(uri)
+    }
+
+    private val attachments = mutableListOf<AttachmentRef>()
+    private val artifactMessages = mutableListOf<UiMessage>()
+
     private val taskStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != TaskForegroundService.ACTION_STATUS) return
@@ -78,7 +89,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         messages = mutableListOf()
-        messageAdapter = AgentMessageAdapter(this, messages)
+        messageAdapter = AgentMessageAdapter(this, messages) { retryLastTask() }
         findViewById<RecyclerView>(R.id.messageList).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
@@ -98,6 +109,17 @@ class MainActivity : AppCompatActivity() {
             selectProfile(available[(index + 1) % available.size])
         }
         findViewById<Button>(R.id.startTask).setOnClickListener { startTask() }
+        findViewById<Button>(R.id.attachButton).setOnClickListener {
+            documentPicker.launch(
+                arrayOf(
+                    "text/*",
+                    "application/json",
+                    "application/xml",
+                    "application/javascript",
+                    "application/typescript",
+                ),
+            )
+        }
         findViewById<Button>(R.id.resumeTask).setOnClickListener { resumeTask() }
         findViewById<Button>(R.id.stopTask).setOnClickListener { stopTask() }
         findViewById<Button>(R.id.retry).setOnClickListener {
@@ -176,6 +198,19 @@ class MainActivity : AppCompatActivity() {
             input.error = "请输入任务内容"
             return
         }
+        val effectivePrompt = buildString {
+            append(prompt)
+            if (attachments.isNotEmpty()) {
+                append("\n\n附件上下文：\n")
+                attachments.forEach { item ->
+                    append("- ")
+                    append(item.name)
+                    append("：")
+                    append(item.preview.take(400))
+                    append("\n")
+                }
+            }
+        }
         if (workspaceUri() == null) {
             Toast.makeText(this, "请先选择项目目录", Toast.LENGTH_SHORT).show()
             return
@@ -201,11 +236,20 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(this, TaskForegroundService::class.java).apply {
             action = TaskForegroundService.ACTION_START
             putExtra(TaskForegroundService.EXTRA_TASK_ID, "task-${System.currentTimeMillis()}")
-            putExtra(TaskForegroundService.EXTRA_PROMPT, prompt)
+            putExtra(TaskForegroundService.EXTRA_PROMPT, effectivePrompt)
             putExtra(TaskForegroundService.EXTRA_MODE, currentMode.wireValue)
             putExtra(TaskForegroundService.EXTRA_PROFILE_ID, currentProfileId)
         }
+        attachments.clear()
+        renderAttachmentTray()
         ContextCompat.startForegroundService(this, intent)
+    }
+
+    private fun retryLastTask() {
+        if (lastPrompt.isBlank()) return
+        appendMessage(UiMessageRole.STATUS, "正在重试上次任务")
+        findViewById<EditText>(R.id.taskInput).setText(lastPrompt)
+        startTask()
     }
 
     private fun stopTask() {
@@ -369,9 +413,105 @@ class MainActivity : AppCompatActivity() {
             artifactPath = path,
             artifactType = path.substringAfterLast('.', "file"),
         )
+        val existing = artifactMessages.indexOfFirst { it.artifactPath == path }
+        if (existing >= 0) {
+            artifactMessages[existing] = messages.last()
+        } else {
+            artifactMessages += messages.last()
+        }
+        renderArtifactGallery()
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
         scrollToLatest()
+    }
+
+    private fun addAttachment(uri: Uri) {
+        val name = runCatching {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        }.getOrNull() ?: uri.lastPathSegment ?: "附件"
+        val preview = runCatching {
+            contentResolver.openInputStream(uri)?.use { input ->
+                input.bufferedReader(Charsets.UTF_8).use { it.readText().take(4000) }
+            }.orEmpty()
+        }.getOrDefault("")
+        if (preview.isBlank()) {
+            Toast.makeText(this, "无法读取附件内容，请选择文本类文件", Toast.LENGTH_SHORT).show()
+            return
+        }
+        attachments += AttachmentRef(name, preview)
+        renderAttachmentTray()
+    }
+
+    private fun renderAttachmentTray() {
+        val tray = findViewById<HorizontalScrollView>(R.id.attachmentTray)
+        val list = findViewById<LinearLayout>(R.id.attachmentList)
+        list.removeAllViews()
+        if (attachments.isEmpty()) {
+            tray.visibility = View.GONE
+            return
+        }
+        tray.visibility = View.VISIBLE
+        attachments.forEachIndexed { index, item ->
+            list.addView(TextView(this).apply {
+                text = item.name
+                textSize = 12f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(getColor(R.color.text_primary))
+                background = ContextCompat.getDrawable(context, R.drawable.bg_chip_warning)
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+                contentDescription = "附件 ${item.name}，点击移除"
+                setOnClickListener {
+                    attachments.removeAt(index)
+                    renderAttachmentTray()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { marginEnd = dp(8) }
+            })
+        }
+    }
+
+    private fun renderArtifactGallery() {
+        val scroll = findViewById<HorizontalScrollView>(R.id.artifactGalleryScroll)
+        val list = findViewById<LinearLayout>(R.id.artifactGalleryList)
+        list.removeAllViews()
+        if (artifactMessages.isEmpty()) {
+            scroll.visibility = View.GONE
+            return
+        }
+        scroll.visibility = View.VISIBLE
+        artifactMessages.forEach { message ->
+            list.addView(TextView(this).apply {
+                text = "${message.artifactType?.uppercase() ?: "FILE"} · ${message.title}"
+                textSize = 12f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(getColor(R.color.text_primary))
+                background = ContextCompat.getDrawable(context, R.drawable.bg_chip_success)
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+                contentDescription = "产物 ${message.title}"
+                setOnClickListener { showArtifactDialog(message) }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { marginEnd = dp(8) }
+            })
+        }
+    }
+
+    private fun showArtifactDialog(message: UiMessage) {
+        AlertDialog.Builder(this)
+            .setTitle(message.title)
+            .setMessage(
+                buildString {
+                    append(message.artifactPath ?: "")
+                    append("\n\n")
+                    append(message.text)
+                },
+            )
+            .setPositiveButton("关闭", null)
+            .show()
     }
 
     private fun pathFrom(args: String, result: String): String? {
@@ -469,6 +609,8 @@ class MainActivity : AppCompatActivity() {
     private fun workspaceUri(): Uri? = getSharedPreferences(PUBLIC_CONFIG, MODE_PRIVATE)
         .getString(WORKSPACE_URI, null)
         ?.let(Uri::parse)
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun showModelSettingsDialog() {
         val store = AndroidKeyStoreModelConfig(this)

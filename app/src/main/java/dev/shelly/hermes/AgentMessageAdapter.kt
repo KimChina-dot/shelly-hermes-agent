@@ -28,6 +28,7 @@ data class UiMessage(
 class AgentMessageAdapter(
     private val context: Context,
     private val messages: List<UiMessage>,
+    private val onRetry: (() -> Unit)? = null,
 ) : RecyclerView.Adapter<AgentMessageAdapter.MessageViewHolder>() {
 
     private val expandedToolCallIds = mutableSetOf<String>()
@@ -50,6 +51,7 @@ class AgentMessageAdapter(
         private val typeBadge = row.findViewById<TextView>(R.id.typeBadge)
         private val stateChip = row.findViewById<TextView>(R.id.stateChip)
         private val expandHint = row.findViewById<TextView>(R.id.expandHint)
+        private val retryHint = row.findViewById<TextView>(R.id.retryHint)
         private val content = row.findViewById<TextView>(R.id.content)
         private val details = row.findViewById<TextView>(R.id.details)
 
@@ -118,6 +120,15 @@ class AgentMessageAdapter(
                 ),
             )
             bindExpandable(message)
+            bindRetry(message)
+        }
+
+        private fun bindRetry(message: UiMessage) {
+            val canRetry = message.role == UiMessageRole.TOOL &&
+                message.toolState == "FAILED" &&
+                onRetry != null
+            retryHint.visibility = if (canRetry) View.VISIBLE else View.GONE
+            retryHint.setOnClickListener(if (canRetry) { View.OnClickListener { onRetry?.invoke() } } else null)
         }
 
         private fun bindExpandable(message: UiMessage) {

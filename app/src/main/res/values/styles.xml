@@ -19,6 +19,9 @@
     <string name="stop">停止</string>
     <string name="expand_details">详情</string>
     <string name="collapse_details">收起</string>
+    <string name="attach_files">添加附件</string>
+    <string name="retry_task">重试任务</string>
+    <string name="artifact_gallery">产物</string>
 
     <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>

@@ -143,12 +143,33 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
+        <HorizontalScrollView
+            android:id="@+id/artifactGalleryScroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top"
+            android:background="@color/surface_background"
+            android:fillViewport="true"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="6dp"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/artifactGalleryList"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingBottom="6dp" />
+        </HorizontalScrollView>
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/messageList"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:paddingTop="8dp"
+            android:paddingTop="4dp"
             android:paddingBottom="16dp"
             android:scrollbars="vertical" />
 
@@ -224,44 +245,74 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="bottom"
-            android:orientation="horizontal"
+            android:orientation="vertical"
             android:paddingStart="4dp"
-            android:paddingTop="6dp"
+            android:paddingTop="4dp"
             android:paddingEnd="4dp"
-            android:paddingBottom="6dp">
+            android:paddingBottom="4dp">
 
-            <EditText
-                android:id="@+id/taskInput"
-                android:layout_width="0dp"
+            <HorizontalScrollView
+                android:id="@+id/attachmentTray"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:background="@android:color/transparent"
-                android:gravity="top|start"
-                android:hint="@string/task_hint"
-                android:inputType="textCapSentences|textMultiLine"
-                android:maxLines="6"
-                android:minHeight="48dp"
-                android:padding="10dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_tertiary" />
+                android:scrollbars="none"
+                android:visibility="gone">
 
-            <Button
-                android:id="@+id/startTask"
-                style="@style/Widget.Luma.PrimaryButton"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
-                android:text="@string/send" />
+                <LinearLayout
+                    android:id="@+id/attachmentList"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingBottom="4dp" />
+            </HorizontalScrollView>
 
-            <Button
-                android:id="@+id/stopTask"
-                style="@style/Widget.Luma.ToolbarButton"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
-                android:layout_marginStart="6dp"
-                android:text="@string/stop"
-                android:textColor="@color/status_error"
-                android:visibility="gone" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="bottom"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/attachButton"
+                    style="@style/Widget.Luma.ToolbarButton"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:contentDescription="@string/attach_files"
+                    android:drawableTop="@android:drawable/ic_menu_attachment"
+                    android:text="" />
+
+                <EditText
+                    android:id="@+id/taskInput"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@android:color/transparent"
+                    android:gravity="top|start"
+                    android:hint="@string/task_hint"
+                    android:inputType="textCapSentences|textMultiLine"
+                    android:maxLines="6"
+                    android:minHeight="48dp"
+                    android:padding="10dp"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_tertiary" />
+
+                <Button
+                    android:id="@+id/startTask"
+                    style="@style/Widget.Luma.PrimaryButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:text="@string/send" />
+
+                <Button
+                    android:id="@+id/stopTask"
+                    style="@style/Widget.Luma.ToolbarButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="6dp"
+                    android:text="@string/stop"
+                    android:textColor="@color/status_error"
+                    android:visibility="gone" />
+            </LinearLayout>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
