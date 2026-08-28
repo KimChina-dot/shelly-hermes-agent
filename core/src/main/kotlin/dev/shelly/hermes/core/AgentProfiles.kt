@@ -180,9 +180,10 @@ object AgentProfiles {
             "workspace.file.overwrite",
             "workspace.file.append",
             "workspace.shell.execute",
+            "workspace.file.rollback",
         ),
         limits = AgentLimits(),
-        toolNames = extendedReadTools + setOf("run_command", "apply_patch", "create_file", "overwrite_file", "append_file"),
+        toolNames = extendedReadTools + setOf("run_command", "rollback_file", "apply_patch", "create_file", "overwrite_file", "append_file"),
     )
 
     val PLANNER = AgentProfile(

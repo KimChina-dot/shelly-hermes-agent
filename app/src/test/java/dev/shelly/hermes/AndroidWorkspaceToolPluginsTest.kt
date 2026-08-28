@@ -27,6 +27,7 @@ class AndroidWorkspaceToolPluginsTest {
                 "read_file", "exists", "list_files", "search_files",
                 "repo_map", "batch_read",
                 "run_command",
+                "rollback_file",
                 "apply_patch", "create_file", "overwrite_file", "append_file",
             ),
             manifests.map { it.name },
@@ -44,7 +45,7 @@ class AndroidWorkspaceToolPluginsTest {
             assertFalse(manifest.requiresApproval)
             assertEquals(CheckpointRequirement.NONE, manifest.checkpointRequirement)
         }
-        setOf("apply_patch", "create_file", "overwrite_file", "append_file").forEach { name ->
+        setOf("rollback_file", "apply_patch", "create_file", "overwrite_file", "append_file").forEach { name ->
             val manifest = byName.getValue(name)
             assertTrue(manifest.risk == ToolRisk.MEDIUM || manifest.risk == ToolRisk.HIGH)
             assertTrue(manifest.requiresApproval)

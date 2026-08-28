@@ -22,13 +22,19 @@ object AndroidWorkspaceToolPlugins {
         manifest("repo_map", "workspace.tree.map", ToolRisk.LOW, false, 20_000, 250_000),
         manifest("batch_read", "workspace.file.batch_read", ToolRisk.LOW, false, 30_000, MAX_FILE_CHARS * 4 + 1024),
         manifest("run_command", "workspace.shell.execute", ToolRisk.MEDIUM, true, 30_000, 64_000),
+        manifest("rollback_file", "workspace.file.rollback", ToolRisk.MEDIUM, true, 20_000, 512, writes = true),
         manifest("apply_patch", "workspace.file.patch", ToolRisk.MEDIUM, true, 20_000, 512, writes = true),
         manifest("create_file", "workspace.file.create", ToolRisk.HIGH, true, 20_000, 256, writes = true),
         manifest("overwrite_file", "workspace.file.overwrite", ToolRisk.HIGH, true, 20_000, 256, writes = true),
         manifest("append_file", "workspace.file.append", ToolRisk.HIGH, true, 20_000, 256, writes = true),
     )
 
-    fun registerAll(runtime: ToolPluginRuntime, files: SafWorkspaceFileExecutor, shell: ShellToolExecutor? = null) {
+    fun registerAll(
+        runtime: ToolPluginRuntime,
+        files: SafWorkspaceFileExecutor,
+        shell: ShellToolExecutor? = null,
+        backups: WorkspaceBackupStore? = null,
+    ) {
         val handlers = mapOf<String, suspend (ToolCall) -> String>(
             "read_file" to { call ->
                 val arguments = call.arguments()
@@ -151,8 +157,10 @@ object AndroidWorkspaceToolPlugins {
             },
             "apply_patch" to { call ->
                 val arguments = call.arguments()
+                val patchPath = arguments.requiredString("path")
+                backups?.let { store -> files.readText(patchPath)?.let { store.save(patchPath, it) } }
                 val result = files.applyPatch(
-                    arguments.requiredString("path"),
+                    patchPath,
                     arguments.requiredString("patch"),
                 )
                 JSONObject()
@@ -161,10 +169,33 @@ object AndroidWorkspaceToolPlugins {
                     .put("characters_written", result.charactersWritten)
                     .toString()
             },
-            "create_file" to writeHandler { files.createText(it.first, it.second) },
-            "overwrite_file" to writeHandler { files.overwriteText(it.first, it.second) },
-            "append_file" to writeHandler { files.appendText(it.first, it.second) },
+            "create_file" to writeHandler(backups, files) { files.createText(it.first, it.second) },
+            "overwrite_file" to writeHandler(backups, files) { files.overwriteText(it.first, it.second) },
+            "append_file" to writeHandler(backups, files) { files.appendText(it.first, it.second) },
         )
+
+        if (backups != null) {
+            runtime.register(
+                plugin(manifests.first { it.name == "rollback_file" }) { call ->
+                    val path = call.arguments().requiredString("path")
+                    val content = backups.restore(path)
+                    if (content == null) {
+                        JSONObject()
+                            .put("restored", false)
+                            .put("path", path)
+                            .put("reason", "no_backup")
+                            .toString()
+                    } else {
+                        files.overwriteText(path, content)
+                        backups.clear(path)
+                        JSONObject()
+                            .put("restored", true)
+                            .put("path", path)
+                            .toString()
+                    }
+                },
+            )
+        }
 
         if (shell != null) {
             val shellHandler: suspend (ToolCall) -> String = { call ->
@@ -181,7 +212,7 @@ object AndroidWorkspaceToolPlugins {
         }
 
         manifests.forEach { pluginManifest ->
-            if (pluginManifest.name == "run_command") return@forEach
+            if (pluginManifest.name == "run_command" || pluginManifest.name == "rollback_file") return@forEach
             runtime.register(plugin(pluginManifest, handlers.getValue(pluginManifest.name)))
         }
     }
@@ -220,9 +251,15 @@ object AndroidWorkspaceToolPlugins {
         circuitResetMillis = 30_000,
     )
 
-    private fun writeHandler(action: (Pair<String, String>) -> Unit): suspend (ToolCall) -> String = { call ->
+    private fun writeHandler(
+        backups: WorkspaceBackupStore?,
+        files: SafWorkspaceFileExecutor,
+        action: (Pair<String, String>) -> Unit,
+    ): suspend (ToolCall) -> String = { call ->
         val arguments = call.arguments()
-        action(arguments.requiredString("path") to arguments.requiredContent())
+        val path = arguments.requiredString("path")
+        backups?.let { store -> files.readText(path)?.let { store.save(path, it) } }
+        action(path to arguments.requiredContent())
         JSONObject().put("ok", true).toString()
     }
 

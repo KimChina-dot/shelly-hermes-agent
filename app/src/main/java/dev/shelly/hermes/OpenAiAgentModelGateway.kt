@@ -358,6 +358,7 @@ class OpenAiAgentModelGateway(
                     required = JSONArray().put("path").put("patch"),
                 ),
             )
+            put(tool("rollback_file", "Restore a file to its most recent pre-write snapshot inside the selected workspace", false))
             put(tool("create_file", "Create a new UTF-8 text file", true))
             put(tool("overwrite_file", "Create or replace a UTF-8 text file", true))
             put(tool("append_file", "Append UTF-8 text to a file", true))

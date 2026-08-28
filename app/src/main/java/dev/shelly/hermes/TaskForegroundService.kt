@@ -294,6 +294,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         val tools = SafWorkspaceToolExecutor(
             SafWorkspaceFileExecutor(applicationContext, workspace),
             shell,
+            WorkspaceBackupStore(this),
             profile.allowedCapabilities,
             profile.toolNames,
         )
