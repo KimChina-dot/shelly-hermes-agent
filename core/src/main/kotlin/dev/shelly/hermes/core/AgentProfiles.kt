@@ -181,9 +181,26 @@ object AgentProfiles {
             "workspace.file.append",
             "workspace.shell.execute",
             "workspace.file.rollback",
+            "workspace.shell.run_session",
+            "workspace.shell.poll_session",
+            "workspace.shell.cancel_session",
+            "mcp.tools.list",
+            "mcp.tools.call",
         ),
         limits = AgentLimits(),
-        toolNames = extendedReadTools + setOf("run_command", "rollback_file", "apply_patch", "create_file", "overwrite_file", "append_file"),
+        toolNames = extendedReadTools + setOf(
+            "run_command",
+            "shell_run",
+            "shell_poll",
+            "shell_cancel",
+            "mcp_list_tools",
+            "mcp_call",
+            "rollback_file",
+            "apply_patch",
+            "create_file",
+            "overwrite_file",
+            "append_file",
+        ),
     )
 
     val PLANNER = AgentProfile(

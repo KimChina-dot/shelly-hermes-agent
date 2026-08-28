@@ -27,6 +27,8 @@ class AndroidWorkspaceToolPluginsTest {
                 "read_file", "exists", "list_files", "search_files",
                 "repo_map", "batch_read",
                 "run_command",
+                "shell_run", "shell_poll", "shell_cancel",
+                "mcp_list_tools", "mcp_call",
                 "rollback_file",
                 "apply_patch", "create_file", "overwrite_file", "append_file",
             ),
@@ -39,13 +41,13 @@ class AndroidWorkspaceToolPluginsTest {
 
     @Test fun readToolsAreLowRiskAndWritesRequireApprovalAndCheckpoint() {
         val byName = AndroidWorkspaceToolPlugins.manifests.associateBy { it.name }
-        setOf("read_file", "exists", "list_files", "search_files").forEach { name ->
+        setOf("read_file", "exists", "list_files", "search_files", "shell_poll", "shell_cancel").forEach { name ->
             val manifest = byName.getValue(name)
             assertEquals(ToolRisk.LOW, manifest.risk)
             assertFalse(manifest.requiresApproval)
             assertEquals(CheckpointRequirement.NONE, manifest.checkpointRequirement)
         }
-        setOf("rollback_file", "apply_patch", "create_file", "overwrite_file", "append_file").forEach { name ->
+        setOf("mcp_call", "rollback_file", "apply_patch", "create_file", "overwrite_file", "append_file").forEach { name ->
             val manifest = byName.getValue(name)
             assertTrue(manifest.risk == ToolRisk.MEDIUM || manifest.risk == ToolRisk.HIGH)
             assertTrue(manifest.requiresApproval)

@@ -13,6 +13,8 @@ class SafWorkspaceToolExecutor(
     files: SafWorkspaceFileExecutor,
     shell: ShellToolExecutor? = null,
     backups: WorkspaceBackupStore? = null,
+    shellSessions: ShellSessionManager? = null,
+    mcp: McpToolBridge? = null,
     allowedCapabilities: Set<String> = AndroidWorkspaceToolPlugins.manifests.mapTo(linkedSetOf<String>()) { it.capability },
     private val allowedToolNames: Set<String> = AndroidWorkspaceToolPlugins.manifests.mapTo(linkedSetOf<String>()) { it.name },
 ) : ToolExecutor {
@@ -20,7 +22,7 @@ class SafWorkspaceToolExecutor(
     private val runtime = ToolPluginRuntime(
         ToolCapabilityAuthorizer.granted(allowedCapabilities),
     ).also {
-        AndroidWorkspaceToolPlugins.registerAll(it, files, shell, backups)
+        AndroidWorkspaceToolPlugins.registerAll(it, files, shell, backups, shellSessions, mcp)
     }
     private val lifecycleLock = Mutex()
 

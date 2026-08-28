@@ -350,6 +350,53 @@ class OpenAiAgentModelGateway(
             )
             put(
                 toolWithProperties(
+                    name = "shell_run",
+                    description = "Start a long-running shell command in the sandbox and return a session id to poll",
+                    properties = JSONObject()
+                        .put("command", JSONObject().put("type", "string").put("description", "Shell command to execute").put("minLength", 1)),
+                    required = JSONArray().put("command"),
+                ),
+            )
+            put(
+                toolWithProperties(
+                    name = "shell_poll",
+                    description = "Return new output for a running shell session started by shell_run",
+                    properties = JSONObject()
+                        .put("session_id", JSONObject().put("type", "string").put("description", "Session id from shell_run")),
+                    required = JSONArray().put("session_id"),
+                ),
+            )
+            put(
+                toolWithProperties(
+                    name = "shell_cancel",
+                    description = "Cancel a running shell session started by shell_run",
+                    properties = JSONObject()
+                        .put("session_id", JSONObject().put("type", "string").put("description", "Session id from shell_run")),
+                    required = JSONArray().put("session_id"),
+                ),
+            )
+            put(
+                toolWithProperties(
+                    name = "mcp_list_tools",
+                    description = "List tools exposed by a configured MCP server in .mcp.json",
+                    properties = JSONObject()
+                        .put("server", JSONObject().put("type", "string").put("description", "MCP server name")),
+                    required = JSONArray().put("server"),
+                ),
+            )
+            put(
+                toolWithProperties(
+                    name = "mcp_call",
+                    description = "Call a tool on a configured MCP server from .mcp.json",
+                    properties = JSONObject()
+                        .put("server", JSONObject().put("type", "string").put("description", "MCP server name"))
+                        .put("tool", JSONObject().put("type", "string").put("description", "Tool name exposed by the server"))
+                        .put("arguments", JSONObject().put("type", "object").put("description", "Tool input object")),
+                    required = JSONArray().put("server").put("tool"),
+                ),
+            )
+            put(
+                toolWithProperties(
                     name = "apply_patch",
                     description = "Apply a unified diff to an existing UTF-8 file; fails if old context is stale",
                     properties = JSONObject()

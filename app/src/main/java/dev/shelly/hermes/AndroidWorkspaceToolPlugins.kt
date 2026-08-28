@@ -22,6 +22,11 @@ object AndroidWorkspaceToolPlugins {
         manifest("repo_map", "workspace.tree.map", ToolRisk.LOW, false, 20_000, 250_000),
         manifest("batch_read", "workspace.file.batch_read", ToolRisk.LOW, false, 30_000, MAX_FILE_CHARS * 4 + 1024),
         manifest("run_command", "workspace.shell.execute", ToolRisk.MEDIUM, true, 30_000, 64_000),
+        manifest("shell_run", "workspace.shell.run_session", ToolRisk.MEDIUM, true, 30_000, 64_000),
+        manifest("shell_poll", "workspace.shell.poll_session", ToolRisk.LOW, false, 10_000, 64_000),
+        manifest("shell_cancel", "workspace.shell.cancel_session", ToolRisk.LOW, false, 10_000, 1024),
+        manifest("mcp_list_tools", "mcp.tools.list", ToolRisk.MEDIUM, true, 30_000, 64_000),
+        manifest("mcp_call", "mcp.tools.call", ToolRisk.HIGH, true, 30_000, 64_000, writes = true),
         manifest("rollback_file", "workspace.file.rollback", ToolRisk.MEDIUM, true, 20_000, 512, writes = true),
         manifest("apply_patch", "workspace.file.patch", ToolRisk.MEDIUM, true, 20_000, 512, writes = true),
         manifest("create_file", "workspace.file.create", ToolRisk.HIGH, true, 20_000, 256, writes = true),
@@ -34,6 +39,8 @@ object AndroidWorkspaceToolPlugins {
         files: SafWorkspaceFileExecutor,
         shell: ShellToolExecutor? = null,
         backups: WorkspaceBackupStore? = null,
+        shellSessions: ShellSessionManager? = null,
+        mcp: McpToolBridge? = null,
     ) {
         val handlers = mapOf<String, suspend (ToolCall) -> String>(
             "read_file" to { call ->
@@ -174,6 +181,34 @@ object AndroidWorkspaceToolPlugins {
             "append_file" to writeHandler(backups, files) { files.appendText(it.first, it.second) },
         )
 
+        if (shellSessions != null) {
+            runtime.register(plugin(manifests.first { it.name == "shell_run" }) { call ->
+                val arguments = call.arguments()
+                shellSessions.start(arguments.requiredString("command"))
+            })
+            runtime.register(plugin(manifests.first { it.name == "shell_poll" }) { call ->
+                shellSessions.poll(call.arguments().requiredString("session_id"))
+            })
+            runtime.register(plugin(manifests.first { it.name == "shell_cancel" }) { call ->
+                shellSessions.cancel(call.arguments().requiredString("session_id"))
+            })
+        }
+
+        if (mcp != null) {
+            runtime.register(plugin(manifests.first { it.name == "mcp_list_tools" }) { call ->
+                val arguments = call.arguments()
+                val serverName = arguments.requiredString("server")
+                JSONObject().put("tools", mcp.listTools(serverName)).toString()
+            })
+            runtime.register(plugin(manifests.first { it.name == "mcp_call" }) { call ->
+                val arguments = call.arguments()
+                val serverName = arguments.requiredString("server")
+                val toolName = arguments.requiredString("tool")
+                val toolArguments = arguments.optJSONObject("arguments") ?: JSONObject()
+                mcp.call(serverName, toolName, toolArguments).toString()
+            })
+        }
+
         if (backups != null) {
             runtime.register(
                 plugin(manifests.first { it.name == "rollback_file" }) { call ->
@@ -212,7 +247,16 @@ object AndroidWorkspaceToolPlugins {
         }
 
         manifests.forEach { pluginManifest ->
-            if (pluginManifest.name == "run_command" || pluginManifest.name == "rollback_file") return@forEach
+            if (pluginManifest.name == "run_command" ||
+                pluginManifest.name == "shell_run" ||
+                pluginManifest.name == "shell_poll" ||
+                pluginManifest.name == "shell_cancel" ||
+                pluginManifest.name == "mcp_list_tools" ||
+                pluginManifest.name == "mcp_call" ||
+                pluginManifest.name == "rollback_file"
+            ) {
+                return@forEach
+            }
             runtime.register(plugin(pluginManifest, handlers.getValue(pluginManifest.name)))
         }
     }

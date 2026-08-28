@@ -36,6 +36,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
     private var currentBundle: AgentBundle? = null
     @Volatile private var currentModelClient: OpenAiModelGateway? = null
     @Volatile private var currentEventStore: SessionEventStore? = null
+    @Volatile private var shellSessions: ShellSessionManager? = null
     @Volatile private var destroying = false
 
     override fun onCreate() {
@@ -205,6 +206,8 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
     override fun onDestroy() {
         destroying = true
         currentModelClient?.cancelCurrentRequest()
+        shellSessions?.shutdown()
+        shellSessions = null
         currentTaskId?.let(coordinator::onForegroundServiceStopped)
         super.onDestroy()
     }
@@ -291,10 +294,15 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         val model = OpenAiAgentModelGateway(modelClient, mode, profile.toolNames)
         val shellDir = File(filesDir, "shell-workdir").also { it.mkdirs() }
         val shell = ShellToolExecutor(shellDir)
+        val sessions = ShellSessionManager(shellDir)
+        shellSessions = sessions
+        val mcp = McpToolBridge(McpConfigProvider.fromWorkspace(SafWorkspaceFileExecutor(applicationContext, workspace)))
         val tools = SafWorkspaceToolExecutor(
             SafWorkspaceFileExecutor(applicationContext, workspace),
             shell,
             WorkspaceBackupStore(this),
+            sessions,
+            mcp,
             profile.allowedCapabilities,
             profile.toolNames,
         )
