@@ -371,6 +371,7 @@ class MainActivity : AppCompatActivity() {
         messages += UiMessage(role, text)
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
+        updateContextIndicator()
         scrollToLatest()
     }
 
@@ -388,6 +389,7 @@ class MainActivity : AppCompatActivity() {
         )
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
+        updateContextIndicator()
         scrollToLatest()
     }
 
@@ -398,6 +400,7 @@ class MainActivity : AppCompatActivity() {
         messages[index] = messages[index].copy(text = detail, toolState = state, toolResult = result)
         if (state == "FINISHED") appendArtifactIfNeeded(toolName, messages[index].toolArgs.orEmpty(), result)
         messageAdapter.notifyDataSetChanged()
+        updateContextIndicator()
     }
 
     private fun appendArtifactIfNeeded(toolName: String, args: String, result: String) {
@@ -440,6 +443,7 @@ class MainActivity : AppCompatActivity() {
         renderArtifactGallery()
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
+        updateContextIndicator()
         scrollToLatest()
     }
 
@@ -554,8 +558,43 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(message.title)
             .setView(body)
-            .setPositiveButton("关闭", null)
+            .setPositiveButton("打开") { _, _ -> openArtifact(message) }
+            .setNegativeButton("分享") { _, _ -> shareArtifact(message) }
+            .setNeutralButton("关闭", null)
             .show()
+    }
+
+    private fun openArtifact(message: UiMessage) {
+        val documentUri = resolveDocumentUri(message) ?: return
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(documentUri, contentResolver.getType(documentUri) ?: "application/octet-stream")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching { startActivity(intent) }.onFailure {
+            Toast.makeText(this, "没有可打开此文件的应用", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun shareArtifact(message: UiMessage) {
+        val documentUri = resolveDocumentUri(message) ?: return
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = contentResolver.getType(documentUri) ?: "application/octet-stream"
+            putExtra(Intent.EXTRA_STREAM, documentUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(send, "分享 ${message.title}"))
+    }
+
+    private fun resolveDocumentUri(message: UiMessage): Uri? {
+        val tree = workspaceUri() ?: run {
+            Toast.makeText(this, "尚未选择项目目录", Toast.LENGTH_SHORT).show()
+            return null
+        }
+        val path = message.artifactPath ?: return null
+        return runCatching { SafWorkspaceFileExecutor(this, tree).documentUri(path) }.getOrNull() ?: run {
+            Toast.makeText(this, "产物文件不存在或已移除", Toast.LENGTH_SHORT).show()
+            null
+        }
     }
 
     private fun pathFrom(args: String, result: String): String? {
@@ -603,6 +642,7 @@ class MainActivity : AppCompatActivity() {
         streamingMessage = updated
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
+        updateContextIndicator()
         scrollToLatest()
     }
 
@@ -656,7 +696,47 @@ class MainActivity : AppCompatActivity() {
         } else if (messages.isEmpty()) {
             empty.text = "开始一个任务\n在下方输入要完成的事情，Agent 会规划并执行"
         }
+        updateContextIndicator()
     }
+
+    private fun updateContextIndicator() {
+        val config = AndroidKeyStoreModelConfig(this).load()
+        val bar = findViewById<ProgressBar>(R.id.contextBar)
+        val text = findViewById<TextView>(R.id.contextText)
+        if (config == null || messages.isEmpty()) {
+            bar.visibility = View.GONE
+            text.visibility = View.GONE
+            return
+        }
+        val window = config.contextWindow.coerceAtLeast(1_000)
+        val used = estimatedTokens()
+        val percent = (used * 100 / window).coerceIn(0, 100)
+        val warning = percent >= 80
+        bar.max = 100
+        bar.progress = percent
+        bar.progressTintList = ContextCompat.getColorStateList(
+            this,
+            if (warning) R.color.status_error else R.color.accent_primary,
+        )
+        bar.visibility = View.VISIBLE
+        text.text = "${formatTokens(used)} / ${formatTokens(window)}"
+        text.setTextColor(getColor(if (warning) R.color.status_error else R.color.text_tertiary))
+        text.visibility = View.VISIBLE
+    }
+
+    private fun estimatedTokens(): Int {
+        val chars = messages.sumOf { message ->
+            message.text.length +
+                message.title.orEmpty().length +
+                message.toolArgs.orEmpty().length +
+                message.toolResult.orEmpty().length
+        }
+        return (chars / 4).coerceAtLeast(0)
+    }
+
+    private fun formatTokens(value: Int): String =
+        if (value >= 1_000) "%.1fk".format(value / 1_000.0)
+        else value.toString()
 
     private fun workspaceUri(): Uri? = getSharedPreferences(PUBLIC_CONFIG, MODE_PRIVATE)
         .getString(WORKSPACE_URI, null)
@@ -685,9 +765,15 @@ class MainActivity : AppCompatActivity() {
             hint = if (current?.apiKey.isNullOrBlank()) "API Key" else "API Key（留空则保留现有密钥）"
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
+        val contextWindow = EditText(this).apply {
+            hint = "上下文窗口 Token 数（默认 128000）"
+            setText((current?.contextWindow ?: ModelConfig.DEFAULT_CONTEXT_WINDOW).toString())
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
         container.addView(endpoint)
         container.addView(model)
         container.addView(apiKey)
+        container.addView(contextWindow)
 
         val dialog = AlertDialog.Builder(this)
             .setTitle("模型设置")
@@ -712,7 +798,12 @@ class MainActivity : AppCompatActivity() {
                     apiKey.error = "请输入 API Key"
                     return@setOnClickListener
                 }
-                runCatching { store.save(ModelConfig(endpointValue, modelValue, keyValue)) }
+                val contextWindowValue = contextWindow.text.toString().trim().toIntOrNull()
+                if (contextWindowValue == null || contextWindowValue < 1_000 || contextWindowValue > 10_000_000) {
+                    contextWindow.error = "请输入 1000 - 10000000 之间的数字"
+                    return@setOnClickListener
+                }
+                runCatching { store.save(ModelConfig(endpointValue, modelValue, keyValue, contextWindowValue)) }
                     .onSuccess {
                         Toast.makeText(this, "模型设置已安全保存", Toast.LENGTH_SHORT).show()
                         refreshConfigurationStatus()

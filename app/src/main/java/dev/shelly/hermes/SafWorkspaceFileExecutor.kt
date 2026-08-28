@@ -42,6 +42,9 @@ class SafWorkspaceFileExecutor(
 
     fun exists(path: String): Boolean = resolveExisting(path) != null
 
+    /** Returns the raw document URI for a workspace path, allowing apps to open/share it. */
+    fun documentUri(path: String): Uri? = resolveExisting(path)
+
     /** Recursively lists a bounded view of the workspace, excluding generated/vendor trees. */
     fun listFiles(path: String? = null, maxResults: Int = DEFAULT_LIST_LIMIT): ListingResult {
         require(maxResults in 1..MAX_LIST_LIMIT) { "List result limit must be between 1 and $MAX_LIST_LIMIT" }
