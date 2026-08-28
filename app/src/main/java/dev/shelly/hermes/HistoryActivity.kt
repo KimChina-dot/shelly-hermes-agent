@@ -140,6 +140,68 @@ class HistoryActivity : Activity() {
             dp(48),
         ).apply { topMargin = dp(10) })
         addView(transcript)
+        val timelineEvents = events.filterNot {
+            it.event.type == SessionEventType.MODEL_DELTA || it.event.type == SessionEventType.CHECKPOINT
+        }
+        val timelineContainer = LinearLayout(this@HistoryActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            background = ContextCompat.getDrawable(context, R.drawable.bg_surface_card)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(10) }
+        }
+        timelineEvents.forEachIndexed { index, envelope ->
+            val isLast = index == timelineEvents.lastIndex
+            timelineContainer.addView(LinearLayout(this@HistoryActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                addView(TextView(context).apply {
+                    text = "●"
+                    textSize = 10f
+                    setTextColor(getColor(R.color.accent_primary))
+                })
+                addView(TextView(context).apply {
+                    text = timelineLabel(envelope.event.type)
+                    textSize = 13f
+                    setTextColor(getColor(R.color.text_primary))
+                    setPadding(dp(8), 0, dp(8), 0)
+                }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f,
+                ))
+                addView(TextView(context).apply {
+                    text = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(envelope.timestamp))
+                    textSize = 12f
+                    setTextColor(getColor(R.color.text_tertiary))
+                })
+                if (!isLast) {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).apply { bottomMargin = dp(8) }
+                }
+            })
+        }
+        addView(timelineContainer)
+        addView(Button(this@HistoryActivity).apply {
+            text = "查看执行时间线"
+            isAllCaps = false
+            background = ContextCompat.getDrawable(context, R.drawable.bg_button_secondary)
+            setTextColor(getColor(R.color.text_primary))
+            isEnabled = timelineEvents.isNotEmpty()
+            setOnClickListener {
+                val showing = timelineContainer.visibility == View.VISIBLE
+                timelineContainer.visibility = if (showing) View.GONE else View.VISIBLE
+                text = if (showing) "查看执行时间线" else "收起执行时间线"
+            }
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(48),
+        ).apply { topMargin = dp(10) })
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(12), 0, 0)
@@ -161,6 +223,21 @@ class HistoryActivity : Activity() {
                 setOnClickListener { showForkDialog(session, maxSequence) }
             }, actionLayoutParams(startMargin = dp(8)))
         })
+    }
+
+    private fun timelineLabel(type: SessionEventType): String = when (type) {
+        SessionEventType.SESSION_STARTED -> "任务启动"
+        SessionEventType.STATUS -> "状态更新"
+        SessionEventType.MODEL_STARTED -> "请求模型"
+        SessionEventType.MODEL_FINISHED -> "模型响应完成"
+        SessionEventType.APPROVAL_WAITING -> "等待审批"
+        SessionEventType.APPROVAL_FINISHED -> "审批完成"
+        SessionEventType.TOOL_STARTED -> "工具开始"
+        SessionEventType.TOOL_FINISHED -> "工具完成"
+        SessionEventType.FORKED -> "创建分支"
+        SessionEventType.MIGRATED_CHECKPOINT -> "迁移检查点"
+        SessionEventType.CHECKPOINT -> "检查点"
+        SessionEventType.MODEL_DELTA -> "流式输出"
     }
 
     private fun resumeSession(session: Session) {
