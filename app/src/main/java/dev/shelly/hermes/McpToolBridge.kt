@@ -36,18 +36,30 @@ fun interface McpConfigProvider {
 fun parseMcpConfig(raw: String): List<McpServerConfig> {
     val root = JSONObject(raw)
     val servers = root.optJSONObject("mcpServers") ?: JSONObject()
-    return servers.keys().toList().map { name ->
+    val names = servers.names() ?: JSONArray()
+    val result = mutableListOf<McpServerConfig>()
+    for (index in 0 until names.length()) {
+        val name = names.getString(index)
         val server = servers.getJSONObject(name)
-        McpServerConfig(
+        val headerObject = server.optJSONObject("headers")
+        val headers = if (headerObject != null) {
+            val names = headerObject.names() ?: JSONArray()
+            val map = mutableMapOf<String, String>()
+            for (index in 0 until names.length()) {
+                val key = names.getString(index)
+                map[key] = headerObject.getString(key)
+            }
+            map
+        } else {
+            emptyMap()
+        }
+        result += McpServerConfig(
             name = name,
             url = server.getString("url"),
-            headers = server.optJSONObject("headers")
-                ?.let { headers ->
-                    headers.keys().toList().associateWith { headers.getString(it) }
-                }
-                ?: emptyMap(),
+            headers = headers,
         )
     }
+    return result
 }
 
 class McpClient(
@@ -105,15 +117,14 @@ class McpClient(
     }
 
     private fun parseSsePayload(payload: String): JSONObject {
-        var data = ""
-        payload.lineSequence().forEach { line ->
-            if (line.startsWith("data:")) {
-                val value = line.removePrefix("data:").trim()
-                if (value.isNotEmpty()) data = value
-            }
+        val json = payload.lineSequence()
+            .filter { it.startsWith("data:") }
+            .map { it.removePrefix("data:").trim() }
+            .joinToString("")
+        if (json.isBlank()) {
+            throw IllegalStateException("MCP SSE response contained no data")
         }
-        if (!data.startsWith("{")) data = data.substringAfterFirst("{").substringBeforeLast("}")
-        return JSONObject(data)
+        return JSONObject(json)
     }
 }
 

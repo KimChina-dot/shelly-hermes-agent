@@ -6,6 +6,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 
+private const val MAX_OUTPUT_PER_SESSION = 64_000
+
 /** Long-running shell sessions that the agent can start, poll, and cancel. */
 class ShellSessionManager(
     private val workingDirectory: File,
@@ -25,8 +27,8 @@ class ShellSessionManager(
         val id: String,
         val command: String,
         val process: Process,
-        val stdout = StringBuilder(),
-        val stderr = StringBuilder(),
+        val stdout: StringBuilder = StringBuilder(),
+        val stderr: StringBuilder = StringBuilder(),
         val startedAt: Long = System.currentTimeMillis(),
     )
 
@@ -124,7 +126,4 @@ class ShellSessionManager(
         }
     }
 
-    private companion object {
-        const val MAX_OUTPUT_PER_SESSION = 64_000
-    }
 }
