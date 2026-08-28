@@ -22,6 +22,7 @@
     <string name="attach_files">添加附件</string>
     <string name="retry_task">重试任务</string>
     <string name="artifact_gallery">产物</string>
+    <string name="artifact_image">产物图片预览</string>
 
     <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>

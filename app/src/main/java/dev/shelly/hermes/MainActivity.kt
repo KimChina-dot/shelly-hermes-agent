@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -18,6 +20,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.ProgressBar
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -407,6 +410,13 @@ class MainActivity : AppCompatActivity() {
         } else {
             result.ifBlank { "已更新文件 ${path}" }
         }
+        val imageBytes = if (isImageArtifact(path)) {
+            runCatching {
+                workspaceUri()?.let { SafWorkspaceFileExecutor(this, it).readBytes(path, 20 * 1024 * 1024) }
+            }.getOrNull()?.takeIf { it.isNotEmpty() }
+        } else {
+            null
+        }
         flushStreaming()
         streamingMessage = null
         messages += UiMessage(
@@ -419,6 +429,7 @@ class MainActivity : AppCompatActivity() {
             toolResult = result,
             artifactPath = path,
             artifactType = path.substringAfterLast('.', "file"),
+            artifactImageBytes = imageBytes,
         )
         val existing = artifactMessages.indexOfFirst { it.artifactPath == path }
         if (existing >= 0) {
@@ -431,6 +442,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.emptyState).visibility = View.GONE
         scrollToLatest()
     }
+
+    private fun isImageArtifact(path: String): Boolean =
+        path.substringAfterLast('.', "").lowercase() in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp")
 
     private fun addAttachment(uri: Uri) {
         val name = runCatching {
@@ -508,15 +522,38 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showArtifactDialog(message: UiMessage) {
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = dp(20)
+            setPadding(pad, pad, pad, pad)
+        }
+        message.artifactImageBytes?.let { bytes ->
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            if (bitmap != null) {
+                body.addView(ImageView(this).apply {
+                    setImageBitmap(bitmap)
+                    adjustViewBounds = true
+                    maxHeight = dp(520)
+                    contentDescription = "产物图片 ${message.title}"
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).apply { bottomMargin = dp(12) }
+                })
+            }
+        }
+        body.addView(TextView(this).apply {
+            text = buildString {
+                append(message.artifactPath ?: "")
+                append("\n\n")
+                append(message.text)
+            }
+            textIsSelectable = true
+            setTextColor(getColor(R.color.text_primary))
+        })
         AlertDialog.Builder(this)
             .setTitle(message.title)
-            .setMessage(
-                buildString {
-                    append(message.artifactPath ?: "")
-                    append("\n\n")
-                    append(message.text)
-                },
-            )
+            .setView(body)
             .setPositiveButton("关闭", null)
             .show()
     }

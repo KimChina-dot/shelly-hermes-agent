@@ -32,6 +32,14 @@ class SafWorkspaceFileExecutor(
         throw FileNotFoundException("Unable to open workspace file: ${LogicalPath.validate(path)}")
     }
 
+    fun readBytes(path: String, maxBytes: Int = MAX_SEARCH_FILE_BYTES.toInt()): ByteArray? {
+        val document = resolveExisting(path) ?: return null
+        resolver.openInputStream(document)?.use { input ->
+            return input.readBytes().take(maxBytes).toByteArray()
+        }
+        throw FileNotFoundException("Unable to open workspace file: ${LogicalPath.validate(path)}")
+    }
+
     fun exists(path: String): Boolean = resolveExisting(path) != null
 
     /** Recursively lists a bounded view of the workspace, excluding generated/vendor trees. */

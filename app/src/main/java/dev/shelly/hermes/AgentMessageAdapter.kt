@@ -1,12 +1,15 @@
 package dev.shelly.hermes
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
@@ -23,6 +26,7 @@ data class UiMessage(
     val toolResult: String? = null,
     val artifactPath: String? = null,
     val artifactType: String? = null,
+    val artifactImageBytes: ByteArray? = null,
 )
 
 class AgentMessageAdapter(
@@ -54,6 +58,7 @@ class AgentMessageAdapter(
         private val retryHint = row.findViewById<TextView>(R.id.retryHint)
         private val content = row.findViewById<TextView>(R.id.content)
         private val details = row.findViewById<TextView>(R.id.details)
+        private val artifactImage = row.findViewById<ImageView>(R.id.artifactImage)
 
         fun bind(message: UiMessage) {
             label.text = when (message.role) {
@@ -121,6 +126,40 @@ class AgentMessageAdapter(
             )
             bindExpandable(message)
             bindRetry(message)
+            bindArtifactImage(message)
+        }
+
+        private fun bindArtifactImage(message: UiMessage) {
+            val bytes = message.artifactImageBytes
+            if (message.role != UiMessageRole.ARTIFACT || bytes == null) {
+                artifactImage.visibility = View.GONE
+                artifactImage.setImageDrawable(null)
+                return
+            }
+            val bitmap = decodeScaled(bytes, 1200)
+            if (bitmap == null) {
+                artifactImage.visibility = View.GONE
+                return
+            }
+            artifactImage.setImageBitmap(bitmap)
+            artifactImage.visibility = View.VISIBLE
+            artifactImage.contentDescription = "产物图片 ${message.title}"
+        }
+
+        private fun decodeScaled(bytes: ByteArray, maxPixels: Int): Bitmap? {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outWidth <= 0) return null
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= maxPixels || bounds.outHeight / (sample * 2) >= maxPixels) {
+                sample *= 2
+            }
+            return BitmapFactory.decodeByteArray(
+                bytes,
+                0,
+                bytes.size,
+                BitmapFactory.Options().apply { inSampleSize = sample },
+            )
         }
 
         private fun bindRetry(message: UiMessage) {
