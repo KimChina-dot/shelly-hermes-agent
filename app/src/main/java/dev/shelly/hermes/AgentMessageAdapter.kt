@@ -172,6 +172,13 @@ class AgentMessageAdapter(
                         append(message.toolResult)
                     }
                 }
+                details.alpha = 0f
+                details.translationY = dp(4).toFloat()
+                details.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(180L)
+                    .start()
             }
         }
 

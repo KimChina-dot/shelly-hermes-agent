@@ -28,6 +28,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import dev.shelly.hermes.core.AgentProfileMode
 import dev.shelly.hermes.core.AgentProfileRegistry
+import androidx.recyclerview.widget.DefaultItemAnimator
 import org.json.JSONObject
 
 data class AttachmentRef(val name: String, val preview: String)
@@ -93,6 +94,12 @@ class MainActivity : AppCompatActivity() {
         findViewById<RecyclerView>(R.id.messageList).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
+            itemAnimator = DefaultItemAnimator().apply {
+                addDuration = 200L
+                changeDuration = 200L
+                moveDuration = 200L
+                removeDuration = 200L
+            }
         }
 
         findViewById<Button>(R.id.chooseWorkspace).setOnClickListener { picker.launch(null) }
@@ -603,6 +610,14 @@ class MainActivity : AppCompatActivity() {
             "模型未连接"
         } else {
             "模型：${config.model}"
+        }
+        val empty = findViewById<TextView>(R.id.emptyState)
+        if (messages.isEmpty() && workspace == null) {
+            empty.text = "首次使用请先连接模型\n1. 点击右上角设置，填入模型地址与密钥\n2. 点击“项目”选择授权目录\n3. 在下方输入要完成的任务"
+        } else if (messages.isEmpty() && config == null) {
+            empty.text = "请先完成模型设置\n在右上角连接模型后再开始任务"
+        } else if (messages.isEmpty()) {
+            empty.text = "开始一个任务\n在下方输入要完成的事情，Agent 会规划并执行"
         }
     }
 
