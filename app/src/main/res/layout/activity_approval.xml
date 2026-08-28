@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -27,7 +28,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:background="@color/risk_background"
+        android:background="@drawable/bg_chip_warning"
         android:minHeight="48dp"
         android:gravity="center_vertical"
         android:paddingStart="14dp"
@@ -52,7 +53,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
-        android:background="@color/surface_glass"
+        android:background="@drawable/bg_surface_card"
         android:minHeight="48dp"
         android:gravity="center_vertical"
         android:paddingStart="14dp"
@@ -73,7 +74,7 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginTop="6dp"
-        android:background="@color/surface_glass"
+        android:background="@drawable/bg_surface_card"
         android:fontFamily="monospace"
         android:gravity="start|top"
         android:lineSpacingExtra="3dp"
@@ -97,30 +98,49 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="20dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <Button
             android:id="@+id/reject"
             android:layout_width="0dp"
-            android:layout_height="52dp"
+            android:layout_height="48dp"
             android:layout_weight="1"
+            android:background="@drawable/bg_button_secondary"
             android:minHeight="48dp"
             android:text="拒绝"
-            android:textAllCaps="false" />
+            android:textAllCaps="false"
+            android:textColor="@color/text_primary" />
 
         <Space
-            android:layout_width="12dp"
+            android:layout_width="8dp"
             android:layout_height="1dp" />
 
         <Button
             android:id="@+id/approve"
             android:layout_width="0dp"
-            android:layout_height="52dp"
-            android:layout_weight="1.35"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_primary_button"
             android:minHeight="48dp"
-            android:text="批准并继续"
-            android:textAllCaps="false" />
+            android:text="允许一次"
+            android:textAllCaps="false"
+            android:textColor="@color/accent_foreground" />
+
+        <Space
+            android:layout_width="8dp"
+            android:layout_height="1dp" />
+
+        <Button
+            android:id="@+id/always"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_button_secondary"
+            android:minHeight="48dp"
+            android:text="始终允许"
+            android:textAllCaps="false"
+            android:textColor="@color/text_primary" />
     </LinearLayout>
 </LinearLayout>

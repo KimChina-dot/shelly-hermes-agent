@@ -19,6 +19,7 @@ class ApprovalActivity : Activity() {
         val empty = findViewById<TextView>(R.id.empty)
         val approve = findViewById<Button>(R.id.approve)
         val reject = findViewById<Button>(R.id.reject)
+        val always = findViewById<Button>(R.id.always)
 
         if (pending == null) {
             name.visibility = View.GONE
@@ -26,6 +27,7 @@ class ApprovalActivity : Activity() {
             empty.visibility = View.VISIBLE
             approve.isEnabled = false
             reject.isEnabled = false
+            always.isEnabled = false
         } else {
             name.text = "工具调用：${pending.call.name}"
             args.text = pending.call.argumentsJson.takeIf { it.isNotBlank() } ?: "（无参数）"
@@ -39,6 +41,11 @@ class ApprovalActivity : Activity() {
         reject.setOnClickListener {
             ApprovalBridge.gateway.resolve(ApprovalDecision.REJECT)
             setResult(RESULT_CANCELED)
+            finish()
+        }
+        always.setOnClickListener {
+            pending?.let { ApprovalBridge.gateway.allowAlways(it.call.name) }
+            setResult(RESULT_OK)
             finish()
         }
     }

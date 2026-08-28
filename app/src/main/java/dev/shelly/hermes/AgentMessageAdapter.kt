@@ -38,8 +38,10 @@ class AgentMessageAdapter(
     }
 
     inner class MessageViewHolder(private val row: LinearLayout) : RecyclerView.ViewHolder(row) {
-        private val label = row.getChildAt(0) as TextView
-        private val content = row.getChildAt(1) as TextView
+        private val container = row
+        private val label = row.findViewById<TextView>(R.id.roleLabel)
+        private val stateChip = row.findViewById<TextView>(R.id.stateChip)
+        private val content = row.findViewById<TextView>(R.id.content)
 
         fun bind(message: UiMessage) {
             label.text = when (message.role) {
@@ -51,13 +53,17 @@ class AgentMessageAdapter(
             label.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             label.textSize = 11f
             label.setTextColor(context.getColor(R.color.text_tertiary))
+            stateChip.text = visibleStateLabel(message.toolState)
+            stateChip.visibility = if (stateChip.text.isNullOrBlank()) {
+                android.view.View.GONE
+            } else {
+                stateChip.setBackgroundResource(stateBackground(message.toolState))
+                stateChip.setTextColor(stateColor(message.toolState))
+                android.view.View.VISIBLE
+            }
             content.text = if (message.streaming) "${message.text}▍" else message.text
             content.textSize = 15f
             content.setTextIsSelectable(true)
-            content.layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            )
             row.gravity = if (message.role == UiMessageRole.USER) Gravity.END else Gravity.START
             content.setBackgroundResource(
                 when (message.role) {
@@ -82,6 +88,31 @@ class AgentMessageAdapter(
                     },
                 ),
             )
+        }
+
+        private fun visibleStateLabel(state: String?): String? = when (state) {
+            null, "" -> null
+            "RUNNING" -> "执行中"
+            "FINISHED" -> "已完成"
+            "FAILED" -> "失败"
+            "WAITING_FOR_APPROVAL" -> "等待审批"
+            else -> state
+        }
+
+        private fun stateBackground(state: String?): Int = when (state) {
+            "RUNNING" -> R.drawable.bg_chip_running
+            "FINISHED" -> R.drawable.bg_chip_success
+            "FAILED" -> R.drawable.bg_chip_error
+            "WAITING_FOR_APPROVAL" -> R.drawable.bg_chip_warning
+            else -> R.drawable.bg_chip
+        }
+
+        private fun stateColor(state: String?): Int = when (state) {
+            "RUNNING" -> context.getColor(R.color.accent_primary)
+            "FINISHED" -> context.getColor(R.color.status_success)
+            "FAILED" -> context.getColor(R.color.status_error)
+            "WAITING_FOR_APPROVAL" -> context.getColor(R.color.status_warning)
+            else -> context.getColor(R.color.text_secondary)
         }
     }
 

@@ -309,7 +309,9 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         val eventStore = SessionEventStore(this, taskId)
         val baseApprovalPolicy = tools.approvalPolicy()
         val approvalPolicy = ToolApprovalPolicy { call ->
-            if (call.name == "run_command") {
+            if (AndroidApprovalGateway.gateway.isAutoApproved(call.name)) {
+                false
+            } else if (call.name == "run_command") {
                 val command = runCatching {
                     org.json.JSONObject(call.argumentsJson.ifBlank { "{}" }).optString("command")
                 }.getOrDefault("")

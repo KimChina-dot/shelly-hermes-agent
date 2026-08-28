@@ -66,6 +66,22 @@
         <item name="android:background">@drawable/bg_toolbar_button</item>
     </style>
 
+    <style name="Widget.Luma.StatusChip" parent="android:style/Widget.Material.TextView">
+        <item name="android:background">@drawable/bg_chip</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">4dp</item>
+        <item name="android:paddingBottom">4dp</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Widget.Luma.Card">
+        <item name="android:background">@drawable/bg_surface_card</item>
+        <item name="android:padding">16dp</item>
+    </style>
+
     <style name="Widget.Luma.PrimaryButton" parent="android:style/Widget.Material.Button">
         <item name="android:minWidth">64dp</item>
         <item name="android:minHeight">48dp</item>

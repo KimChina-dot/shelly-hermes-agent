@@ -26,8 +26,10 @@
             android:id="@+id/clearHistoryButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:background="@drawable/bg_toolbar_button"
             android:text="清空"
-            android:textAllCaps="false" />
+            android:textAllCaps="false"
+            android:textColor="@color/text_secondary" />
     </LinearLayout>
 
     <TextView
@@ -43,7 +45,9 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
+        android:lineSpacingExtra="4dp"
         android:gravity="center"
+        android:textColor="@color/text_secondary"
         android:text="还没有任务记录\n完成一次任务后会显示在这里"
         android:textAlignment="center"
         android:textAppearance="@style/TextAppearance.Luma.Caption" />

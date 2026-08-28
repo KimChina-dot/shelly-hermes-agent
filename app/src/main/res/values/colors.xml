@@ -17,4 +17,13 @@
     <color name="status_error">#FFB3261E</color>
     <color name="risk_background">#FFFFF2F0</color>
     <color name="divider_subtle">#FFD8DAD4</color>
+    <color name="surface_container">#FFF4F5F1</color>
+    <color name="surface_container_high">#FFECEEE9</color>
+    <color name="surface_tint">#FF146C5A</color>
+    <color name="status_success_bg">#FFE2F3EC</color>
+    <color name="status_warning_bg">#FFFBF0DC</color>
+    <color name="status_error_bg">#FFFBE8E6</color>
+    <color name="status_neutral_bg">#FFF0F1ED</color>
+    <color name="text_on_accent">#FFFFFFFF</color>
+    <color name="overlay_scrim">#66000000</color>
 </resources>
