@@ -77,7 +77,7 @@
         <item name="android:textStyle">bold</item>
     </style>
 
-    <style name="Widget.Luma.Card">
+    <style name="Widget.Luma.Card" parent="android:style/Widget.Material.TextView">
         <item name="android:background">@drawable/bg_surface_card</item>
         <item name="android:padding">16dp</item>
     </style>
