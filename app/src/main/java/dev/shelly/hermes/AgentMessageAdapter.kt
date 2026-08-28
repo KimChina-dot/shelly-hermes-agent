@@ -10,7 +10,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
-enum class UiMessageRole { USER, ASSISTANT, STATUS, TOOL }
+enum class UiMessageRole { USER, ASSISTANT, STATUS, TOOL, ARTIFACT }
 
 data class UiMessage(
     val role: UiMessageRole,
@@ -21,6 +21,8 @@ data class UiMessage(
     val streaming: Boolean = false,
     val toolArgs: String? = null,
     val toolResult: String? = null,
+    val artifactPath: String? = null,
+    val artifactType: String? = null,
 )
 
 class AgentMessageAdapter(
@@ -45,6 +47,7 @@ class AgentMessageAdapter(
     inner class MessageViewHolder(private val row: LinearLayout) : RecyclerView.ViewHolder(row) {
         private val container = row
         private val label = row.findViewById<TextView>(R.id.roleLabel)
+        private val typeBadge = row.findViewById<TextView>(R.id.typeBadge)
         private val stateChip = row.findViewById<TextView>(R.id.stateChip)
         private val expandHint = row.findViewById<TextView>(R.id.expandHint)
         private val content = row.findViewById<TextView>(R.id.content)
@@ -56,10 +59,23 @@ class AgentMessageAdapter(
                 UiMessageRole.ASSISTANT -> "LUMA"
                 UiMessageRole.STATUS -> "STATUS"
                 UiMessageRole.TOOL -> message.title ?: "TOOL"
+                UiMessageRole.ARTIFACT -> message.title ?: "ARTIFACT"
             }
             label.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             label.textSize = 11f
             label.setTextColor(context.getColor(R.color.text_tertiary))
+            if (message.role == UiMessageRole.ARTIFACT) {
+                typeBadge.text = message.artifactType?.uppercase() ?: "FILE"
+                typeBadge.visibility = View.VISIBLE
+                typeBadge.contentDescription = "产物类型 ${typeBadge.text}"
+            } else {
+                typeBadge.visibility = View.GONE
+            }
+            label.contentDescription = if (message.role == UiMessageRole.ARTIFACT) {
+                "产物 ${message.title}"
+            } else {
+                label.text
+            }
             stateChip.text = visibleStateLabel(message.toolState)
             stateChip.visibility = if (stateChip.text.isNullOrBlank()) {
                 android.view.View.GONE
@@ -67,6 +83,11 @@ class AgentMessageAdapter(
                 stateChip.setBackgroundResource(stateBackground(message.toolState))
                 stateChip.setTextColor(stateColor(message.toolState))
                 android.view.View.VISIBLE
+            }
+            stateChip.contentDescription = if (message.role == UiMessageRole.TOOL) {
+                "工具状态 ${stateChip.text}"
+            } else {
+                stateChip.text
             }
             content.text = if (message.streaming) "${message.text}▍" else message.text
             content.textSize = 15f
@@ -77,6 +98,7 @@ class AgentMessageAdapter(
                     UiMessageRole.USER -> R.drawable.bg_user_message
                     UiMessageRole.ASSISTANT -> R.drawable.bg_glass_card
                     UiMessageRole.TOOL -> R.drawable.bg_surface_card
+                    UiMessageRole.ARTIFACT -> R.drawable.bg_surface_card
                     UiMessageRole.STATUS -> android.R.color.transparent
                 },
             )
@@ -100,7 +122,7 @@ class AgentMessageAdapter(
 
         private fun bindExpandable(message: UiMessage) {
             val position = bindingAdapterPosition
-            val hasDetails = message.role == UiMessageRole.TOOL &&
+            val hasDetails = (message.role == UiMessageRole.TOOL || message.role == UiMessageRole.ARTIFACT) &&
                 (!message.toolArgs.isNullOrBlank() || !message.toolResult.isNullOrBlank())
             if (!hasDetails) {
                 expandHint.visibility = View.GONE
@@ -114,6 +136,9 @@ class AgentMessageAdapter(
             expandHint.text = context.getString(
                 if (expanded) R.string.collapse_details else R.string.expand_details,
             )
+            expandHint.contentDescription = context.getString(
+                if (expanded) R.string.collapse_details else R.string.expand_details,
+            )
             expandHint.setOnClickListener {
                 if (!expandedToolCallIds.add(key)) expandedToolCallIds.remove(key)
                 if (position >= 0) notifyItemChanged(position)
@@ -121,6 +146,11 @@ class AgentMessageAdapter(
             details.visibility = if (expanded) View.VISIBLE else View.GONE
             if (expanded) {
                 details.text = buildString {
+                    if (message.role == UiMessageRole.ARTIFACT && !message.artifactPath.isNullOrBlank()) {
+                        append("路径\n")
+                        append(message.artifactPath)
+                        append("\n\n")
+                    }
                     if (!message.toolArgs.isNullOrBlank()) {
                         append("输入\n")
                         append(message.toolArgs)

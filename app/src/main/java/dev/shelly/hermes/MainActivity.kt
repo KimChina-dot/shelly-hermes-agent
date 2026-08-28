@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -25,6 +27,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import dev.shelly.hermes.core.AgentProfileMode
 import dev.shelly.hermes.core.AgentProfileRegistry
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private lateinit var messages: MutableList<UiMessage>
@@ -182,6 +185,11 @@ class MainActivity : AppCompatActivity() {
             showModelSettingsDialog()
             return
         }
+        if (!isOnline()) {
+            findViewById<View>(R.id.errorContainer).visibility = View.VISIBLE
+            findViewById<TextView>(R.id.errorText).text = "网络离线，请检查连接后重试"
+            return
+        }
 
         lastPrompt = prompt
         flushStreaming()
@@ -259,7 +267,7 @@ class MainActivity : AppCompatActivity() {
                 setRunning(true)
                 when (toolState) {
                     "RUNNING" -> appendToolMessage(toolName, toolCallId, detail, toolState, toolArgs)
-                    "FINISHED", "FAILED" -> updateToolMessage(toolCallId, detail, toolState, toolResult)
+                    "FINISHED", "FAILED" -> updateToolMessage(toolCallId, detail, toolState, toolResult, toolName)
                     else -> if (detail.startsWith("正在请求模型")) {
                         flushStreaming()
                         streamingMessage = null
@@ -285,7 +293,12 @@ class MainActivity : AppCompatActivity() {
                 streamingMessage = null
                 setRunning(false)
                 findViewById<View>(R.id.errorContainer).visibility = View.VISIBLE
-                findViewById<TextView>(R.id.errorText).text = detail.ifBlank { "任务执行失败" }
+                val normalized = detail.lowercase()
+                findViewById<TextView>(R.id.errorText).text = if ("context" in normalized || "token" in normalized) {
+                    "上下文过长或超出模型限制：${detail.ifBlank { "请求超出可用上下文" }}"
+                } else {
+                    detail.ifBlank { "任务执行失败" }
+                }
             }
         }
     }
@@ -324,12 +337,54 @@ class MainActivity : AppCompatActivity() {
         scrollToLatest()
     }
 
-    private fun updateToolMessage(toolCallId: String, detail: String, state: String, result: String = "") {
+    private fun updateToolMessage(toolCallId: String, detail: String, state: String, result: String = "", toolName: String = "") {
         if (toolCallId.isBlank()) return
         val index = messages.indexOfLast { it.role == UiMessageRole.TOOL && it.toolCallId == toolCallId }
         if (index < 0) return
         messages[index] = messages[index].copy(text = detail, toolState = state, toolResult = result)
+        if (state == "FINISHED") appendArtifactIfNeeded(toolName, messages[index].toolArgs.orEmpty(), result)
         messageAdapter.notifyDataSetChanged()
+    }
+
+    private fun appendArtifactIfNeeded(toolName: String, args: String, result: String) {
+        if (toolName !in ARTIFACT_TOOLS) return
+        val path = pathFrom(args, result) ?: return
+        val content = runCatching { JSONObject(args.ifBlank { "{}" }).optString("content") }
+            .getOrDefault("")
+        val preview = if (content.isNotBlank()) {
+            content.take(400) + if (content.length > 400) "\n…" else ""
+        } else {
+            result.ifBlank { "已更新文件 ${path}" }
+        }
+        flushStreaming()
+        streamingMessage = null
+        messages += UiMessage(
+            role = UiMessageRole.ARTIFACT,
+            text = preview,
+            title = path.substringAfterLast('/'),
+            toolCallId = null,
+            toolState = "FINISHED",
+            toolArgs = args,
+            toolResult = result,
+            artifactPath = path,
+            artifactType = path.substringAfterLast('.', "file"),
+        )
+        messageAdapter.notifyDataSetChanged()
+        findViewById<View>(R.id.emptyState).visibility = View.GONE
+        scrollToLatest()
+    }
+
+    private fun pathFrom(args: String, result: String): String? {
+        runCatching { return JSONObject(args.ifBlank { "{}" }).optString("path").takeIf { it.isNotBlank() } }
+        runCatching { return JSONObject(result.ifBlank { "{}" }).optString("path").takeIf { it.isNotBlank() } }
+        return null
+    }
+
+    private fun isOnline(): Boolean {
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+        val network = manager.activeNetwork ?: return false
+        val capabilities = manager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     private fun appendStreamDelta(text: String) {
@@ -482,5 +537,8 @@ class MainActivity : AppCompatActivity() {
         const val WORKSPACE_URI = "workspace_uri"
         const val AGENT_PROFILE_ID = "agent_profile_id"
         const val TEAM_PROFILE_ID = "bundle:standard"
+        private val ARTIFACT_TOOLS = setOf(
+            "apply_patch", "create_file", "overwrite_file", "append_file", "rollback_file",
+        )
     }
 }

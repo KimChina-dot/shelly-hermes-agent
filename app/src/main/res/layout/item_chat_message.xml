@@ -17,6 +17,21 @@
         android:paddingBottom="4dp">
 
         <TextView
+            android:id="@+id/typeBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_chip_running"
+            android:paddingStart="8dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="2dp"
+            android:textColor="@color/accent_primary"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/roleLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -43,6 +58,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
+            android:minHeight="32dp"
             android:paddingStart="8dp"
             android:paddingTop="2dp"
             android:paddingEnd="8dp"
