@@ -548,7 +548,7 @@ class MainActivity : AppCompatActivity() {
                 append("\n\n")
                 append(message.text)
             }
-            isTextSelectable = true
+            setTextIsSelectable(true)
             setTextColor(getColor(R.color.text_primary))
         })
         AlertDialog.Builder(this)
