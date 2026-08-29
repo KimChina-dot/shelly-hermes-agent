@@ -339,7 +339,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                     is AgentEvent.ModelStarted -> broadcastStatus(TaskState.RUNNING.name, "正在请求模型（第 ${event.round} 轮）")
                     is AgentEvent.ModelFinished -> broadcastStatus(
                         TaskState.RUNNING.name,
-                        "模型响应耗时 ${event.durationMillis}ms",
+                        "模型响应完成，正在准备下一步",
                         contextTokens = event.inputTokens + event.outputTokens,
                     )
                     is AgentEvent.ApprovalWaiting -> broadcastStatus(

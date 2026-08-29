@@ -632,7 +632,7 @@ class MainActivity : AppCompatActivity() {
                         timelineToolState = toolState
                         if (toolName.isNotBlank()) timelineToolName = toolName
                     }
-                    detail.startsWith("模型响应耗时") -> {
+                    detail.startsWith("模型响应完成") -> {
                         timelineModelState = "FINISHED"
                         timelineToolState = "PENDING"
                         timelineToolName = ""
