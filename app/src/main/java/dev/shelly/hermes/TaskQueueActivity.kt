@@ -70,7 +70,7 @@ class TaskQueueActivity : Activity() {
         })
         addView(TextView(context).apply {
             text = stateLabel(task.state)
-            textSize = 12f
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(getColor(stateColor(task.state)))
             background = ContextCompat.getDrawable(context, stateBackground(task.state))

@@ -115,7 +115,7 @@ class CapabilitiesActivity : Activity() {
 
         card.addView(TextView(this).apply {
             text = manifest.capability
-            textSize = 13f
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_caption))
             setTextColor(getColor(R.color.text_secondary))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -127,7 +127,7 @@ class CapabilitiesActivity : Activity() {
                 append("超时 ${manifest.timeoutMillis / 1_000} 秒 · ")
                 append(if (manifest.requiresApproval) "需要审批" else "自动执行")
             }
-            textSize = 12f
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(getColor(R.color.text_tertiary))
             layoutParams = LinearLayout.LayoutParams(
@@ -141,7 +141,7 @@ class CapabilitiesActivity : Activity() {
     private fun statusChip(label: String, background: Int, textColor: Int): TextView {
         return TextView(this).apply {
             text = label
-            textSize = 12f
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(getColor(textColor))
             background = ContextCompat.getDrawable(context, background)

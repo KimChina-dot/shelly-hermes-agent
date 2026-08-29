@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="space_4">4dp</dimen>
+    <dimen name="space_8">8dp</dimen>
+    <dimen name="space_12">12dp</dimen>
+    <dimen name="space_16">16dp</dimen>
+    <dimen name="space_24">24dp</dimen>
+    <dimen name="space_32">32dp</dimen>
+
+    <dimen name="radius_small">8dp</dimen>
+    <dimen name="radius_medium">12dp</dimen>
+    <dimen name="radius_pill">16dp</dimen>
+    <dimen name="border_width">1dp</dimen>
+
+    <dimen name="touch_target">48dp</dimen>
+    <dimen name="type_micro">12sp</dimen>
+    <dimen name="type_caption">13sp</dimen>
+    <dimen name="type_body">15sp</dimen>
+    <dimen name="type_title">22sp</dimen>
+</resources>

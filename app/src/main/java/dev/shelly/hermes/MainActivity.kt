@@ -154,10 +154,10 @@ class MainActivity : AppCompatActivity() {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
             itemAnimator = DefaultItemAnimator().apply {
-                addDuration = 200L
-                changeDuration = 200L
-                moveDuration = 200L
-                removeDuration = 200L
+                addDuration = resources.getInteger(R.integer.animation_duration_medium).toLong()
+                changeDuration = resources.getInteger(R.integer.animation_duration_medium).toLong()
+                moveDuration = resources.getInteger(R.integer.animation_duration_medium).toLong()
+                removeDuration = resources.getInteger(R.integer.animation_duration_medium).toLong()
             }
         }
 
@@ -897,7 +897,7 @@ class MainActivity : AppCompatActivity() {
         attachments.forEachIndexed { index, item ->
             list.addView(TextView(this).apply {
                 text = "${item.name} · ${item.preview.take(400).length} 字符 · 移除"
-                textSize = 12f
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 setTextColor(getColor(R.color.text_primary))
                 background = ContextCompat.getDrawable(context, R.drawable.bg_chip_warning)
@@ -945,7 +945,7 @@ class MainActivity : AppCompatActivity() {
 
         card.addView(TextView(this).apply {
             text = message.artifactType?.uppercase() ?: "FILE"
-            textSize = 11f
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(getColor(R.color.status_success))
             background = ContextCompat.getDrawable(context, R.drawable.bg_chip_success)
@@ -955,7 +955,7 @@ class MainActivity : AppCompatActivity() {
 
         card.addView(TextView(this).apply {
             text = message.title
-            textSize = 15f
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_body))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(getColor(R.color.text_primary))
             maxLines = 1
@@ -969,7 +969,7 @@ class MainActivity : AppCompatActivity() {
 
         card.addView(TextView(this).apply {
             text = message.artifactPath.orEmpty()
-            textSize = 12f
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
             setTextColor(getColor(R.color.text_tertiary))
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
@@ -1001,7 +1001,7 @@ class MainActivity : AppCompatActivity() {
         if (message.artifactImageBytes == null && preview.isNotBlank()) {
             card.addView(TextView(this).apply {
                 text = preview.take(160) + if (preview.length > 160) "…" else ""
-                textSize = 12f
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
                 typeface = if ((message.artifactType?.lowercase() ?: "") in CODE_ARTIFACT_TYPES) {
                     android.graphics.Typeface.MONOSPACE
                 } else {
@@ -1043,7 +1043,7 @@ class MainActivity : AppCompatActivity() {
     private fun galleryAction(label: String, description: String, action: () -> Unit): TextView {
         return TextView(this).apply {
             text = label
-            textSize = 12f
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(getColor(R.color.accent_primary))
             minHeight = dp(48)

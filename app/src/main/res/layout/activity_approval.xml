@@ -5,10 +5,10 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@color/surface_background"
-    android:paddingStart="20dp"
-    android:paddingTop="20dp"
-    android:paddingEnd="20dp"
-    android:paddingBottom="16dp">
+    android:paddingStart="@dimen/space_24"
+    android:paddingTop="@dimen/space_24"
+    android:paddingEnd="@dimen/space_24"
+    android:paddingBottom="@dimen/space_16">
 
     <TextView
         android:layout_width="wrap_content"
@@ -19,7 +19,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="@dimen/space_4"
         android:text="确认工具将要执行的操作"
         android:textAppearance="@style/TextAppearance.Luma.Caption" />
 
@@ -27,7 +27,7 @@
         android:id="@+id/affected_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="@dimen/space_16"
         android:text="风险评估"
         android:textAppearance="@style/TextAppearance.Luma.Caption"
         android:textStyle="bold" />
@@ -36,24 +36,24 @@
         android:id="@+id/risk"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="@dimen/space_8"
         android:background="@drawable/bg_chip_warning"
-        android:minHeight="48dp"
+        android:minHeight="@dimen/touch_target"
         android:gravity="center_vertical"
-        android:paddingStart="14dp"
-        android:paddingTop="10dp"
-        android:paddingEnd="14dp"
-        android:paddingBottom="10dp"
+        android:paddingStart="@dimen/space_16"
+        android:paddingTop="@dimen/space_12"
+        android:paddingEnd="@dimen/space_16"
+        android:paddingBottom="@dimen/space_12"
         android:text="风险等级：工具调用需要人工确认"
         android:textColor="@color/status_error"
-        android:textSize="14sp"
+        android:textSize="@dimen/type_body"
         android:textStyle="bold" />
 
     <TextView
         android:id="@+id/risk_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="18dp"
+        android:layout_marginTop="@dimen/space_16"
         android:text="影响对象"
         android:textAppearance="@style/TextAppearance.Luma.Caption"
         android:textStyle="bold" />
@@ -62,21 +62,21 @@
         android:id="@+id/affected_target"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="@dimen/space_8"
         android:background="@drawable/bg_surface_card"
         android:ellipsize="end"
         android:maxLines="2"
-        android:minHeight="48dp"
+        android:minHeight="@dimen/touch_target"
         android:gravity="center_vertical"
-        android:paddingStart="14dp"
-        android:paddingEnd="14dp"
+        android:paddingStart="@dimen/space_16"
+        android:paddingEnd="@dimen/space_16"
         android:textAppearance="@style/TextAppearance.Luma.Body"
         android:textColor="@color/text_primary" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="18dp"
+        android:layout_marginTop="@dimen/space_16"
         android:text="工具"
         android:textAppearance="@style/TextAppearance.Luma.Caption"
         android:textStyle="bold" />
@@ -85,18 +85,18 @@
         android:id="@+id/tool_name"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="@dimen/space_8"
         android:background="@drawable/bg_surface_card"
-        android:minHeight="48dp"
+        android:minHeight="@dimen/touch_target"
         android:gravity="center_vertical"
-        android:paddingStart="14dp"
-        android:paddingEnd="14dp"
+        android:paddingStart="@dimen/space_16"
+        android:paddingEnd="@dimen/space_16"
         android:textAppearance="@style/TextAppearance.Luma.SectionTitle" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="@dimen/space_16"
         android:text="参数与变更内容"
         android:textAppearance="@style/TextAppearance.Luma.Caption"
         android:textStyle="bold" />
@@ -106,16 +106,16 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="@dimen/space_8"
         android:background="@drawable/bg_surface_card"
         android:fontFamily="monospace"
         android:gravity="start|top"
         android:lineSpacingExtra="3dp"
-        android:padding="14dp"
+        android:padding="@dimen/space_16"
         android:scrollbars="vertical"
         android:textColor="@color/text_primary"
         android:textIsSelectable="true"
-        android:textSize="13sp" />
+        android:textSize="@dimen/type_caption" />
 
     <LinearLayout
         android:id="@+id/empty"
@@ -124,7 +124,7 @@
         android:layout_weight="1"
         android:gravity="center"
         android:orientation="vertical"
-        android:padding="24dp"
+        android:padding="@dimen/space_24"
         android:visibility="gone">
 
         <TextView
@@ -136,7 +136,7 @@
         <TextView
             android:layout_width="320dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/space_8"
             android:gravity="center"
             android:lineSpacingExtra="4dp"
             android:text="高风险工具执行前会自动打开审批卡。当前没有需要确认的操作。"
@@ -147,11 +147,11 @@
         <Button
             android:id="@+id/emptyAction"
             android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:layout_marginTop="16dp"
+            android:layout_height="@dimen/touch_target"
+            android:layout_marginTop="@dimen/space_16"
             android:background="@drawable/bg_button_primary"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
+            android:paddingStart="@dimen/space_24"
+            android:paddingEnd="@dimen/space_24"
             android:text="返回工作台"
             android:textAllCaps="false"
             android:textColor="@color/accent_foreground" />
@@ -161,17 +161,17 @@
         android:id="@+id/actionRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
+        android:layout_marginTop="@dimen/space_24"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <Button
             android:id="@+id/reject"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="@dimen/touch_target"
             android:layout_weight="1"
             android:background="@drawable/bg_button_secondary"
-            android:minHeight="48dp"
+            android:minHeight="@dimen/touch_target"
             android:text="拒绝"
             android:textAllCaps="false"
             android:textColor="@color/text_primary" />
@@ -183,10 +183,10 @@
         <Button
             android:id="@+id/approve"
             android:layout_width="0dp"
-            android:layout_height="48dp"
+            android:layout_height="@dimen/touch_target"
             android:layout_weight="1"
             android:background="@drawable/bg_primary_button"
-            android:minHeight="48dp"
+            android:minHeight="@dimen/touch_target"
             android:text="允许一次"
             android:textAllCaps="false"
             android:textColor="@color/accent_foreground" />
@@ -195,10 +195,10 @@
     <Button
         android:id="@+id/always"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginTop="8dp"
+        android:layout_height="@dimen/touch_target"
+        android:layout_marginTop="@dimen/space_8"
         android:background="@drawable/bg_button_secondary"
-        android:minHeight="48dp"
+        android:minHeight="@dimen/touch_target"
         android:text="本次任务始终允许"
         android:textAllCaps="false"
         android:textColor="@color/text_primary" />

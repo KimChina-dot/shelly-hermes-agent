@@ -87,7 +87,7 @@ class AgentMessageAdapter(
                 UiMessageRole.ARTIFACT -> message.title ?: "ARTIFACT"
             }
             label.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            label.textSize = 11f
+            label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, context.resources.getDimension(R.dimen.type_micro))
             label.setTextColor(context.getColor(R.color.text_tertiary))
             if (message.role == UiMessageRole.ARTIFACT) {
                 typeBadge.text = message.artifactType?.uppercase() ?: "FILE"
@@ -133,7 +133,7 @@ class AgentMessageAdapter(
             } else {
                 null
             }
-            content.textSize = 15f
+            content.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, context.resources.getDimension(R.dimen.type_body))
             content.setTextIsSelectable(true)
             row.gravity = if (message.role == UiMessageRole.USER) Gravity.END else Gravity.START
             content.setBackgroundResource(

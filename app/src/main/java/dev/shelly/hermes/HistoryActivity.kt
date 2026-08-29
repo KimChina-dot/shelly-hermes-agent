@@ -84,7 +84,7 @@ class HistoryActivity : Activity() {
         })
         addView(TextView(context).apply {
             text = statusLabel(session.status)
-            textSize = 12f
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(getColor(statusColor(session.status)))
             background = ContextCompat.getDrawable(context, statusBackground(session.status))
@@ -173,12 +173,12 @@ class HistoryActivity : Activity() {
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 addView(TextView(context).apply {
                     text = "●"
-                    textSize = 10f
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
                     setTextColor(getColor(R.color.accent_primary))
                 })
                 addView(TextView(context).apply {
                     text = timelineLabel(envelope.event.type)
-                    textSize = 13f
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_caption))
                     setTextColor(getColor(R.color.text_primary))
                     setPadding(dp(8), 0, dp(8), 0)
                 }, LinearLayout.LayoutParams(
@@ -188,7 +188,7 @@ class HistoryActivity : Activity() {
                 ))
                 addView(TextView(context).apply {
                     text = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(envelope.timestamp))
-                    textSize = 12f
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
                     setTextColor(getColor(R.color.text_tertiary))
                 })
                 if (!isLast) {

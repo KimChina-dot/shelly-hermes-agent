@@ -23,8 +23,8 @@
             <Button
                 android:id="@+id/settings"
                 style="@style/Widget.Luma.ToolbarButton"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="@dimen/touch_target"
+                android:layout_height="@dimen/touch_target"
                 android:contentDescription="@string/model_settings"
                 android:drawableTop="@android:drawable/ic_menu_preferences"
                 android:text="" />
@@ -43,17 +43,17 @@
             android:layout_height="match_parent"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp">
+            android:paddingStart="@dimen/space_12"
+            android:paddingEnd="@dimen/space_12">
 
             <TextView
                 android:id="@+id/workspace"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_height="@dimen/touch_target"
                 android:gravity="center_vertical"
                 android:maxWidth="220dp"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
+                android:paddingStart="@dimen/space_8"
+                android:paddingEnd="@dimen/space_8"
                 android:singleLine="true"
                 android:text="@string/no_project"
                 android:textAppearance="@style/TextAppearance.Luma.Caption" />
@@ -62,18 +62,18 @@
                 android:id="@+id/chooseWorkspace"
                 style="@style/Widget.Luma.ToolbarButton"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_height="@dimen/touch_target"
                 android:text="@string/project" />
 
             <TextView
                 android:id="@+id/modelStatus"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_height="@dimen/touch_target"
                 android:background="@drawable/bg_chip"
                 android:gravity="center_vertical"
                 android:maxWidth="180dp"
-                android:paddingStart="10dp"
-                android:paddingEnd="10dp"
+                android:paddingStart="@dimen/space_12"
+                android:paddingEnd="@dimen/space_12"
                 android:ellipsize="end"
                 android:singleLine="true"
                 android:text="@string/model_disconnected"
@@ -83,28 +83,28 @@
                 android:id="@+id/taskMode"
                 style="@style/Widget.Luma.ToolbarButton"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_height="@dimen/touch_target"
                 android:text="ACT" />
 
             <Button
                 android:id="@+id/agentProfile"
                 style="@style/Widget.Luma.ToolbarButton"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_height="@dimen/touch_target"
                 android:text="Coding" />
 
             <Button
                 android:id="@+id/taskQueue"
                 style="@style/Widget.Luma.ToolbarButton"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_height="@dimen/touch_target"
                 android:text="@string/tasks_zero" />
 
             <Button
                 android:id="@+id/resumeTask"
                 style="@style/Widget.Luma.ToolbarButton"
                 android:layout_width="wrap_content"
-                android:layout_height="48dp"
+                android:layout_height="@dimen/touch_target"
                 android:text="@string/resume" />
         </LinearLayout>
     </HorizontalScrollView>
@@ -114,19 +114,19 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:minHeight="36dp"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
+        android:layout_marginStart="@dimen/space_12"
+        android:layout_marginEnd="@dimen/space_12"
         android:orientation="horizontal"
         android:background="@drawable/bg_chip"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp">
+        android:paddingStart="@dimen/space_12"
+        android:paddingEnd="@dimen/space_12">
 
         <ProgressBar
             android:id="@+id/progress"
             style="?android:attr/progressBarStyleSmall"
             android:layout_width="20dp"
             android:layout_height="20dp"
-            android:layout_marginEnd="8dp"
+            android:layout_marginEnd="@dimen/space_8"
             android:visibility="gone" />
 
         <TextView
@@ -144,8 +144,8 @@
             style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="0dp"
             android:layout_height="6dp"
-            android:layout_marginStart="10dp"
-            android:layout_marginEnd="8dp"
+            android:layout_marginStart="@dimen/space_12"
+            android:layout_marginEnd="@dimen/space_8"
             android:layout_weight="0.5"
             android:max="100"
             android:progressTint="@color/accent_primary"
@@ -158,7 +158,7 @@
             android:layout_height="wrap_content"
             android:minWidth="52dp"
             android:textColor="@color/text_tertiary"
-            android:textSize="11sp"
+            android:textSize="@dimen/type_micro"
             android:visibility="gone" />
     </LinearLayout>
 
@@ -166,9 +166,9 @@
         android:id="@+id/taskTimeline"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_marginTop="6dp"
-        android:layout_marginEnd="12dp"
+        android:layout_marginStart="@dimen/space_12"
+        android:layout_marginTop="@dimen/space_8"
+        android:layout_marginEnd="@dimen/space_12"
         android:baselineAligned="false"
         android:orientation="horizontal"
         android:visibility="gone">
@@ -183,12 +183,12 @@
             android:gravity="center"
             android:minHeight="32dp"
             android:maxLines="1"
-            android:paddingStart="8dp"
-            android:paddingTop="4dp"
-            android:paddingEnd="8dp"
-            android:paddingBottom="4dp"
+            android:paddingStart="@dimen/space_8"
+            android:paddingTop="@dimen/space_4"
+            android:paddingEnd="@dimen/space_8"
+            android:paddingBottom="@dimen/space_4"
             android:text="模型"
-            android:textSize="11sp"
+            android:textSize="@dimen/type_micro"
             android:textStyle="bold" />
 
         <Space
@@ -205,12 +205,12 @@
             android:gravity="center"
             android:minHeight="32dp"
             android:maxLines="1"
-            android:paddingStart="8dp"
-            android:paddingTop="4dp"
-            android:paddingEnd="8dp"
-            android:paddingBottom="4dp"
+            android:paddingStart="@dimen/space_8"
+            android:paddingTop="@dimen/space_4"
+            android:paddingEnd="@dimen/space_8"
+            android:paddingBottom="@dimen/space_4"
             android:text="工具"
-            android:textSize="11sp"
+            android:textSize="@dimen/type_micro"
             android:textStyle="bold" />
 
         <Space
@@ -227,12 +227,12 @@
             android:gravity="center"
             android:minHeight="32dp"
             android:maxLines="1"
-            android:paddingStart="8dp"
-            android:paddingTop="4dp"
-            android:paddingEnd="8dp"
-            android:paddingBottom="4dp"
+            android:paddingStart="@dimen/space_8"
+            android:paddingTop="@dimen/space_4"
+            android:paddingEnd="@dimen/space_8"
+            android:paddingBottom="@dimen/space_4"
             android:text="审批"
-            android:textSize="11sp"
+            android:textSize="@dimen/type_micro"
             android:textStyle="bold" />
 
         <Space
@@ -249,12 +249,12 @@
             android:gravity="center"
             android:minHeight="32dp"
             android:maxLines="1"
-            android:paddingStart="8dp"
-            android:paddingTop="4dp"
-            android:paddingEnd="8dp"
-            android:paddingBottom="4dp"
+            android:paddingStart="@dimen/space_8"
+            android:paddingTop="@dimen/space_4"
+            android:paddingEnd="@dimen/space_8"
+            android:paddingBottom="@dimen/space_4"
             android:text="结果"
-            android:textSize="11sp"
+            android:textSize="@dimen/type_micro"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -270,9 +270,9 @@
             android:layout_gravity="top"
             android:background="@color/surface_background"
             android:fillViewport="true"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:paddingTop="6dp"
+            android:paddingStart="@dimen/space_12"
+            android:paddingEnd="@dimen/space_12"
+            android:paddingTop="@dimen/space_8"
             android:scrollbars="none"
             android:visibility="gone">
 
@@ -281,7 +281,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:paddingBottom="6dp" />
+                android:paddingBottom="@dimen/space_8" />
         </HorizontalScrollView>
 
         <androidx.recyclerview.widget.RecyclerView
@@ -289,8 +289,8 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:paddingTop="4dp"
-            android:paddingBottom="16dp"
+            android:paddingTop="@dimen/space_4"
+            android:paddingBottom="@dimen/space_16"
             android:scrollbars="vertical" />
 
         <TextView
@@ -303,7 +303,7 @@
             android:focusable="true"
             android:gravity="center"
             android:lineSpacingExtra="4dp"
-            android:padding="32dp"
+            android:padding="@dimen/space_32"
             android:text="@string/start_task"
             android:textAlignment="center"
             android:textAppearance="@style/TextAppearance.Luma.Body"
@@ -314,17 +314,17 @@
         android:id="@+id/offlineBanner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginStart="@dimen/space_12"
+        android:layout_marginEnd="@dimen/space_12"
+        android:layout_marginBottom="@dimen/space_8"
         android:background="@drawable/bg_chip_warning"
         android:accessibilityLiveRegion="polite"
-        android:minHeight="48dp"
+        android:minHeight="@dimen/touch_target"
         android:gravity="center_vertical"
-        android:paddingStart="14dp"
-        android:paddingTop="10dp"
-        android:paddingEnd="14dp"
-        android:paddingBottom="10dp"
+        android:paddingStart="@dimen/space_16"
+        android:paddingTop="@dimen/space_12"
+        android:paddingEnd="@dimen/space_16"
+        android:paddingBottom="@dimen/space_12"
         android:text="@string/offline_banner"
         android:textAlignment="viewStart"
         android:textColor="@color/status_warning"
@@ -335,18 +335,18 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginStart="@dimen/space_12"
+        android:layout_marginEnd="@dimen/space_12"
+        android:layout_marginBottom="@dimen/space_8"
         android:maxWidth="760dp"
         android:background="@drawable/bg_chip_error"
         android:accessibilityLiveRegion="assertive"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="14dp"
-        android:paddingTop="10dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="10dp"
+        android:paddingStart="@dimen/space_16"
+        android:paddingTop="@dimen/space_12"
+        android:paddingEnd="@dimen/space_8"
+        android:paddingBottom="@dimen/space_12"
         android:visibility="gone">
 
         <TextView
@@ -360,15 +360,15 @@
             android:id="@+id/retry"
             style="@style/Widget.Luma.ToolbarButton"
             android:layout_width="wrap_content"
-            android:layout_height="48dp"
+            android:layout_height="@dimen/touch_target"
             android:text="@string/retry" />
 
         <Button
             android:id="@+id/startNewTask"
             style="@style/Widget.Luma.ToolbarButton"
             android:layout_width="wrap_content"
-            android:layout_height="48dp"
-            android:layout_marginStart="6dp"
+            android:layout_height="@dimen/touch_target"
+            android:layout_marginStart="@dimen/space_8"
             android:text="输入新任务"
             android:visibility="gone" />
     </LinearLayout>
@@ -378,18 +378,18 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginStart="@dimen/space_12"
+        android:layout_marginEnd="@dimen/space_12"
+        android:layout_marginBottom="@dimen/space_8"
         android:maxWidth="760dp"
         android:background="@drawable/bg_chip_warning"
         android:accessibilityLiveRegion="polite"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="14dp"
-        android:paddingTop="10dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="10dp"
+        android:paddingStart="@dimen/space_16"
+        android:paddingTop="@dimen/space_12"
+        android:paddingEnd="@dimen/space_8"
+        android:paddingBottom="@dimen/space_12"
         android:visibility="gone">
 
         <TextView
@@ -403,7 +403,7 @@
             android:id="@+id/resumeStoppedTask"
             style="@style/Widget.Luma.ToolbarButton"
             android:layout_width="wrap_content"
-            android:layout_height="48dp"
+            android:layout_height="@dimen/touch_target"
             android:text="@string/resume" />
     </LinearLayout>
 
@@ -412,18 +412,18 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginStart="@dimen/space_12"
+        android:layout_marginEnd="@dimen/space_12"
+        android:layout_marginBottom="@dimen/space_8"
         android:maxWidth="760dp"
         android:background="@drawable/bg_chip_warning"
         android:accessibilityLiveRegion="polite"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="14dp"
-        android:paddingTop="10dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="10dp"
+        android:paddingStart="@dimen/space_16"
+        android:paddingTop="@dimen/space_12"
+        android:paddingEnd="@dimen/space_8"
+        android:paddingBottom="@dimen/space_12"
         android:visibility="gone">
 
         <TextView
@@ -437,7 +437,7 @@
             android:id="@+id/setupAction"
             style="@style/Widget.Luma.ToolbarButton"
             android:layout_width="wrap_content"
-            android:layout_height="48dp"
+            android:layout_height="@dimen/touch_target"
             android:visibility="gone" />
     </LinearLayout>
 
@@ -445,9 +445,9 @@
         android:id="@+id/approval"
         style="@style/Widget.Luma.ToolbarButton"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="8dp"
+        android:layout_height="@dimen/touch_target"
+        android:layout_marginEnd="@dimen/space_12"
+        android:layout_marginBottom="@dimen/space_8"
         android:background="@drawable/bg_button_danger"
         android:text="@string/review_and_approve"
         android:textColor="@color/accent_foreground"
@@ -457,24 +457,24 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginStart="@dimen/space_12"
+        android:layout_marginEnd="@dimen/space_12"
+        android:layout_marginBottom="@dimen/space_8"
         android:maxWidth="760dp"
         app:cardBackgroundColor="@color/surface_glass"
-        app:cardCornerRadius="16dp"
+        app:cardCornerRadius="@dimen/radius_pill"
         app:cardElevation="0dp"
         app:strokeColor="@color/border_subtle"
-        app:strokeWidth="1dp">
+        app:strokeWidth="@dimen/border_width">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingStart="4dp"
-            android:paddingTop="4dp"
-            android:paddingEnd="4dp"
-            android:paddingBottom="4dp">
+            android:paddingStart="@dimen/space_4"
+            android:paddingTop="@dimen/space_4"
+            android:paddingEnd="@dimen/space_4"
+            android:paddingBottom="@dimen/space_4">
 
             <HorizontalScrollView
                 android:id="@+id/attachmentTray"
@@ -488,7 +488,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:paddingBottom="4dp" />
+                    android:paddingBottom="@dimen/space_4" />
             </HorizontalScrollView>
 
             <LinearLayout
@@ -500,11 +500,11 @@
                 <Button
                     android:id="@+id/attachButton"
                     style="@style/Widget.Luma.ToolbarButton"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="@dimen/touch_target"
+                    android:layout_height="@dimen/touch_target"
                     android:contentDescription="@string/attach_files"
                     android:text="+"
-                    android:textSize="22sp"
+                    android:textSize="@dimen/type_title"
                     android:textStyle="bold"
                     android:textColor="@color/text_secondary" />
 
@@ -520,8 +520,8 @@
                     android:imeOptions="actionSend"
                     android:inputType="textCapSentences|textMultiLine"
                     android:maxLines="6"
-                    android:minHeight="48dp"
-                    android:padding="10dp"
+                    android:minHeight="@dimen/touch_target"
+                    android:padding="@dimen/space_12"
                     android:textColor="@color/text_primary"
                     android:textColorHint="@color/text_tertiary" />
 
@@ -529,15 +529,15 @@
                     android:id="@+id/startTask"
                     style="@style/Widget.Luma.PrimaryButton"
                     android:layout_width="wrap_content"
-                    android:layout_height="48dp"
+                    android:layout_height="@dimen/touch_target"
                     android:text="@string/send" />
 
                 <Button
                     android:id="@+id/stopTask"
                     style="@style/Widget.Luma.ToolbarButton"
                     android:layout_width="wrap_content"
-                    android:layout_height="48dp"
-                    android:layout_marginStart="6dp"
+                    android:layout_height="@dimen/touch_target"
+                    android:layout_marginStart="@dimen/space_8"
                     android:contentDescription="@string/stop_current_task"
                     android:text="@string/stop"
                     android:textColor="@color/status_error"
