@@ -208,16 +208,7 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.resumeStoppedTask).setOnClickListener { resumeTask() }
         findViewById<Button>(R.id.startNewTask).setOnClickListener {
-            findViewById<View>(R.id.errorContainer).visibility = View.GONE
-            findViewById<View>(R.id.stoppedContainer).visibility = View.GONE
-            hideSetupIssue()
-            contextTokensFromModel = 0
-            val input = findViewById<EditText>(R.id.taskInput)
-            input.text.clear()
-            input.requestFocus()
-            getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
-                ?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
-            updateContextIndicator()
+            prepareNewTaskInput()
         }
         findViewById<Button>(R.id.approval).setOnClickListener {
             startActivity(Intent(this, ApprovalActivity::class.java))
@@ -374,7 +365,12 @@ class MainActivity : AppCompatActivity() {
     private fun resumeTask() {
         val durableSession = latestResumableSession()
         if (durableSession == null && !AgentCheckpointStore(this).hasCheckpoint()) {
-            Toast.makeText(this, "No task checkpoint is available", Toast.LENGTH_SHORT).show()
+            showSetupIssue(
+                "当前没有可恢复的任务。已停止任务需要保留检查点才能继续。",
+                "输入新任务",
+            ) {
+                prepareNewTaskInput()
+            }
             return
         }
         ContextCompat.startForegroundService(this, Intent(this, TaskForegroundService::class.java).apply {
@@ -390,6 +386,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun latestResumableSession() = FileSessionStore(this).list().firstOrNull { session ->
         runCatching { SessionEventStore(this, session.id).hasCheckpoint() }.getOrDefault(false)
+    }
+
+    private fun prepareNewTaskInput() {
+        findViewById<View>(R.id.errorContainer).visibility = View.GONE
+        findViewById<View>(R.id.stoppedContainer).visibility = View.GONE
+        hideSetupIssue()
+        contextTokensFromModel = 0
+        val input = findViewById<EditText>(R.id.taskInput)
+        input.text.clear()
+        input.requestFocus()
+        getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+            ?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+        updateContextIndicator()
     }
 
     private fun renderTaskState(
