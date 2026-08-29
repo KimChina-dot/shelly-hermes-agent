@@ -65,6 +65,7 @@ class HistoryActivity : Activity() {
         val events = runCatching { eventStore.load() }.getOrDefault(emptyList())
         val maxSequence = events.lastOrNull()?.sequence ?: 0L
         val messages = runCatching { eventStore.deriveMessages() }.getOrDefault(emptyList())
+        val checkpoint = runCatching { eventStore.latestCheckpoint() }.getOrNull()
         orientation = LinearLayout.VERTICAL
         background = ContextCompat.getDrawable(context, R.drawable.bg_surface_card)
         setPadding(dp(16), dp(14), dp(16), dp(14))
@@ -78,11 +79,12 @@ class HistoryActivity : Activity() {
             text = session.prompt.ifBlank { "未命名任务" }
         })
         addView(TextView(context).apply {
-            text = session.status.ifBlank { "历史记录" }
+            text = statusLabel(session.status)
             textSize = 12f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(getColor(R.color.text_secondary))
-            background = ContextCompat.getDrawable(context, R.drawable.bg_chip)
+            setTextColor(getColor(statusColor(session.status)))
+            background = ContextCompat.getDrawable(context, statusBackground(session.status))
+            contentDescription = "任务状态 ${statusLabel(session.status)}"
             setPadding(dp(10), dp(4), dp(10), dp(4))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -102,6 +104,14 @@ class HistoryActivity : Activity() {
                 append("事件摘要：")
                 append(session.summary.ifBlank { "旧版会话暂无事件摘要，可继续恢复此任务。" })
                 if (maxSequence > 0L) append("\n事件：$maxSequence 条")
+                if (messages.isNotEmpty()) append("\n消息：${messages.size} 条")
+                append(
+                    when {
+                        checkpoint != null -> "\n检查点：可从此处恢复"
+                        messages.isNotEmpty() -> "\n检查点：无，可查看回放"
+                        else -> "\n检查点：无"
+                    },
+                )
             }
         })
         val transcript = TextView(context).apply {
@@ -237,6 +247,33 @@ class HistoryActivity : Activity() {
         SessionEventType.MIGRATED_CHECKPOINT -> "迁移检查点"
         SessionEventType.CHECKPOINT -> "检查点"
         SessionEventType.MODEL_DELTA -> "流式输出"
+    }
+
+    private fun statusLabel(status: String): String = when (status.uppercase()) {
+        "RUNNING", "STARTING" -> "运行中"
+        "AWAITING_APPROVAL", "WAITING_FOR_APPROVAL" -> "等待审批"
+        "COMPLETED" -> "已完成"
+        "STOPPED" -> "已停止"
+        "FAILED" -> "失败"
+        else -> "历史记录"
+    }
+
+    private fun statusBackground(status: String): Int = when (status.uppercase()) {
+        "RUNNING", "STARTING" -> R.drawable.bg_chip_running
+        "AWAITING_APPROVAL", "WAITING_FOR_APPROVAL" -> R.drawable.bg_chip_warning
+        "COMPLETED" -> R.drawable.bg_chip_success
+        "STOPPED" -> R.drawable.bg_chip
+        "FAILED" -> R.drawable.bg_chip_error
+        else -> R.drawable.bg_chip
+    }
+
+    private fun statusColor(status: String): Int = when (status.uppercase()) {
+        "RUNNING", "STARTING" -> getColor(R.color.accent_primary)
+        "AWAITING_APPROVAL", "WAITING_FOR_APPROVAL" -> getColor(R.color.status_warning)
+        "COMPLETED" -> getColor(R.color.status_success)
+        "STOPPED" -> getColor(R.color.text_secondary)
+        "FAILED" -> getColor(R.color.status_error)
+        else -> getColor(R.color.text_secondary)
     }
 
     private fun confirmClearHistory() {
