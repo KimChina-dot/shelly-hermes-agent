@@ -69,10 +69,12 @@
                 android:id="@+id/modelStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
+                android:background="@drawable/bg_chip"
                 android:gravity="center_vertical"
                 android:maxWidth="180dp"
                 android:paddingStart="10dp"
                 android:paddingEnd="10dp"
+                android:ellipsize="end"
                 android:singleLine="true"
                 android:text="@string/model_disconnected"
                 android:textAppearance="@style/TextAppearance.Luma.Caption" />

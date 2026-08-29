@@ -1092,11 +1092,28 @@ class MainActivity : AppCompatActivity() {
             "项目：${workspace.lastPathSegment ?: "已授权目录"}"
         }
         val config = AndroidKeyStoreModelConfig(this).load()
-        findViewById<TextView>(R.id.modelStatus).text = if (config == null) {
-            "模型未连接"
+        val modelStatus = findViewById<TextView>(R.id.modelStatus)
+        modelStatus.text = if (config == null) {
+            "模型未配置"
         } else {
-            "模型：${config.model}"
+            config.model
         }
+        modelStatus.setBackgroundResource(
+            if (config == null) R.drawable.bg_chip_warning else R.drawable.bg_chip_success,
+        )
+        modelStatus.setTextColor(
+            getColor(
+                if (config == null) R.color.status_warning else R.color.status_success,
+            ),
+        )
+        modelStatus.contentDescription = if (config == null) {
+            "模型未配置，点击打开模型设置"
+        } else {
+            "当前模型 ${config.model}，点击修改模型设置"
+        }
+        modelStatus.isClickable = true
+        modelStatus.isFocusable = true
+        modelStatus.setOnClickListener { showModelSettingsDialog() }
         val empty = findViewById<TextView>(R.id.emptyState)
         if (messages.isNotEmpty()) {
             empty.visibility = View.GONE
