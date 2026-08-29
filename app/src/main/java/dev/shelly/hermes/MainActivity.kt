@@ -14,8 +14,10 @@ import android.net.Network
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.HorizontalScrollView
@@ -78,6 +80,7 @@ class MainActivity : AppCompatActivity() {
     private var timelineToolState = "PENDING"
     private var timelineApprovalState = "PENDING"
     private var timelineToolName = ""
+    private var isTaskRunning = false
 
     private val taskStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -165,6 +168,17 @@ class MainActivity : AppCompatActivity() {
             selectProfile(available[(index + 1) % available.size])
         }
         findViewById<Button>(R.id.startTask).setOnClickListener { startTask() }
+        findViewById<EditText>(R.id.taskInput).setOnEditorActionListener { _, actionId, event ->
+            val isSendAction = actionId == EditorInfo.IME_ACTION_SEND
+            val isEnter = event?.keyCode == KeyEvent.KEYCODE_ENTER &&
+                event.action == KeyEvent.ACTION_DOWN
+            if (isSendAction || isEnter) {
+                startTask()
+                true
+            } else {
+                false
+            }
+        }
         findViewById<Button>(R.id.attachButton).setOnClickListener {
             documentPicker.launch(
                 arrayOf(
@@ -257,6 +271,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startTask() {
+        if (isTaskRunning) return
         contextTokensFromModel = 0
         val input = findViewById<EditText>(R.id.taskInput)
         val prompt = input.text.toString().trim()
@@ -901,6 +916,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setRunning(running: Boolean) {
+        isTaskRunning = running
         findViewById<ProgressBar>(R.id.progress).visibility = if (running) View.VISIBLE else View.GONE
         findViewById<Button>(R.id.startTask).apply {
             visibility = View.VISIBLE

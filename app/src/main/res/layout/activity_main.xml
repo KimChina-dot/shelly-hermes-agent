@@ -436,6 +436,8 @@
                     android:background="@android:color/transparent"
                     android:gravity="top|start"
                     android:hint="@string/task_hint"
+                    android:imeActionLabel="@string/send"
+                    android:imeOptions="actionSend"
                     android:inputType="textCapSentences|textMultiLine"
                     android:maxLines="6"
                     android:minHeight="48dp"
