@@ -14,6 +14,9 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
 
 enum class UiMessageRole { USER, ASSISTANT, STATUS, TOOL, ARTIFACT }
 
@@ -23,6 +26,7 @@ data class UiMessage(
     val title: String? = null,
     val toolCallId: String? = null,
     val toolState: String? = null,
+    val toolStartedAtMillis: Long? = null,
     val toolDurationMillis: Long? = null,
     val streaming: Boolean = false,
     val toolArgs: String? = null,
@@ -87,7 +91,11 @@ class AgentMessageAdapter(
             } else {
                 label.text
             }
-            stateChip.text = visibleStateLabel(message.toolState, message.toolDurationMillis)
+            stateChip.text = visibleStateLabel(
+                message.toolState,
+                message.toolDurationMillis,
+                message.toolStartedAtMillis,
+            )
             stateChip.visibility = if (stateChip.text.isNullOrBlank()) {
                 android.view.View.GONE
             } else {
@@ -96,7 +104,11 @@ class AgentMessageAdapter(
                 android.view.View.VISIBLE
             }
             stateChip.contentDescription = if (message.role == UiMessageRole.TOOL) {
-                "工具状态 ${stateChip.text}，耗时 ${formatDuration(message.toolDurationMillis)}"
+                buildString {
+                    append("工具状态 ${stateChip.text}")
+                    formatStartedTime(message.toolStartedAtMillis)?.let { append("，开始 $it") }
+                    formatDuration(message.toolDurationMillis)?.let { append("，耗时 $it") }
+                }
             } else {
                 stateChip.text
             }
@@ -246,25 +258,37 @@ class AgentMessageAdapter(
             }
         }
 
-        private fun visibleStateLabel(state: String?, durationMillis: Long?): String {
+        private fun visibleStateLabel(
+            state: String?,
+            durationMillis: Long?,
+            startedAtMillis: Long?,
+        ): String {
             val stateText = when (state) {
-            null, "" -> null
-            "PENDING" -> "等待执行"
-            "RUNNING" -> "执行中"
-            "FINISHED" -> "已完成"
-            "FAILED" -> "失败"
-            "CANCELLED" -> "已取消"
-            "WAITING_FOR_APPROVAL" -> "等待审批"
-            else -> state
-        }
+                null, "" -> null
+                "PENDING" -> "等待执行"
+                "RUNNING" -> "执行中"
+                "FINISHED" -> "已完成"
+                "FAILED" -> "失败"
+                "CANCELLED" -> "已取消"
+                "WAITING_FOR_APPROVAL" -> "等待审批"
+                else -> state
+            }
             val duration = formatDuration(durationMillis)
-            return if (duration == null) stateText else "$stateText · $duration"
+            val startedAt = formatStartedTime(startedAtMillis)
+            return listOfNotNull(stateText, startedAt?.let { "开始 $it" }, duration)
+                .joinToString(" · ")
         }
 
         private fun formatDuration(durationMillis: Long?): String? {
             val millis = durationMillis ?: return null
             if (millis < 0) return null
             return if (millis < 1_000) "${millis}ms" else "%.1fs".format(millis / 1_000.0)
+        }
+
+        private fun formatStartedTime(startedAtMillis: Long?): String? {
+            val millis = startedAtMillis ?: return null
+            if (millis <= 0) return null
+            return DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault()).format(Date(millis))
         }
 
         private fun stateBackground(state: String?): Int = when (state) {

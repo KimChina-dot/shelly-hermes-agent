@@ -86,6 +86,7 @@ class MainActivity : AppCompatActivity() {
             val toolArgs = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_ARGS).orEmpty()
             val toolResult = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_RESULT).orEmpty()
             val toolDurationMillis = intent.getLongExtra(TaskForegroundService.EXTRA_TOOL_DURATION_MILLIS, -1L)
+            val toolStartedAtMillis = intent.getLongExtra(TaskForegroundService.EXTRA_TOOL_STARTED_AT_MILLIS, -1L)
             val contextTokens = intent.getIntExtra(TaskForegroundService.EXTRA_CONTEXT_TOKENS, -1)
             if (contextTokens > 0) contextTokensFromModel = contextTokens
             renderTaskState(
@@ -99,6 +100,7 @@ class MainActivity : AppCompatActivity() {
                 toolArgs,
                 toolResult,
                 if (toolDurationMillis >= 0) toolDurationMillis else null,
+                if (toolStartedAtMillis >= 0) toolStartedAtMillis else null,
             )
         }
     }
@@ -314,6 +316,7 @@ class MainActivity : AppCompatActivity() {
         toolArgs: String = "",
         toolResult: String = "",
         toolDurationMillis: Long? = null,
+        toolStartedAtMillis: Long? = null,
     ) {
         if (queueCount >= 0) findViewById<Button>(R.id.taskQueue).text = "任务 $queueCount"
         findViewById<TextView>(R.id.taskStatus).apply {
@@ -337,7 +340,14 @@ class MainActivity : AppCompatActivity() {
             TaskState.RUNNING.name -> {
                 setRunning(true)
                 when (toolState) {
-                    "RUNNING" -> appendToolMessage(toolName, toolCallId, detail, toolState, toolArgs)
+                    "RUNNING" -> appendToolMessage(
+                        toolName,
+                        toolCallId,
+                        detail,
+                        toolState,
+                        toolArgs,
+                        toolStartedAtMillis,
+                    )
                     "FINISHED", "FAILED" -> updateToolMessage(
                         toolCallId,
                         detail,
@@ -399,7 +409,14 @@ class MainActivity : AppCompatActivity() {
         scrollToLatest()
     }
 
-    private fun appendToolMessage(toolName: String, toolCallId: String, detail: String, state: String, args: String = "") {
+    private fun appendToolMessage(
+        toolName: String,
+        toolCallId: String,
+        detail: String,
+        state: String,
+        args: String = "",
+        startedAtMillis: Long? = null,
+    ) {
         if (toolName.isBlank()) return
         flushStreaming()
         streamingMessage = null
@@ -409,6 +426,7 @@ class MainActivity : AppCompatActivity() {
             title = toolName,
             toolCallId = toolCallId,
             toolState = state,
+            toolStartedAtMillis = startedAtMillis,
             toolArgs = args,
         )
         messageAdapter.notifyDataSetChanged()
@@ -431,6 +449,7 @@ class MainActivity : AppCompatActivity() {
         messages[index] = messages[index].copy(
             text = detail,
             toolState = state,
+            toolStartedAtMillis = messages[index].toolStartedAtMillis,
             toolDurationMillis = durationMillis,
             toolResult = result,
         )
