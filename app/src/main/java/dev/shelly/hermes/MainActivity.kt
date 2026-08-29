@@ -520,7 +520,7 @@ class MainActivity : AppCompatActivity() {
             }
             TaskForegroundService.STATE_AWAITING_APPROVAL -> {
                 timelineModelState = "FINISHED"
-                timelineToolState = "FINISHED"
+                timelineToolState = "PENDING"
                 timelineApprovalState = "WAITING_FOR_APPROVAL"
                 if (toolName.isNotBlank()) timelineToolName = toolName
                 modelState = timelineModelState
