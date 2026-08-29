@@ -56,10 +56,11 @@
             android:textAppearance="@style/TextAppearance.Luma.SectionTitle" />
 
         <TextView
-            android:layout_width="320dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/space_8"
             android:gravity="center"
+            android:maxWidth="@dimen/empty_state_text_width"
             android:lineSpacingExtra="4dp"
             android:text="任务提交后会在这里显示排队、运行、失败和取消状态；失败的队列任务可以重新排队。"
             android:textAlignment="center"
