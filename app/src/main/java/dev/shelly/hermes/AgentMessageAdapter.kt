@@ -1,6 +1,7 @@
 package dev.shelly.hermes
 
 import android.content.Context
+import android.content.ClipboardManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
@@ -11,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
 
 enum class UiMessageRole { USER, ASSISTANT, STATUS, TOOL, ARTIFACT }
@@ -57,6 +59,7 @@ class AgentMessageAdapter(
         private val stateChip = row.findViewById<TextView>(R.id.stateChip)
         private val expandHint = row.findViewById<TextView>(R.id.expandHint)
         private val retryHint = row.findViewById<TextView>(R.id.retryHint)
+        private val copyHint = row.findViewById<TextView>(R.id.copyHint)
         private val content = row.findViewById<TextView>(R.id.content)
         private val details = row.findViewById<TextView>(R.id.details)
         private val artifactImage = row.findViewById<ImageView>(R.id.artifactImage)
@@ -127,6 +130,7 @@ class AgentMessageAdapter(
             )
             bindExpandable(message)
             bindRetry(message)
+            bindCopy(message)
             bindArtifactImage(message)
         }
 
@@ -169,6 +173,26 @@ class AgentMessageAdapter(
                 onRetry != null
             retryHint.visibility = if (canRetry) View.VISIBLE else View.GONE
             retryHint.setOnClickListener(if (canRetry) { View.OnClickListener { onRetry?.invoke() } } else null)
+        }
+
+        private fun bindCopy(message: UiMessage) {
+            val canCopy = message.role in setOf(UiMessageRole.USER, UiMessageRole.ASSISTANT) &&
+                message.text.isNotBlank() &&
+                !message.streaming
+            copyHint.visibility = if (canCopy) View.VISIBLE else View.GONE
+            copyHint.contentDescription = context.getString(R.string.copy_message_content)
+            copyHint.setOnClickListener(if (canCopy) {
+                View.OnClickListener {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(
+                        android.content.ClipData.newPlainText(
+                            context.getString(R.string.copy_message),
+                            message.text,
+                        ),
+                    )
+                    Toast.makeText(context, R.string.message_copied, Toast.LENGTH_SHORT).show()
+                }
+            } else null)
         }
 
         private fun bindExpandable(message: UiMessage) {
