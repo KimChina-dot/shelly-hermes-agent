@@ -14,8 +14,10 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Network
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
 import android.view.View
@@ -149,6 +151,7 @@ class MainActivity : AppCompatActivity() {
             onRegenerate = { regenerateLastReply() },
             onOpenArtifact = { openArtifact(it) },
             onShareArtifact = { shareArtifact(it) },
+            onDownloadArtifact = { downloadArtifact(it) },
         )
         findViewById<RecyclerView>(R.id.messageList).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
@@ -1028,6 +1031,11 @@ class MainActivity : AppCompatActivity() {
         actions.addView(galleryAction("打开", "打开产物 ${message.title}") { openArtifact(message) })
         actions.addView(galleryAction("分享", "分享产物 ${message.title}") { shareArtifact(message) })
         actions.addView(
+            galleryAction("保存", "保存产物 ${message.title} 到下载目录") {
+                downloadArtifact(message)
+            },
+        )
+        actions.addView(
             galleryAction("复制路径", "复制产物路径 ${message.artifactPath.orEmpty()}") {
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(
@@ -1115,6 +1123,56 @@ class MainActivity : AppCompatActivity() {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         startActivity(Intent.createChooser(send, "分享 ${message.title}"))
+    }
+
+    private fun downloadArtifact(message: UiMessage) {
+        val source = resolveDocumentUri(message) ?: return
+        val fileName = message.title.orEmpty()
+            .ifBlank { message.artifactPath.orEmpty().substringAfterLast('/') }
+            .ifBlank { "luma-artifact" }
+        val values = android.content.ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+            put(MediaStore.Downloads.MIME_TYPE, artifactMimeType(fileName, contentResolver.getType(source)))
+            put(
+                MediaStore.Downloads.RELATIVE_PATH,
+                Environment.DIRECTORY_DOWNLOADS + "/Luma",
+            )
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val target = runCatching {
+            contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+        }.getOrNull() ?: run {
+            Toast.makeText(this, "无法创建下载文件", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            contentResolver.openInputStream(source)?.use { input ->
+                contentResolver.openOutputStream(target)?.use { output ->
+                    input.copyTo(output)
+                } ?: throw IllegalStateException("下载文件输出流不可用")
+            } ?: throw IllegalStateException("产物文件输入流不可用")
+            val complete = android.content.ContentValues().apply {
+                put(MediaStore.Downloads.IS_PENDING, 0)
+            }
+            contentResolver.update(target, complete, null, null)
+            Toast.makeText(this, "已保存到下载目录/Luma", Toast.LENGTH_SHORT).show()
+        } catch (_: Exception) {
+            runCatching { contentResolver.delete(target, null, null) }
+            Toast.makeText(this, "保存产物失败", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun artifactMimeType(fileName: String, detectedType: String?): String {
+        return when (fileName.substringAfterLast('.', "").lowercase()) {
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "svg" -> "image/svg+xml"
+            "pdf" -> "application/pdf"
+            "json", "kt", "java", "py", "ts", "tsx", "js", "jsx", "css", "html", "xml", "yml", "yaml", "md", "txt", "csv" -> "text/plain"
+            else -> detectedType ?: "application/octet-stream"
+        }
     }
 
     private fun resolveDocumentUri(message: UiMessage): Uri? {

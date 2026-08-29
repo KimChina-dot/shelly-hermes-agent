@@ -135,6 +135,16 @@
             android:gravity="center_vertical"
             android:text="@string/share_artifact"
             android:textColor="@color/accent_primary" />
+
+        <TextView
+            android:id="@+id/saveArtifactHint"
+            style="@style/Widget.Luma.ActionHint"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/touch_target"
+            android:layout_marginStart="@dimen/space_8"
+            android:gravity="center_vertical"
+            android:text="@string/save_artifact"
+            android:textColor="@color/accent_primary" />
     </LinearLayout>
 
     <TextView

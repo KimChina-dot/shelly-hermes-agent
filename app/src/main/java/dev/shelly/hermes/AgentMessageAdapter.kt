@@ -45,6 +45,7 @@ class AgentMessageAdapter(
     private val onRegenerate: (() -> Unit)? = null,
     private val onOpenArtifact: ((UiMessage) -> Unit)? = null,
     private val onShareArtifact: ((UiMessage) -> Unit)? = null,
+    private val onDownloadArtifact: ((UiMessage) -> Unit)? = null,
 ) : RecyclerView.Adapter<AgentMessageAdapter.MessageViewHolder>() {
 
     private val expandedToolCallIds = mutableSetOf<String>()
@@ -77,6 +78,7 @@ class AgentMessageAdapter(
         private val artifactActions = row.findViewById<LinearLayout>(R.id.artifactActions)
         private val openArtifactHint = row.findViewById<TextView>(R.id.openArtifactHint)
         private val shareArtifactHint = row.findViewById<TextView>(R.id.shareArtifactHint)
+        private val saveArtifactHint = row.findViewById<TextView>(R.id.saveArtifactHint)
 
         fun bind(message: UiMessage, position: Int) {
             label.text = when (message.role) {
@@ -272,21 +274,29 @@ class AgentMessageAdapter(
             if (!isArtifact) {
                 openArtifactHint.setOnClickListener(null)
                 shareArtifactHint.setOnClickListener(null)
+                saveArtifactHint.setOnClickListener(null)
                 openArtifactHint.visibility = View.GONE
                 shareArtifactHint.visibility = View.GONE
+                saveArtifactHint.visibility = View.GONE
                 return
             }
             openArtifactHint.visibility = View.VISIBLE
             shareArtifactHint.visibility = View.VISIBLE
+            saveArtifactHint.visibility = View.VISIBLE
             openArtifactHint.contentDescription = "打开产物 ${message.title}"
             shareArtifactHint.contentDescription = "分享产物 ${message.title}"
+            saveArtifactHint.contentDescription = "保存产物 ${message.title} 到下载目录"
             openArtifactHint.isFocusable = true
             shareArtifactHint.isFocusable = true
+            saveArtifactHint.isFocusable = true
             openArtifactHint.setOnClickListener {
                 onOpenArtifact?.invoke(message)
             }
             shareArtifactHint.setOnClickListener {
                 onShareArtifact?.invoke(message)
+            }
+            saveArtifactHint.setOnClickListener {
+                onDownloadArtifact?.invoke(message)
             }
         }
 
