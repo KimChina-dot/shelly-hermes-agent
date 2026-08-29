@@ -60,13 +60,16 @@ class MainActivity : AppCompatActivity() {
         try {
             contentResolver.takePersistableUriPermission(uri, flags)
         } catch (_: SecurityException) {
-            Toast.makeText(this, "无法保留目录权限，请重新选择项目目录", Toast.LENGTH_LONG).show()
+            showSetupIssue("无法保留目录权限，请重新选择项目目录。", "重新选择项目") {
+                picker.launch(null)
+            }
             return@registerForActivityResult
         }
         getSharedPreferences(PUBLIC_CONFIG, MODE_PRIVATE)
             .edit()
             .putString(WORKSPACE_URI, uri.toString())
             .apply()
+        hideSetupIssue()
         refreshConfigurationStatus()
     }
 
@@ -83,6 +86,7 @@ class MainActivity : AppCompatActivity() {
     private var timelineApprovalState = "PENDING"
     private var timelineToolName = ""
     private var isTaskRunning = false
+    private var setupActionHandler: (() -> Unit)? = null
 
     private val taskStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -202,6 +206,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.startNewTask).setOnClickListener {
             findViewById<View>(R.id.errorContainer).visibility = View.GONE
             findViewById<View>(R.id.stoppedContainer).visibility = View.GONE
+            hideSetupIssue()
             contextTokensFromModel = 0
             val input = findViewById<EditText>(R.id.taskInput)
             input.text.clear()
@@ -305,12 +310,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (workspaceUri() == null) {
-            Toast.makeText(this, "请先选择项目目录", Toast.LENGTH_SHORT).show()
+            showSetupIssue("请先选择项目目录，才能读取和修改工作区。", "选择项目") {
+                picker.launch(null)
+            }
             return
         }
         if (AndroidKeyStoreModelConfig(this).load() == null) {
-            Toast.makeText(this, "请先完成模型设置", Toast.LENGTH_SHORT).show()
-            showModelSettingsDialog()
+            showSetupIssue("请先完成模型设置，再发送 Agent 任务。", "设置模型") {
+                showModelSettingsDialog()
+            }
             return
         }
         if (!isOnline()) {
@@ -325,6 +333,7 @@ class MainActivity : AppCompatActivity() {
         input.text.clear()
         findViewById<View>(R.id.errorContainer).visibility = View.GONE
         findViewById<View>(R.id.stoppedContainer).visibility = View.GONE
+        hideSetupIssue()
 
         val intent = Intent(this, TaskForegroundService::class.java).apply {
             action = TaskForegroundService.ACTION_START
@@ -498,6 +507,32 @@ class MainActivity : AppCompatActivity() {
         resumeButton.visibility = if (canResume) View.VISIBLE else View.GONE
         resumeButton.contentDescription = "继续已停止的任务"
         container.visibility = View.VISIBLE
+    }
+
+    private fun showSetupIssue(
+        message: String,
+        actionText: String? = null,
+        action: (() -> Unit)? = null,
+    ) {
+        setupActionHandler = action
+        findViewById<TextView>(R.id.setupText).text = message
+        val actionButton = findViewById<Button>(R.id.setupAction)
+        if (actionText != null && action != null) {
+            actionButton.text = actionText
+            actionButton.contentDescription = "$actionText：解决当前设置问题"
+            actionButton.setOnClickListener { setupActionHandler?.invoke() }
+            actionButton.visibility = View.VISIBLE
+        } else {
+            actionButton.setOnClickListener(null)
+            actionButton.visibility = View.GONE
+        }
+        findViewById<View>(R.id.setupContainer).visibility = View.VISIBLE
+    }
+
+    private fun hideSetupIssue() {
+        setupActionHandler = null
+        findViewById<View>(R.id.setupContainer).visibility = View.GONE
+        findViewById<Button>(R.id.setupAction).setOnClickListener(null)
     }
 
     private fun stateDescription(state: String): String = when (state) {
@@ -824,7 +859,17 @@ class MainActivity : AppCompatActivity() {
             }.orEmpty()
         }.getOrDefault("")
         if (preview.isBlank()) {
-            Toast.makeText(this, "无法读取附件内容，请选择文本类文件", Toast.LENGTH_SHORT).show()
+            showSetupIssue("无法读取附件内容，请选择文本类文件。", "重新选择附件") {
+                documentPicker.launch(
+                    arrayOf(
+                        "text/*",
+                        "application/json",
+                        "application/xml",
+                        "application/javascript",
+                        "application/typescript",
+                    ),
+                )
+            }
             return
         }
         attachments += AttachmentRef(name, preview)
@@ -1408,6 +1453,7 @@ class MainActivity : AppCompatActivity() {
                 runCatching { store.save(ModelConfig(endpointValue, modelValue, keyValue, contextWindowValue)) }
                     .onSuccess {
                         Toast.makeText(this, "模型设置已安全保存", Toast.LENGTH_SHORT).show()
+                        hideSetupIssue()
                         refreshConfigurationStatus()
                         dialog.dismiss()
                     }
