@@ -6,6 +6,8 @@ import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import dev.shelly.hermes.core.ApprovalDecision
+import dev.shelly.hermes.core.ToolRisk
+import org.json.JSONObject
 
 /** Human approval screen for the currently pending tool call. */
 class ApprovalActivity : Activity() {
@@ -17,6 +19,10 @@ class ApprovalActivity : Activity() {
         val name = findViewById<TextView>(R.id.tool_name)
         val args = findViewById<TextView>(R.id.tool_args)
         val empty = findViewById<TextView>(R.id.empty)
+        val riskTitle = findViewById<TextView>(R.id.risk_title)
+        val risk = findViewById<TextView>(R.id.risk)
+        val targetTitle = findViewById<TextView>(R.id.affected_title)
+        val target = findViewById<TextView>(R.id.affected_target)
         val approve = findViewById<Button>(R.id.approve)
         val reject = findViewById<Button>(R.id.reject)
         val always = findViewById<Button>(R.id.always)
@@ -25,12 +31,25 @@ class ApprovalActivity : Activity() {
             name.visibility = View.GONE
             args.visibility = View.GONE
             empty.visibility = View.VISIBLE
+            riskTitle.visibility = View.GONE
+            risk.visibility = View.GONE
+            targetTitle.visibility = View.GONE
+            target.visibility = View.GONE
             approve.isEnabled = false
             reject.isEnabled = false
             always.isEnabled = false
         } else {
             name.text = "工具调用：${pending.call.name}"
             args.text = pending.call.argumentsJson.takeIf { it.isNotBlank() } ?: "（无参数）"
+            val riskLevel = approvalRisk(pending.call.name)
+            riskTitle.visibility = View.VISIBLE
+            risk.visibility = View.VISIBLE
+            risk.text = riskLabel(riskLevel)
+            risk.setBackgroundResource(riskBackground(riskLevel))
+            risk.setTextColor(getColor(riskTextColor(riskLevel)))
+            targetTitle.visibility = View.VISIBLE
+            target.visibility = View.VISIBLE
+            target.text = approvalTarget(pending.call.argumentsJson)
         }
 
         approve.setOnClickListener {
@@ -48,6 +67,50 @@ class ApprovalActivity : Activity() {
             setResult(RESULT_OK)
             finish()
         }
+    }
+
+    private fun approvalRisk(toolName: String): ToolRisk = when {
+        toolName == "apply_patch_hunk" -> ToolRisk.MEDIUM
+        else -> AndroidWorkspaceToolPlugins.manifests
+            .firstOrNull { it.name == toolName }?.risk ?: ToolRisk.HIGH
+    }
+
+    private fun riskLabel(risk: ToolRisk): String = when (risk) {
+        ToolRisk.LOW -> "风险等级：低，仍建议检查目标对象"
+        ToolRisk.MEDIUM -> "风险等级：中，执行前需要人工确认"
+        ToolRisk.HIGH -> "风险等级：高，请仔细确认影响对象"
+    }
+
+    private fun riskBackground(risk: ToolRisk): Int = when (risk) {
+        ToolRisk.LOW -> R.drawable.bg_chip_success
+        ToolRisk.MEDIUM -> R.drawable.bg_chip_warning
+        ToolRisk.HIGH -> R.drawable.bg_chip_error
+    }
+
+    private fun riskTextColor(risk: ToolRisk): Int = when (risk) {
+        ToolRisk.LOW -> R.color.status_success
+        ToolRisk.MEDIUM -> R.color.status_warning
+        ToolRisk.HIGH -> R.color.status_error
+    }
+
+    private fun approvalTarget(argumentsJson: String): String {
+        val arguments = runCatching { JSONObject(argumentsJson.ifBlank { "{}"}) }.getOrNull()
+        val path = arguments?.optString("path").orEmpty()
+        if (path.isNotBlank()) {
+            val hunkIndex = arguments?.optInt("hunk_index", 0) ?: 0
+            val hunkCount = arguments?.optInt("hunk_count", 0) ?: 0
+            return if (hunkIndex > 0 && hunkCount > 0) {
+                "$path · 第 $hunkIndex/$hunkCount 段"
+            } else {
+                path
+            }
+        }
+        val command = arguments?.optString("command").orEmpty()
+        if (command.isNotBlank()) return command.take(240)
+        val server = arguments?.optString("server").orEmpty()
+        val tool = arguments?.optString("tool").orEmpty()
+        if (server.isNotBlank() || tool.isNotBlank()) return "$server / $tool"
+        return "当前工作区"
     }
 }
 

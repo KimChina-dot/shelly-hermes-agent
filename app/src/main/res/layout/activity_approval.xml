@@ -24,10 +24,19 @@
         android:textAppearance="@style/TextAppearance.Luma.Caption" />
 
     <TextView
-        android:id="@+id/risk"
+        android:id="@+id/affected_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
+        android:text="风险评估"
+        android:textAppearance="@style/TextAppearance.Luma.Caption"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/risk"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
         android:background="@drawable/bg_chip_warning"
         android:minHeight="48dp"
         android:gravity="center_vertical"
@@ -35,10 +44,34 @@
         android:paddingTop="10dp"
         android:paddingEnd="14dp"
         android:paddingBottom="10dp"
-        android:text="风险：工具调用需要人工确认"
+        android:text="风险等级：工具调用需要人工确认"
         android:textColor="@color/status_error"
         android:textSize="14sp"
         android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/risk_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:text="影响对象"
+        android:textAppearance="@style/TextAppearance.Luma.Caption"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/affected_target"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/bg_surface_card"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:minHeight="48dp"
+        android:gravity="center_vertical"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:textAppearance="@style/TextAppearance.Luma.Body"
+        android:textColor="@color/text_primary" />
 
     <TextView
         android:layout_width="wrap_content"
@@ -139,7 +172,7 @@
             android:layout_weight="1"
             android:background="@drawable/bg_button_secondary"
             android:minHeight="48dp"
-            android:text="始终允许"
+            android:text="本次任务始终允许"
             android:textAllCaps="false"
             android:textColor="@color/text_primary" />
     </LinearLayout>
