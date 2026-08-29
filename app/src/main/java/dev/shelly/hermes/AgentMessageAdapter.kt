@@ -277,6 +277,8 @@ class AgentMessageAdapter(
             shareArtifactHint.visibility = View.VISIBLE
             openArtifactHint.contentDescription = "打开产物 ${message.title}"
             shareArtifactHint.contentDescription = "分享产物 ${message.title}"
+            openArtifactHint.isFocusable = true
+            shareArtifactHint.isFocusable = true
             openArtifactHint.setOnClickListener {
                 onOpenArtifact?.invoke(message)
             }
@@ -323,7 +325,9 @@ class AgentMessageAdapter(
                 message.toolState == "FAILED" &&
                 onRetry != null
             retryHint.visibility = if (canRetry) View.VISIBLE else View.GONE
+            retryHint.contentDescription = "重试失败工具 ${message.title} 所属的上次任务"
             retryHint.setOnClickListener(if (canRetry) { View.OnClickListener { onRetry?.invoke() } } else null)
+            retryHint.isFocusable = canRetry
         }
 
         private fun bindCopy(message: UiMessage) {
@@ -362,9 +366,13 @@ class AgentMessageAdapter(
             expandHint.text = context.getString(
                 if (expanded) R.string.collapse_details else R.string.expand_details,
             )
-            expandHint.contentDescription = context.getString(
-                if (expanded) R.string.collapse_details else R.string.expand_details,
-            )
+            val detailTarget = when (message.role) {
+                UiMessageRole.ARTIFACT -> "产物 ${message.title}"
+                else -> "工具 ${message.title}"
+            }
+            expandHint.contentDescription =
+                "${if (expanded) "收起" else "查看"} $detailTarget 详情"
+            expandHint.isFocusable = true
             expandHint.setOnClickListener {
                 if (!expandedToolCallIds.add(key)) expandedToolCallIds.remove(key)
                 if (position >= 0) notifyItemChanged(position)
