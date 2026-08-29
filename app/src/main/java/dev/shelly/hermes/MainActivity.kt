@@ -76,6 +76,7 @@ class MainActivity : AppCompatActivity() {
     private var timelineModelState = "PENDING"
     private var timelineToolState = "PENDING"
     private var timelineApprovalState = "PENDING"
+    private var timelineToolName = ""
 
     private val taskStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -355,7 +356,7 @@ class MainActivity : AppCompatActivity() {
                 state == TaskState.STOPPED.name || state == TaskForegroundService.STATE_QUEUE_UPDATED && activeTaskId.isBlank() && queueCount == 0
             ) View.GONE else View.VISIBLE
         }
-        updateTaskTimeline(state, detail, toolState, activeTaskId)
+        updateTaskTimeline(state, detail, toolState, activeTaskId, toolName)
         when (state) {
             TaskState.STARTING.name -> setRunning(true)
             TaskForegroundService.STATE_MODEL_DELTA -> appendStreamDelta(detail)
@@ -435,6 +436,7 @@ class MainActivity : AppCompatActivity() {
         detail: String,
         toolState: String,
         activeTaskId: String,
+        toolName: String,
     ) {
         val modelState: String
         val toolPhaseState: String
@@ -445,6 +447,7 @@ class MainActivity : AppCompatActivity() {
                 timelineModelState = "PENDING"
                 timelineToolState = "PENDING"
                 timelineApprovalState = "PENDING"
+                timelineToolName = ""
                 modelState = timelineModelState
                 toolPhaseState = timelineToolState
                 approvalState = timelineApprovalState
@@ -454,6 +457,7 @@ class MainActivity : AppCompatActivity() {
                 timelineModelState = "FINISHED"
                 timelineToolState = "FINISHED"
                 timelineApprovalState = "WAITING_FOR_APPROVAL"
+                if (toolName.isNotBlank()) timelineToolName = toolName
                 modelState = timelineModelState
                 toolPhaseState = timelineToolState
                 approvalState = timelineApprovalState
@@ -464,18 +468,22 @@ class MainActivity : AppCompatActivity() {
                     toolState == "RUNNING" -> {
                         timelineModelState = "FINISHED"
                         timelineToolState = "RUNNING"
+                        if (toolName.isNotBlank()) timelineToolName = toolName
                     }
                     toolState == "FINISHED" || toolState == "FAILED" -> {
                         timelineModelState = "FINISHED"
                         timelineToolState = toolState
+                        if (toolName.isNotBlank()) timelineToolName = toolName
                     }
                     detail.startsWith("模型响应耗时") -> {
                         timelineModelState = "FINISHED"
                         timelineToolState = "PENDING"
+                        timelineToolName = ""
                     }
                     else -> {
                         timelineModelState = "RUNNING"
                         timelineToolState = "PENDING"
+                        timelineToolName = ""
                     }
                 }
                 timelineApprovalState = "PENDING"
@@ -533,7 +541,11 @@ class MainActivity : AppCompatActivity() {
         val timeline = findViewById<LinearLayout>(R.id.taskTimeline)
         timeline.visibility = View.VISIBLE
         bindTimelineStep(R.id.timelineModel, "模型", modelState)
-        bindTimelineStep(R.id.timelineTool, "工具", toolPhaseState)
+        bindTimelineStep(
+            R.id.timelineTool,
+            timelineToolName.ifBlank { "工具" },
+            toolPhaseState,
+        )
         bindTimelineStep(R.id.timelineApproval, "审批", approvalState)
         bindTimelineStep(R.id.timelineResult, "结果", resultState)
     }
