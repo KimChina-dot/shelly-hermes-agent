@@ -23,12 +23,27 @@ class ApprovalActivity : Activity() {
         val risk = findViewById<TextView>(R.id.risk)
         val targetTitle = findViewById<TextView>(R.id.affected_title)
         val target = findViewById<TextView>(R.id.affected_target)
+        val toolTitle = findViewById<TextView>(R.id.tool_section_title)
+        val argsTitle = findViewById<TextView>(R.id.args_section_title)
+        val summaryTitle = findViewById<TextView>(R.id.summary_title)
+        val summary = findViewById<TextView>(R.id.approval_summary)
+        val expandArgs = findViewById<TextView>(R.id.expand_args)
         val approve = findViewById<Button>(R.id.approve)
         val reject = findViewById<Button>(R.id.reject)
         val always = findViewById<Button>(R.id.always)
         val actionRow = findViewById<View>(R.id.actionRow)
         val emptyAction = findViewById<Button>(R.id.emptyAction)
         emptyAction.setOnClickListener { finish() }
+        var argsExpanded = false
+        expandArgs.setOnClickListener {
+            argsExpanded = !argsExpanded
+            args.visibility = if (argsExpanded) View.VISIBLE else View.GONE
+            expandArgs.text = getString(
+                if (argsExpanded) R.string.collapse_args else R.string.expand_args,
+            )
+            expandArgs.contentDescription =
+                "${if (argsExpanded) "收起" else "查看"} ${pending?.call.name.orEmpty()} 技术参数"
+        }
 
         if (pending == null) {
             name.visibility = View.GONE
@@ -38,6 +53,11 @@ class ApprovalActivity : Activity() {
             risk.visibility = View.GONE
             targetTitle.visibility = View.GONE
             target.visibility = View.GONE
+            toolTitle.visibility = View.GONE
+            argsTitle.visibility = View.GONE
+            summaryTitle.visibility = View.GONE
+            summary.visibility = View.GONE
+            expandArgs.visibility = View.GONE
             empty.contentDescription = "当前没有待审批的工具调用，可以返回工作台发起新任务"
             emptyAction.contentDescription = "返回工作台"
             actionRow.visibility = View.GONE
@@ -47,9 +67,17 @@ class ApprovalActivity : Activity() {
             always.isEnabled = false
         } else {
             name.text = "工具调用：${pending.call.name}"
+            toolTitle.visibility = View.VISIBLE
+            argsTitle.visibility = View.VISIBLE
+            summaryTitle.visibility = View.VISIBLE
             args.text = pending.call.argumentsJson.takeIf { it.isNotBlank() } ?: "（无参数）"
+            summary.text = ToolSummaries.parameterSummary(
+                pending.call.name,
+                pending.call.argumentsJson,
+            )
             name.contentDescription = "待审批工具 ${pending.call.name}"
             args.contentDescription = "待审批参数与变更内容"
+            summary.contentDescription = "参数摘要 ${summary.text}"
             val riskLevel = approvalRisk(pending.call.name)
             riskTitle.visibility = View.VISIBLE
             risk.visibility = View.VISIBLE
@@ -64,6 +92,11 @@ class ApprovalActivity : Activity() {
             target.visibility = View.VISIBLE
             target.text = approvalTarget(pending.call.argumentsJson)
             target.contentDescription = "影响对象 ${target.text}"
+            summary.visibility = View.VISIBLE
+            args.visibility = View.GONE
+            expandArgs.visibility = View.VISIBLE
+            expandArgs.text = getString(R.string.expand_args)
+            expandArgs.contentDescription = "查看 ${pending.call.name} 技术参数"
             approve.contentDescription = "允许一次执行 ${pending.call.name}"
             reject.contentDescription = "拒绝执行 ${pending.call.name}"
             always.contentDescription = "本次任务始终允许 ${pending.call.name}"

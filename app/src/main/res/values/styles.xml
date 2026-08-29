@@ -20,6 +20,8 @@
     <string name="stop">停止</string>
     <string name="expand_details">详情</string>
     <string name="collapse_details">收起</string>
+    <string name="expand_args">展开技术参数</string>
+    <string name="collapse_args">收起技术参数</string>
     <string name="attach_files">添加附件</string>
     <string name="retry_task">重试任务</string>
     <string name="copy_message">复制</string>
