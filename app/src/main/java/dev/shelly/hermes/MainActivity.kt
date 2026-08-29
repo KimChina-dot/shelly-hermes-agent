@@ -392,6 +392,15 @@ class MainActivity : AppCompatActivity() {
                 flushStreaming()
                 setRunning(true)
                 findViewById<Button>(R.id.approval).visibility = View.VISIBLE
+                if (toolName.isNotBlank() && toolCallId.isNotBlank()) {
+                    appendToolMessage(
+                        toolName,
+                        toolCallId,
+                        detail,
+                        "WAITING_FOR_APPROVAL",
+                        toolArgs,
+                    )
+                }
                 startActivity(Intent(this, ApprovalActivity::class.java))
             }
             TaskState.RUNNING.name -> {
@@ -412,6 +421,13 @@ class MainActivity : AppCompatActivity() {
                         toolResult,
                         toolName,
                         toolDurationMillis,
+                    )
+                    "CANCELLED" -> updateToolMessage(
+                        toolCallId,
+                        detail,
+                        "CANCELLED",
+                        toolResult,
+                        toolName,
                     )
                     else -> if (detail.startsWith("正在请求模型")) {
                         flushStreaming()
@@ -668,15 +684,29 @@ class MainActivity : AppCompatActivity() {
         if (toolName.isBlank()) return
         flushStreaming()
         streamingMessage = null
-        messages += UiMessage(
-            role = UiMessageRole.TOOL,
-            text = detail,
-            title = toolName,
-            toolCallId = toolCallId,
-            toolState = state,
-            toolStartedAtMillis = startedAtMillis,
-            toolArgs = args,
-        )
+        val existingIndex = toolCallId.takeIf { it.isNotBlank() }?.let { id ->
+            messages.indexOfLast { message -> message.role == UiMessageRole.TOOL && message.toolCallId == id }
+        } ?: -1
+        if (existingIndex >= 0) {
+            val existing = messages[existingIndex]
+            messages[existingIndex] = existing.copy(
+                text = detail,
+                title = toolName,
+                toolState = state,
+                toolStartedAtMillis = startedAtMillis ?: existing.toolStartedAtMillis,
+                toolArgs = args.ifBlank { existing.toolArgs },
+            )
+        } else {
+            messages += UiMessage(
+                role = UiMessageRole.TOOL,
+                text = detail,
+                title = toolName,
+                toolCallId = toolCallId,
+                toolState = state,
+                toolStartedAtMillis = startedAtMillis,
+                toolArgs = args,
+            )
+        }
         messageAdapter.notifyDataSetChanged()
         findViewById<View>(R.id.emptyState).visibility = View.GONE
         updateContextIndicator()

@@ -20,6 +20,7 @@ import dev.shelly.hermes.core.AgentProfile
 import dev.shelly.hermes.core.AgentProfileMode
 import dev.shelly.hermes.core.AgentProfileRegistry
 import dev.shelly.hermes.core.AgentProfileRunner
+import dev.shelly.hermes.core.ApprovalDecision
 import dev.shelly.hermes.core.CheckpointStore
 import dev.shelly.hermes.core.MessageRole
 import dev.shelly.hermes.core.ToolApprovalPolicy
@@ -345,11 +346,20 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                         STATE_AWAITING_APPROVAL,
                         "等待审批：${event.call.name}",
                         event.call.name,
+                        event.call.id,
+                        "WAITING_FOR_APPROVAL",
+                        event.call.argumentsJson,
                     )
                     is AgentEvent.ApprovalFinished -> broadcastStatus(
                         TaskState.RUNNING.name,
                         "审批结果：${event.decision}",
                         event.call.name,
+                        event.call.id,
+                        when (event.decision) {
+                            null -> "FAILED"
+                            ApprovalDecision.REJECT -> "CANCELLED"
+                            ApprovalDecision.APPROVE -> ""
+                        },
                     )
                     is AgentEvent.ToolStarted -> broadcastStatus(
                         TaskState.RUNNING.name,
