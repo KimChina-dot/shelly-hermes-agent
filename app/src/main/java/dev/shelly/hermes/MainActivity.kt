@@ -381,13 +381,7 @@ class MainActivity : AppCompatActivity() {
         toolStartedAtMillis: Long? = null,
     ) {
         if (queueCount >= 0) findViewById<Button>(R.id.taskQueue).text = "任务 $queueCount"
-        findViewById<TextView>(R.id.taskStatus).apply {
-            text = detail.ifBlank { stateDescription(state) }
-            visibility = if (
-                state == TaskState.COMPLETED.name || state == TaskState.FAILED.name ||
-                state == TaskState.STOPPED.name || state == TaskForegroundService.STATE_QUEUE_UPDATED && activeTaskId.isBlank() && queueCount == 0
-            ) View.GONE else View.VISIBLE
-        }
+        updateTaskStatus(state, detail, activeTaskId, queueCount, toolState)
         updateTaskTimeline(state, detail, toolState, activeTaskId, toolName)
         when (state) {
             TaskState.STARTING.name -> setRunning(true)
@@ -463,10 +457,43 @@ class MainActivity : AppCompatActivity() {
     private fun stateDescription(state: String): String = when (state) {
         TaskState.STARTING.name -> "任务启动中"
         TaskState.RUNNING.name -> "任务执行中"
+        TaskForegroundService.STATE_MODEL_DELTA -> "模型正在生成"
         TaskState.STOPPING.name -> "任务停止中"
         TaskState.CANCELLING.name -> "任务取消中"
+        TaskForegroundService.STATE_QUEUE_UPDATED -> "任务队列运行中"
         TaskForegroundService.STATE_AWAITING_APPROVAL -> "等待审批"
         else -> state
+    }
+
+    private fun updateTaskStatus(
+        state: String,
+        detail: String,
+        activeTaskId: String,
+        queueCount: Int,
+        toolState: String,
+    ) {
+        val status = findViewById<TextView>(R.id.taskStatus)
+        val hidden = state == TaskState.COMPLETED.name || state == TaskState.FAILED.name ||
+            state == TaskState.STOPPED.name ||
+            (state == TaskForegroundService.STATE_QUEUE_UPDATED && activeTaskId.isBlank() && queueCount == 0)
+        status.text = when {
+            state == TaskForegroundService.STATE_MODEL_DELTA -> stateDescription(state)
+            state == TaskForegroundService.STATE_QUEUE_UPDATED -> stateDescription(state)
+            state == TaskState.RUNNING.name && toolState == "RUNNING" -> detail.ifBlank { "正在执行工具" }
+            else -> detail.ifBlank { stateDescription(state) }
+        }
+        status.contentDescription = "当前任务状态 ${status.text}"
+        status.setTextColor(
+            getColor(
+                when (state) {
+                    TaskForegroundService.STATE_AWAITING_APPROVAL -> R.color.status_warning
+                    TaskForegroundService.STATE_MODEL_DELTA -> R.color.accent_primary
+                    TaskState.RUNNING.name -> R.color.accent_primary
+                    else -> R.color.text_secondary
+                },
+            ),
+        )
+        status.visibility = if (hidden) View.GONE else View.VISIBLE
     }
 
     private fun updateTaskTimeline(
