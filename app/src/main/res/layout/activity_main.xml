@@ -305,6 +305,26 @@
             android:textColor="@color/text_secondary" />
     </FrameLayout>
 
+    <TextView
+        android:id="@+id/offlineBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_chip_warning"
+        android:accessibilityLiveRegion="polite"
+        android:minHeight="48dp"
+        android:gravity="center_vertical"
+        android:paddingStart="14dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="10dp"
+        android:text="@string/offline_banner"
+        android:textAlignment="viewStart"
+        android:textColor="@color/status_warning"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/errorContainer"
         android:layout_width="match_parent"

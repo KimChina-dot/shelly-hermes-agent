@@ -10,6 +10,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Network
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -108,6 +109,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            runOnUiThread { updateOfflineBanner(online = isOnline()) }
+        }
+
+        override fun onCapabilitiesChanged(
+            network: Network,
+            networkCapabilities: NetworkCapabilities,
+        ) {
+            runOnUiThread { updateOfflineBanner(online = isOnline()) }
+        }
+
+        override fun onLost(network: Network) {
+            runOnUiThread { updateOfflineBanner(online = isOnline()) }
+        }
+    }
+
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         setContentView(R.layout.activity_main)
@@ -201,10 +219,19 @@ class MainActivity : AppCompatActivity() {
             IntentFilter(TaskForegroundService.ACTION_STATUS),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+        runCatching {
+            getSystemService(ConnectivityManager::class.java)
+                ?.registerDefaultNetworkCallback(networkCallback)
+        }
+        updateOfflineBanner(isOnline())
     }
 
     override fun onStop() {
         unregisterReceiver(taskStatusReceiver)
+        runCatching {
+            getSystemService(ConnectivityManager::class.java)
+                ?.unregisterNetworkCallback(networkCallback)
+        }
         super.onStop()
     }
 
@@ -252,8 +279,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (!isOnline()) {
-            findViewById<View>(R.id.errorContainer).visibility = View.VISIBLE
-            findViewById<TextView>(R.id.errorText).text = "网络离线，请检查连接后重试"
+            updateOfflineBanner(online = false)
             return
         }
 
@@ -807,7 +833,16 @@ class MainActivity : AppCompatActivity() {
         val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
         val network = manager.activeNetwork ?: return false
         val capabilities = manager.getNetworkCapabilities(network) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
+    private fun updateOfflineBanner(online: Boolean) {
+        findViewById<TextView>(R.id.offlineBanner).visibility = if (online) {
+            View.GONE
+        } else {
+            View.VISIBLE
+        }
     }
 
     private fun appendStreamDelta(text: String) {

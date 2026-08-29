@@ -24,6 +24,7 @@
     <string name="copy_message">复制</string>
     <string name="copy_message_content">复制消息</string>
     <string name="message_copied">已复制</string>
+    <string name="offline_banner">网络离线，Agent 暂时无法请求模型</string>
     <string name="artifact_gallery">产物</string>
     <string name="artifact_image">产物图片预览</string>
 
