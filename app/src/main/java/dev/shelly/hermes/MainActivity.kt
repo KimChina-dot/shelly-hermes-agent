@@ -165,9 +165,7 @@ class MainActivity : AppCompatActivity() {
             selectProfile(if (currentMode == AgentMode.ACT) "planner" else "coding")
         }
         findViewById<Button>(R.id.agentProfile).setOnClickListener {
-            val available = profiles.profiles().map { it.id } + TEAM_PROFILE_ID
-            val index = available.indexOf(currentProfileId).coerceAtLeast(0)
-            selectProfile(available[(index + 1) % available.size])
+            showProfileSelector()
         }
         findViewById<Button>(R.id.startTask).setOnClickListener { startTask() }
         findViewById<EditText>(R.id.taskInput).setOnEditorActionListener { _, actionId, event ->
@@ -1074,7 +1072,11 @@ class MainActivity : AppCompatActivity() {
         val profile = profiles.findProfile(currentProfileId)
         currentMode = if (profile == null || profile.mode == AgentProfileMode.ACT) AgentMode.ACT else AgentMode.PLAN
         findViewById<Button>(R.id.taskMode).text = if (currentMode == AgentMode.PLAN) "PLAN" else "ACT"
-        findViewById<Button>(R.id.agentProfile).text = profile?.name ?: "Team"
+        val profileButton = findViewById<Button>(R.id.agentProfile)
+        profileButton.text = profile?.name ?: "Team"
+        profileButton.contentDescription = "当前角色 ${profile?.name ?: "Team"}，点击选择 Agent 角色"
+        findViewById<Button>(R.id.taskMode).contentDescription =
+            "当前模式 ${if (currentMode == AgentMode.PLAN) "Plan" else "Act"}，点击切换"
     }
 
     private fun selectProfile(id: String) {
@@ -1082,6 +1084,29 @@ class MainActivity : AppCompatActivity() {
         currentProfileId = id
         getSharedPreferences(PUBLIC_CONFIG, MODE_PRIVATE).edit().putString(AGENT_PROFILE_ID, id).apply()
         renderProfile()
+    }
+
+    private fun showProfileSelector() {
+        val options = profiles.profiles()
+        val labels = options.map { profile ->
+            val mode = when (profile.mode) {
+                AgentProfileMode.ACT -> "ACT · 可读取和修改工作区"
+                AgentProfileMode.PLAN -> "PLAN · 只读分析与规划"
+                AgentProfileMode.REVIEW -> "REVIEW · 只读审查与风险检查"
+            }
+            "${profile.name}  ·  $mode"
+        } + "Team  ·  标准角色协同，按交集授权"
+        val ids = options.map(AgentProfile::id) + TEAM_PROFILE_ID
+        val checkedIndex = ids.indexOf(currentProfileId).coerceAtLeast(0)
+
+        AlertDialog.Builder(this)
+            .setTitle("选择 Agent 角色")
+            .setSingleChoiceItems(labels.toTypedArray(), checkedIndex) { dialog, which ->
+                selectProfile(ids[which])
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun refreshConfigurationStatus() {
