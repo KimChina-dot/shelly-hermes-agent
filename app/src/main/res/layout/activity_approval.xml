@@ -117,18 +117,48 @@
         android:textIsSelectable="true"
         android:textSize="13sp" />
 
-    <TextView
+    <LinearLayout
         android:id="@+id/empty"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:gravity="center"
+        android:orientation="vertical"
         android:padding="24dp"
-        android:text="当前没有待审批的工具调用"
-        android:textAppearance="@style/TextAppearance.Luma.Body"
-        android:visibility="gone" />
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="没有待审批项"
+            android:textAppearance="@style/TextAppearance.Luma.SectionTitle" />
+
+        <TextView
+            android:layout_width="320dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:text="高风险工具执行前会自动打开审批卡。当前没有需要确认的操作。"
+            android:textAlignment="center"
+            android:textAppearance="@style/TextAppearance.Luma.Body"
+            android:textColor="@color/text_secondary" />
+
+        <Button
+            android:id="@+id/emptyAction"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_button_primary"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:text="返回工作台"
+            android:textAllCaps="false"
+            android:textColor="@color/accent_foreground" />
+    </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/actionRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="20dp"
@@ -160,20 +190,16 @@
             android:text="允许一次"
             android:textAllCaps="false"
             android:textColor="@color/accent_foreground" />
-
-        <Space
-            android:layout_width="8dp"
-            android:layout_height="1dp" />
-
-        <Button
-            android:id="@+id/always"
-            android:layout_width="0dp"
-            android:layout_height="48dp"
-            android:layout_weight="1"
-            android:background="@drawable/bg_button_secondary"
-            android:minHeight="48dp"
-            android:text="本次任务始终允许"
-            android:textAllCaps="false"
-            android:textColor="@color/text_primary" />
     </LinearLayout>
+
+    <Button
+        android:id="@+id/always"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_button_secondary"
+        android:minHeight="48dp"
+        android:text="本次任务始终允许"
+        android:textAllCaps="false"
+        android:textColor="@color/text_primary" />
 </LinearLayout>

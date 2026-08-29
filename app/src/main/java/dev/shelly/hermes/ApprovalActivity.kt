@@ -18,7 +18,7 @@ class ApprovalActivity : Activity() {
         val pending = ApprovalBridge.gateway.active
         val name = findViewById<TextView>(R.id.tool_name)
         val args = findViewById<TextView>(R.id.tool_args)
-        val empty = findViewById<TextView>(R.id.empty)
+        val empty = findViewById<View>(R.id.empty)
         val riskTitle = findViewById<TextView>(R.id.risk_title)
         val risk = findViewById<TextView>(R.id.risk)
         val targetTitle = findViewById<TextView>(R.id.affected_title)
@@ -26,6 +26,9 @@ class ApprovalActivity : Activity() {
         val approve = findViewById<Button>(R.id.approve)
         val reject = findViewById<Button>(R.id.reject)
         val always = findViewById<Button>(R.id.always)
+        val actionRow = findViewById<View>(R.id.actionRow)
+        val emptyAction = findViewById<Button>(R.id.emptyAction)
+        emptyAction.setOnClickListener { finish() }
 
         if (pending == null) {
             name.visibility = View.GONE
@@ -35,21 +38,35 @@ class ApprovalActivity : Activity() {
             risk.visibility = View.GONE
             targetTitle.visibility = View.GONE
             target.visibility = View.GONE
+            empty.contentDescription = "当前没有待审批的工具调用，可以返回工作台发起新任务"
+            emptyAction.contentDescription = "返回工作台"
+            actionRow.visibility = View.GONE
+            always.visibility = View.GONE
             approve.isEnabled = false
             reject.isEnabled = false
             always.isEnabled = false
         } else {
             name.text = "工具调用：${pending.call.name}"
             args.text = pending.call.argumentsJson.takeIf { it.isNotBlank() } ?: "（无参数）"
+            name.contentDescription = "待审批工具 ${pending.call.name}"
+            args.contentDescription = "待审批参数与变更内容"
             val riskLevel = approvalRisk(pending.call.name)
             riskTitle.visibility = View.VISIBLE
             risk.visibility = View.VISIBLE
+            empty.visibility = View.GONE
+            actionRow.visibility = View.VISIBLE
+            always.visibility = View.VISIBLE
             risk.text = riskLabel(riskLevel)
             risk.setBackgroundResource(riskBackground(riskLevel))
             risk.setTextColor(getColor(riskTextColor(riskLevel)))
+            risk.contentDescription = riskLabel(riskLevel)
             targetTitle.visibility = View.VISIBLE
             target.visibility = View.VISIBLE
             target.text = approvalTarget(pending.call.argumentsJson)
+            target.contentDescription = "影响对象 ${target.text}"
+            approve.contentDescription = "允许一次执行 ${pending.call.name}"
+            reject.contentDescription = "拒绝执行 ${pending.call.name}"
+            always.contentDescription = "本次任务始终允许 ${pending.call.name}"
         }
 
         approve.setOnClickListener {
