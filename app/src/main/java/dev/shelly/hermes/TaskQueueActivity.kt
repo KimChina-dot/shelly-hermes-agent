@@ -17,7 +17,7 @@ import java.util.Date
 class TaskQueueActivity : Activity() {
     private lateinit var store: AgentTaskQueueStore
     private lateinit var list: LinearLayout
-    private lateinit var empty: TextView
+    private lateinit var empty: View
     private lateinit var scroll: ScrollView
     private lateinit var summary: TextView
 
@@ -30,6 +30,7 @@ class TaskQueueActivity : Activity() {
         scroll = findViewById(R.id.taskQueueScroll)
         summary = findViewById(R.id.taskQueueSummary)
         findViewById<Button>(R.id.refreshTaskQueue).setOnClickListener { render() }
+        findViewById<Button>(R.id.startNewTaskFromQueue).setOnClickListener { finish() }
     }
 
     override fun onResume() {
@@ -48,6 +49,7 @@ class TaskQueueActivity : Activity() {
         val pending = tasks.count { it.state == QueuedTaskState.PENDING }
         val running = tasks.count { it.state == QueuedTaskState.RUNNING }
         summary.text = "${tasks.size} 项任务 · $running 项运行 · $pending 项等待"
+        summary.contentDescription = summary.text
         tasks.forEach { list.addView(card(it)) }
     }
 
@@ -63,6 +65,8 @@ class TaskQueueActivity : Activity() {
         addView(TextView(context).apply {
             setTextAppearance(R.style.TextAppearance_Luma_SectionTitle)
             text = task.prompt.ifBlank { task.id }
+            maxLines = 3
+            ellipsize = android.text.TextUtils.TruncateAt.END
         })
         addView(TextView(context).apply {
             text = stateLabel(task.state)
@@ -71,6 +75,7 @@ class TaskQueueActivity : Activity() {
             setTextColor(getColor(stateColor(task.state)))
             background = ContextCompat.getDrawable(context, stateBackground(task.state))
             setPadding(dp(10), dp(4), dp(10), dp(4))
+            contentDescription = "任务状态 ${stateLabel(task.state)}"
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,

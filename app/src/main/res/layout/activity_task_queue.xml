@@ -40,14 +40,44 @@
         android:text="0 项任务"
         android:textAppearance="@style/TextAppearance.Luma.Caption" />
 
-    <TextView
+    <LinearLayout
         android:id="@+id/taskQueueEmpty"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
         android:gravity="center"
-        android:text="队列为空"
-        android:textAppearance="@style/TextAppearance.Luma.Caption" />
+        android:orientation="vertical"
+        android:layout_weight="1"
+        android:contentDescription="队列为空，可在对话页发起新任务">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="队列为空"
+            android:textAppearance="@style/TextAppearance.Luma.SectionTitle" />
+
+        <TextView
+            android:layout_width="320dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:text="任务提交后会在这里显示排队、运行、失败和取消状态；失败的队列任务可以重新排队。"
+            android:textAlignment="center"
+            android:textAppearance="@style/TextAppearance.Luma.Body"
+            android:textColor="@color/text_secondary" />
+
+        <Button
+            android:id="@+id/startNewTaskFromQueue"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_button_primary"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:text="去发起任务"
+            android:textAllCaps="false"
+            android:textColor="@color/accent_foreground" />
+    </LinearLayout>
 
     <ScrollView
         android:id="@+id/taskQueueScroll"
