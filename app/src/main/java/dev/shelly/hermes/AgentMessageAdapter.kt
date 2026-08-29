@@ -42,6 +42,7 @@ class AgentMessageAdapter(
     private val context: Context,
     private val messages: List<UiMessage>,
     private val onRetry: (() -> Unit)? = null,
+    private val onRegenerate: (() -> Unit)? = null,
     private val onOpenArtifact: ((UiMessage) -> Unit)? = null,
     private val onShareArtifact: ((UiMessage) -> Unit)? = null,
 ) : RecyclerView.Adapter<AgentMessageAdapter.MessageViewHolder>() {
@@ -57,7 +58,7 @@ class AgentMessageAdapter(
     override fun getItemCount(): Int = messages.size
 
     override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
-        holder.bind(messages[position])
+        holder.bind(messages[position], position)
     }
 
     inner class MessageViewHolder(private val row: LinearLayout) : RecyclerView.ViewHolder(row) {
@@ -67,6 +68,7 @@ class AgentMessageAdapter(
         private val stateChip = row.findViewById<TextView>(R.id.stateChip)
         private val expandHint = row.findViewById<TextView>(R.id.expandHint)
         private val retryHint = row.findViewById<TextView>(R.id.retryHint)
+        private val regenerateHint = row.findViewById<TextView>(R.id.regenerateHint)
         private val copyHint = row.findViewById<TextView>(R.id.copyHint)
         private val content = row.findViewById<TextView>(R.id.content)
         private val failureSuggestion = row.findViewById<TextView>(R.id.failureSuggestion)
@@ -76,7 +78,7 @@ class AgentMessageAdapter(
         private val openArtifactHint = row.findViewById<TextView>(R.id.openArtifactHint)
         private val shareArtifactHint = row.findViewById<TextView>(R.id.shareArtifactHint)
 
-        fun bind(message: UiMessage) {
+        fun bind(message: UiMessage, position: Int) {
             label.text = when (message.role) {
                 UiMessageRole.USER -> "YOU"
                 UiMessageRole.ASSISTANT -> "LUMA"
@@ -161,6 +163,7 @@ class AgentMessageAdapter(
             bindFailureSuggestion(message)
             bindExpandable(message)
             bindRetry(message)
+            bindRegenerate(message, position)
             bindCopy(message)
             bindArtifactActions(message)
             bindArtifactImage(message)
@@ -328,6 +331,25 @@ class AgentMessageAdapter(
             retryHint.contentDescription = "重试失败工具 ${message.title} 所属的上次任务"
             retryHint.setOnClickListener(if (canRetry) { View.OnClickListener { onRetry?.invoke() } } else null)
             retryHint.isFocusable = canRetry
+        }
+
+        private fun bindRegenerate(message: UiMessage, position: Int) {
+            val latestAssistant = messages.indexOfLast { candidate ->
+                candidate.role == UiMessageRole.ASSISTANT &&
+                    candidate.text.isNotBlank() &&
+                    !candidate.streaming
+            }
+            val canRegenerate = onRegenerate != null &&
+                position == latestAssistant &&
+                message.role == UiMessageRole.ASSISTANT &&
+                message.text.isNotBlank() &&
+                !message.streaming
+            regenerateHint.visibility = if (canRegenerate) View.VISIBLE else View.GONE
+            regenerateHint.contentDescription = "重新生成这条回复"
+            regenerateHint.setOnClickListener(if (canRegenerate) {
+                View.OnClickListener { onRegenerate?.invoke() }
+            } else null)
+            regenerateHint.isFocusable = canRegenerate
         }
 
         private fun bindCopy(message: UiMessage) {

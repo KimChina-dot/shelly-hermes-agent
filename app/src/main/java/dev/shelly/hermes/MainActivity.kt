@@ -146,6 +146,7 @@ class MainActivity : AppCompatActivity() {
             this,
             messages,
             onRetry = { retryLastTask() },
+            onRegenerate = { regenerateLastReply() },
             onOpenArtifact = { openArtifact(it) },
             onShareArtifact = { shareArtifact(it) },
         )
@@ -348,8 +349,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun retryLastTask() {
-        if (lastPrompt.isBlank()) return
+        if (lastPrompt.isBlank() || isTaskRunning) return
         appendMessage(UiMessageRole.STATUS, "正在重试上次任务")
+        findViewById<EditText>(R.id.taskInput).setText(lastPrompt)
+        startTask()
+    }
+
+    private fun regenerateLastReply() {
+        if (lastPrompt.isBlank() || isTaskRunning) return
+        appendMessage(UiMessageRole.STATUS, "正在重新生成回复")
         findViewById<EditText>(R.id.taskInput).setText(lastPrompt)
         startTask()
     }
