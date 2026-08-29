@@ -14,6 +14,7 @@ import android.net.Network
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.inputmethod.InputMethodManager
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
@@ -947,14 +948,46 @@ class MainActivity : AppCompatActivity() {
             "模型：${config.model}"
         }
         val empty = findViewById<TextView>(R.id.emptyState)
-        if (messages.isEmpty() && workspace == null) {
-            empty.text = "首次使用请先连接模型\n1. 点击右上角设置，填入模型地址与密钥\n2. 点击“项目”选择授权目录\n3. 在下方输入要完成的任务"
-        } else if (messages.isEmpty() && config == null) {
-            empty.text = "请先完成模型设置\n在右上角连接模型后再开始任务"
-        } else if (messages.isEmpty()) {
-            empty.text = "开始一个任务\n在下方输入要完成的事情，Agent 会规划并执行"
+        if (messages.isNotEmpty()) {
+            empty.visibility = View.GONE
+            empty.setOnClickListener(null)
+            updateContextIndicator()
+            return
         }
+
+        val emptyActionLabel = when {
+            config == null -> {
+                empty.text = "请先完成模型设置\n在右上角连接模型后再开始任务"
+                "连接模型"
+            }
+            workspace == null -> {
+                empty.text = "项目尚未授权\n选择一个项目目录后，Agent 才能读写文件"
+                "选择项目"
+            }
+            else -> {
+                empty.text = "开始一个任务\n在下方输入要完成的事情，Agent 会规划并执行"
+                "开始任务"
+            }
+        }
+            empty.visibility = View.VISIBLE
+            empty.contentDescription = "$emptyActionLabel，${empty.text}"
+            empty.setOnClickListener { handleEmptyStateAction() }
         updateContextIndicator()
+    }
+
+    private fun handleEmptyStateAction() {
+        if (AndroidKeyStoreModelConfig(this).load() == null) {
+            showModelSettingsDialog()
+            return
+        }
+        if (workspaceUri() == null) {
+            picker.launch(null)
+            return
+        }
+        val input = findViewById<EditText>(R.id.taskInput)
+        input.requestFocus()
+        getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+            ?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
     }
 
     private fun updateContextIndicator() {
