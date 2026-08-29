@@ -35,10 +35,9 @@ class HistoryActivity : Activity() {
         clearButton = findViewById(R.id.clearHistoryButton)
         clearButton.background = ContextCompat.getDrawable(this, R.drawable.bg_button_danger)
         historySummary = findViewById(R.id.historySummary)
+        clearButton.contentDescription = getString(R.string.clear_history_content)
         clearButton.setOnClickListener {
-            store.clear()
-            SessionEventStore.clearAll(this)
-            renderHistory()
+            confirmClearHistory()
         }
     }
 
@@ -238,6 +237,29 @@ class HistoryActivity : Activity() {
         SessionEventType.MIGRATED_CHECKPOINT -> "迁移检查点"
         SessionEventType.CHECKPOINT -> "检查点"
         SessionEventType.MODEL_DELTA -> "流式输出"
+    }
+
+    private fun confirmClearHistory() {
+        val sessions = runCatching { store.list() }.getOrDefault(emptyList())
+        if (sessions.isEmpty()) return
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("清空全部历史")
+            .setMessage(
+                buildString {
+                    append("将删除 ${sessions.size} 个本地会话及其事件记录。\n")
+                    append("此操作无法撤销，确认继续吗？")
+                },
+            )
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.clear_all) { _, _ ->
+                store.clear()
+                SessionEventStore.clearAll(this)
+                renderHistory()
+                Toast.makeText(this, "已清空全部历史", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(getColor(R.color.status_error))
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(getColor(R.color.text_secondary))
     }
 
     private fun resumeSession(session: Session) {

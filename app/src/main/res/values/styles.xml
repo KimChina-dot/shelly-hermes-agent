@@ -30,6 +30,9 @@
     <string name="artifact_image">产物图片预览</string>
     <string name="open_artifact">打开</string>
     <string name="share_artifact">分享</string>
+    <string name="clear_history_content">清空全部任务历史</string>
+    <string name="cancel">取消</string>
+    <string name="clear_all">清空</string>
 
     <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>
