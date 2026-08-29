@@ -67,6 +67,7 @@ class AgentMessageAdapter(
         private val retryHint = row.findViewById<TextView>(R.id.retryHint)
         private val copyHint = row.findViewById<TextView>(R.id.copyHint)
         private val content = row.findViewById<TextView>(R.id.content)
+        private val failureSuggestion = row.findViewById<TextView>(R.id.failureSuggestion)
         private val details = row.findViewById<TextView>(R.id.details)
         private val artifactImage = row.findViewById<ImageView>(R.id.artifactImage)
         private val artifactActions = row.findViewById<LinearLayout>(R.id.artifactActions)
@@ -145,11 +146,55 @@ class AgentMessageAdapter(
                     },
                 ),
             )
+            bindFailureSuggestion(message)
             bindExpandable(message)
             bindRetry(message)
             bindCopy(message)
             bindArtifactActions(message)
             bindArtifactImage(message)
+        }
+
+        private fun bindFailureSuggestion(message: UiMessage) {
+            val suggestion = if (message.role == UiMessageRole.TOOL && message.toolState == "FAILED") {
+                suggestionFor(message.toolResult.orEmpty())
+            } else {
+                ""
+            }
+            failureSuggestion.visibility = if (suggestion.isBlank()) View.GONE else View.VISIBLE
+            failureSuggestion.text = suggestion
+            failureSuggestion.contentDescription = if (suggestion.isBlank()) {
+                null
+            } else {
+                "失败建议：$suggestion"
+            }
+        }
+
+        private fun suggestionFor(error: String): String {
+            val value = error.lowercase()
+            return when {
+                "approval" in value || "permission" in value || "denied" in value ->
+                    "需要审批或目录授权；请确认授权范围后重试。"
+                "network" in value || "unreachable" in value || "timeout" in value || "connection" in value ->
+                    "网络或服务暂时不可用；请检查网络后稍后重试。"
+                "http 401" in value || "http 403" in value || "unauthorized" in value || "forbidden" in value ->
+                    "访问被拒绝；请检查模型地址、密钥或服务权限。"
+                "http 429" in value || "rate limit" in value || "quota" in value ->
+                    "请求被限流或额度不足；请等待后重试。"
+                "http 404" in value || "model" in value ->
+                    "模型或接口地址可能不正确；请检查模型配置。"
+                "no such file" in value || "file not found" in value || "path" in value ->
+                    "文件不存在或不在授权项目内；请确认文件路径。"
+                "patch" in value || "conflict" in value || "stale" in value ->
+                    "目标内容可能已变化；请重新读取文件后再应用补丁。"
+                "invalid" in value || "required" in value || "schema" in value || "argument" in value ->
+                    "工具输入不符合要求；请调整参数后重试。"
+                "command" in value || "process" in value || "exit code" in value ->
+                    "命令执行失败；请检查命令、工作目录和项目环境。"
+                error.isNotBlank() ->
+                    "查看展开输出中的完整错误；如果问题仍在，可稍后重试。"
+                else ->
+                    "工具失败且未返回详情；请稍后重试或更换任务描述。"
+            }
         }
 
         private fun bindArtifactActions(message: UiMessage) {

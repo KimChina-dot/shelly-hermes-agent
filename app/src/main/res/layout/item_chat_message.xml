@@ -159,6 +159,18 @@
     </LinearLayout>
 
     <TextView
+        android:id="@+id/failureSuggestion"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_chip_error"
+        android:lineSpacingExtra="2dp"
+        android:padding="12dp"
+        android:textColor="@color/status_error"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <TextView
         android:id="@+id/details"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
