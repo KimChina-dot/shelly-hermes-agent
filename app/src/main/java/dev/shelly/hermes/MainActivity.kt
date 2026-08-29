@@ -461,11 +461,10 @@ class MainActivity : AppCompatActivity() {
                     detail.ifBlank { "任务执行失败" }
                 }
                 findViewById<View>(R.id.errorContainer).visibility = View.VISIBLE
-                findViewById<Button>(R.id.startNewTask).visibility = if (contextOverLimit) {
-                    View.VISIBLE
-                } else {
-                    View.GONE
-                }
+                findViewById<Button>(R.id.retry).visibility = if (contextOverLimit) View.GONE else View.VISIBLE
+                findViewById<Button>(R.id.startNewTask).visibility = if (contextOverLimit) View.VISIBLE else View.GONE
+                findViewById<Button>(R.id.retry).contentDescription = "重试上次任务"
+                findViewById<Button>(R.id.startNewTask).contentDescription = "放弃当前上下文并输入新任务"
             }
         }
     }

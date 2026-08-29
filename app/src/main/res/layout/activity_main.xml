@@ -340,6 +340,7 @@
         android:layout_marginBottom="8dp"
         android:maxWidth="760dp"
         android:background="@drawable/bg_chip_error"
+        android:accessibilityLiveRegion="assertive"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="14dp"
