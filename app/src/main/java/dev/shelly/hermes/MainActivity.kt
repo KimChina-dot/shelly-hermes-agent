@@ -726,6 +726,7 @@ class MainActivity : AppCompatActivity() {
         }
         attachments += AttachmentRef(name, preview)
         renderAttachmentTray()
+        updateContextIndicator()
     }
 
     private fun renderAttachmentTray() {
@@ -739,16 +740,19 @@ class MainActivity : AppCompatActivity() {
         tray.visibility = View.VISIBLE
         attachments.forEachIndexed { index, item ->
             list.addView(TextView(this).apply {
-                text = item.name
+                text = "${item.name} · ${item.preview.take(400).length} 字符 · 移除"
                 textSize = 12f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 setTextColor(getColor(R.color.text_primary))
                 background = ContextCompat.getDrawable(context, R.drawable.bg_chip_warning)
                 setPadding(dp(10), dp(4), dp(10), dp(4))
-                contentDescription = "附件 ${item.name}，点击移除"
+                minHeight = dp(48)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                contentDescription = "附件 ${item.name}，${item.preview.take(400).length} 字符，点击移除"
                 setOnClickListener {
                     attachments.removeAt(index)
                     renderAttachmentTray()
+                    updateContextIndicator()
                 }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -1010,7 +1014,7 @@ class MainActivity : AppCompatActivity() {
         val config = AndroidKeyStoreModelConfig(this).load()
         val bar = findViewById<ProgressBar>(R.id.contextBar)
         val text = findViewById<TextView>(R.id.contextText)
-        if (config == null || messages.isEmpty()) {
+        if (config == null || (messages.isEmpty() && attachments.isEmpty())) {
             bar.visibility = View.GONE
             text.visibility = View.GONE
             return
@@ -1019,6 +1023,11 @@ class MainActivity : AppCompatActivity() {
         val used = estimatedTokens()
         val percent = (used * 100 / window).coerceIn(0, 100)
         val warning = percent >= 80
+        val attachmentSuffix = if (attachments.isEmpty()) {
+            ""
+        } else {
+            " · ${attachments.size} 个附件"
+        }
         bar.max = 100
         bar.progress = percent
         bar.progressTintList = ContextCompat.getColorStateList(
@@ -1026,20 +1035,24 @@ class MainActivity : AppCompatActivity() {
             if (warning) R.color.status_error else R.color.accent_primary,
         )
         bar.visibility = View.VISIBLE
-        text.text = "${formatTokens(used)} / ${formatTokens(window)}"
+        text.text = "${formatTokens(used)} / ${formatTokens(window)}$attachmentSuffix"
+        text.contentDescription = "上下文使用 ${formatTokens(used)} / ${formatTokens(window)}$attachmentSuffix"
         text.setTextColor(getColor(if (warning) R.color.status_error else R.color.text_tertiary))
         text.visibility = View.VISIBLE
     }
 
     private fun estimatedTokens(): Int {
-        if (contextTokensFromModel > 0) return contextTokensFromModel
+        val attachmentTokens = attachments.sumOf { item ->
+            (item.name.length + item.preview.take(400).length) / 4
+        }
+        if (contextTokensFromModel > 0) return contextTokensFromModel + attachmentTokens
         val chars = messages.sumOf { message ->
             message.text.length +
                 message.title.orEmpty().length +
                 message.toolArgs.orEmpty().length +
                 message.toolResult.orEmpty().length
         }
-        return (chars / 4).coerceAtLeast(0)
+        return ((chars / 4) + attachmentTokens).coerceAtLeast(0)
     }
 
     private fun formatTokens(value: Int): String =
