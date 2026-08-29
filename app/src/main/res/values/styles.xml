@@ -28,6 +28,8 @@
     <string name="offline_banner">网络离线，Agent 暂时无法请求模型</string>
     <string name="artifact_gallery">产物</string>
     <string name="artifact_image">产物图片预览</string>
+    <string name="open_artifact">打开</string>
+    <string name="share_artifact">分享</string>
 
     <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>

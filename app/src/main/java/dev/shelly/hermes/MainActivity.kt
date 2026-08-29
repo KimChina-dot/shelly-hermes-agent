@@ -132,7 +132,13 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         messages = mutableListOf()
-        messageAdapter = AgentMessageAdapter(this, messages) { retryLastTask() }
+        messageAdapter = AgentMessageAdapter(
+            this,
+            messages,
+            onRetry = { retryLastTask() },
+            onOpenArtifact = { openArtifact(it) },
+            onShareArtifact = { shareArtifact(it) },
+        )
         findViewById<RecyclerView>(R.id.messageList).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter

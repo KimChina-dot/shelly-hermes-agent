@@ -40,6 +40,8 @@ class AgentMessageAdapter(
     private val context: Context,
     private val messages: List<UiMessage>,
     private val onRetry: (() -> Unit)? = null,
+    private val onOpenArtifact: ((UiMessage) -> Unit)? = null,
+    private val onShareArtifact: ((UiMessage) -> Unit)? = null,
 ) : RecyclerView.Adapter<AgentMessageAdapter.MessageViewHolder>() {
 
     private val expandedToolCallIds = mutableSetOf<String>()
@@ -67,6 +69,9 @@ class AgentMessageAdapter(
         private val content = row.findViewById<TextView>(R.id.content)
         private val details = row.findViewById<TextView>(R.id.details)
         private val artifactImage = row.findViewById<ImageView>(R.id.artifactImage)
+        private val artifactActions = row.findViewById<LinearLayout>(R.id.artifactActions)
+        private val openArtifactHint = row.findViewById<TextView>(R.id.openArtifactHint)
+        private val shareArtifactHint = row.findViewById<TextView>(R.id.shareArtifactHint)
 
         fun bind(message: UiMessage) {
             label.text = when (message.role) {
@@ -143,7 +148,31 @@ class AgentMessageAdapter(
             bindExpandable(message)
             bindRetry(message)
             bindCopy(message)
+            bindArtifactActions(message)
             bindArtifactImage(message)
+        }
+
+        private fun bindArtifactActions(message: UiMessage) {
+            val isArtifact = message.role == UiMessageRole.ARTIFACT &&
+                !message.artifactPath.isNullOrBlank()
+            artifactActions.visibility = if (isArtifact) View.VISIBLE else View.GONE
+            if (!isArtifact) {
+                openArtifactHint.setOnClickListener(null)
+                shareArtifactHint.setOnClickListener(null)
+                openArtifactHint.visibility = View.GONE
+                shareArtifactHint.visibility = View.GONE
+                return
+            }
+            openArtifactHint.visibility = View.VISIBLE
+            shareArtifactHint.visibility = View.VISIBLE
+            openArtifactHint.contentDescription = "打开产物 ${message.title}"
+            shareArtifactHint.contentDescription = "分享产物 ${message.title}"
+            openArtifactHint.setOnClickListener {
+                onOpenArtifact?.invoke(message)
+            }
+            shareArtifactHint.setOnClickListener {
+                onShareArtifact?.invoke(message)
+            }
         }
 
         private fun bindArtifactImage(message: UiMessage) {
