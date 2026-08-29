@@ -19,7 +19,7 @@ import java.util.Date
 /** A local task timeline with explicit resume and event-fork actions. */
 class HistoryActivity : Activity() {
     private lateinit var store: SessionStore
-    private lateinit var emptyState: TextView
+    private lateinit var emptyState: View
     private lateinit var historyList: LinearLayout
     private lateinit var historyScroll: ScrollView
     private lateinit var clearButton: Button
@@ -39,6 +39,7 @@ class HistoryActivity : Activity() {
         clearButton.setOnClickListener {
             confirmClearHistory()
         }
+        findViewById<Button>(R.id.startNewTaskFromHistory).setOnClickListener { finish() }
     }
 
     override fun onResume() {
@@ -57,6 +58,7 @@ class HistoryActivity : Activity() {
         } else {
             "${sessions.size} 个本地会话 · 可恢复或从指定事件创建分支"
         }
+        historySummary.contentDescription = historySummary.text
         sessions.forEach { historyList.addView(createSessionCard(it)) }
     }
 
@@ -77,6 +79,8 @@ class HistoryActivity : Activity() {
         addView(TextView(context).apply {
             setTextAppearance(R.style.TextAppearance_Luma_SectionTitle)
             text = session.prompt.ifBlank { "未命名任务" }
+            maxLines = 3
+            ellipsize = android.text.TextUtils.TruncateAt.END
         })
         addView(TextView(context).apply {
             text = statusLabel(session.status)
