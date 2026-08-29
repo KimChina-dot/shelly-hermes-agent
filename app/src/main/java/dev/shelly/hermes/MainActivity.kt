@@ -198,8 +198,10 @@ class MainActivity : AppCompatActivity() {
                 startTask()
             }
         }
+        findViewById<Button>(R.id.resumeStoppedTask).setOnClickListener { resumeTask() }
         findViewById<Button>(R.id.startNewTask).setOnClickListener {
             findViewById<View>(R.id.errorContainer).visibility = View.GONE
+            findViewById<View>(R.id.stoppedContainer).visibility = View.GONE
             contextTokensFromModel = 0
             val input = findViewById<EditText>(R.id.taskInput)
             input.text.clear()
@@ -322,6 +324,7 @@ class MainActivity : AppCompatActivity() {
         appendMessage(UiMessageRole.USER, prompt)
         input.text.clear()
         findViewById<View>(R.id.errorContainer).visibility = View.GONE
+        findViewById<View>(R.id.stoppedContainer).visibility = View.GONE
 
         val intent = Intent(this, TaskForegroundService::class.java).apply {
             action = TaskForegroundService.ACTION_START
@@ -349,9 +352,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resumeTask() {
-        val durableSession = FileSessionStore(this).list().firstOrNull { session ->
-            runCatching { SessionEventStore(this, session.id).hasCheckpoint() }.getOrDefault(false)
-        }
+        val durableSession = latestResumableSession()
         if (durableSession == null && !AgentCheckpointStore(this).hasCheckpoint()) {
             Toast.makeText(this, "No task checkpoint is available", Toast.LENGTH_SHORT).show()
             return
@@ -365,6 +366,10 @@ class MainActivity : AppCompatActivity() {
             putExtra(TaskForegroundService.EXTRA_MODE, currentMode.wireValue)
             putExtra(TaskForegroundService.EXTRA_PROFILE_ID, currentProfileId)
         })
+    }
+
+    private fun latestResumableSession() = FileSessionStore(this).list().firstOrNull { session ->
+        runCatching { SessionEventStore(this, session.id).hasCheckpoint() }.getOrDefault(false)
     }
 
     private fun renderTaskState(
@@ -381,6 +386,7 @@ class MainActivity : AppCompatActivity() {
         toolStartedAtMillis: Long? = null,
     ) {
         if (queueCount >= 0) findViewById<Button>(R.id.taskQueue).text = "任务 $queueCount"
+        updateStoppedRecovery(state, activeTaskId)
         updateTaskStatus(state, detail, activeTaskId, queueCount, toolState)
         updateTaskTimeline(state, detail, toolState, activeTaskId, toolName)
         when (state) {
@@ -467,6 +473,31 @@ class MainActivity : AppCompatActivity() {
                 findViewById<Button>(R.id.startNewTask).contentDescription = "放弃当前上下文并输入新任务"
             }
         }
+    }
+
+    private fun updateStoppedRecovery(state: String, activeTaskId: String) {
+        val container = findViewById<View>(R.id.stoppedContainer)
+        if (state == TaskState.STOPPING.name || state == TaskState.CANCELLING.name) {
+            container.visibility = View.GONE
+            return
+        }
+        val shouldShow = state == TaskState.STOPPED.name ||
+            (state == TaskForegroundService.STATE_QUEUE_UPDATED && activeTaskId.isBlank() &&
+                container.visibility == View.VISIBLE)
+        if (!shouldShow) {
+            container.visibility = View.GONE
+            return
+        }
+        val canResume = latestResumableSession() != null || AgentCheckpointStore(this).hasCheckpoint()
+        findViewById<TextView>(R.id.stoppedText).text = if (canResume) {
+            "任务已停止。已保留检查点，可以从当前进度继续。"
+        } else {
+            "任务已停止。没有可用检查点，请输入新任务或重试。"
+        }
+        val resumeButton = findViewById<Button>(R.id.resumeStoppedTask)
+        resumeButton.visibility = if (canResume) View.VISIBLE else View.GONE
+        resumeButton.contentDescription = "继续已停止的任务"
+        container.visibility = View.VISIBLE
     }
 
     private fun stateDescription(state: String): String = when (state) {

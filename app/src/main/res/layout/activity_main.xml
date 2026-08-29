@@ -373,6 +373,40 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/stoppedContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="8dp"
+        android:maxWidth="760dp"
+        android:background="@drawable/bg_chip_warning"
+        android:accessibilityLiveRegion="polite"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/stoppedText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/status_warning" />
+
+        <Button
+            android:id="@+id/resumeStoppedTask"
+            style="@style/Widget.Luma.ToolbarButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="@string/resume" />
+    </LinearLayout>
+
     <Button
         android:id="@+id/approval"
         style="@style/Widget.Luma.ToolbarButton"
