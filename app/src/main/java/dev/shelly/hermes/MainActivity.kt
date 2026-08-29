@@ -1,6 +1,8 @@
 package dev.shelly.hermes
 
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -788,20 +790,132 @@ class MainActivity : AppCompatActivity() {
         }
         scroll.visibility = View.VISIBLE
         artifactMessages.forEach { message ->
-            list.addView(TextView(this).apply {
-                text = "${message.artifactType?.uppercase() ?: "FILE"} · ${message.title}"
+            list.addView(artifactGalleryCard(message))
+        }
+    }
+
+    private fun artifactGalleryCard(message: UiMessage): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = ContextCompat.getDrawable(context, R.drawable.bg_surface_card)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            layoutParams = LinearLayout.LayoutParams(
+                dp(260),
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { marginEnd = dp(8) }
+        }
+
+        card.addView(TextView(this).apply {
+            text = message.artifactType?.uppercase() ?: "FILE"
+            textSize = 11f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(getColor(R.color.status_success))
+            background = ContextCompat.getDrawable(context, R.drawable.bg_chip_success)
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            contentDescription = "产物类型 ${text}"
+        })
+
+        card.addView(TextView(this).apply {
+            text = message.title
+            textSize = 15f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(getColor(R.color.text_primary))
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            contentDescription = "产物文件名 ${message.title}"
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(8) }
+        })
+
+        card.addView(TextView(this).apply {
+            text = message.artifactPath.orEmpty()
+            textSize = 12f
+            setTextColor(getColor(R.color.text_tertiary))
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            contentDescription = "产物路径 ${message.artifactPath.orEmpty()}"
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(2) }
+        })
+
+        message.artifactImageBytes?.let { bytes ->
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            if (bitmap != null) {
+                card.addView(ImageView(this).apply {
+                    setImageBitmap(bitmap)
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    contentDescription = "产物图片预览 ${message.title}"
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(84),
+                    ).apply {
+                        topMargin = dp(10)
+                    }
+                })
+            }
+        }
+
+        val preview = message.text.replace(Regex("\\s+"), " ").trim()
+        if (message.artifactImageBytes == null && preview.isNotBlank()) {
+            card.addView(TextView(this).apply {
+                text = preview.take(160) + if (preview.length > 160) "…" else ""
                 textSize = 12f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setTextColor(getColor(R.color.text_primary))
-                background = ContextCompat.getDrawable(context, R.drawable.bg_chip_success)
-                setPadding(dp(10), dp(4), dp(10), dp(4))
-                contentDescription = "产物 ${message.title}"
-                setOnClickListener { showArtifactDialog(message) }
+                typeface = if ((message.artifactType?.lowercase() ?: "") in CODE_ARTIFACT_TYPES) {
+                    android.graphics.Typeface.MONOSPACE
+                } else {
+                    android.graphics.Typeface.DEFAULT
+                }
+                setTextColor(getColor(R.color.text_secondary))
+                maxLines = 3
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                contentDescription = "产物预览 ${text}"
                 layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply { marginEnd = dp(8) }
+                ).apply { topMargin = dp(10) }
             })
+        }
+
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(8) }
+        }
+        actions.addView(galleryAction("打开", "打开产物 ${message.title}") { openArtifact(message) })
+        actions.addView(galleryAction("分享", "分享产物 ${message.title}") { shareArtifact(message) })
+        actions.addView(
+            galleryAction("复制路径", "复制产物路径 ${message.artifactPath.orEmpty()}") {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(
+                    ClipData.newPlainText("Luma artifact path", message.artifactPath.orEmpty()),
+                )
+                Toast.makeText(this, "已复制产物路径", Toast.LENGTH_SHORT).show()
+            },
+        )
+        card.addView(actions)
+        return card
+    }
+
+    private fun galleryAction(label: String, description: String, action: () -> Unit): TextView {
+        return TextView(this).apply {
+            text = label
+            textSize = 12f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(getColor(R.color.accent_primary))
+            minHeight = dp(48)
+            minWidth = dp(48)
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(8), 0, dp(8), 0)
+            contentDescription = description
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { action() }
         }
     }
 
@@ -1183,6 +1297,11 @@ class MainActivity : AppCompatActivity() {
         const val TEAM_PROFILE_ID = "bundle:standard"
         private val ARTIFACT_TOOLS = setOf(
             "apply_patch", "create_file", "overwrite_file", "append_file", "rollback_file",
+        )
+        private val CODE_ARTIFACT_TYPES = setOf(
+            "c", "cc", "cpp", "css", "csv", "go", "gradle", "h", "hpp", "html", "java", "js",
+            "json", "jsx", "kt", "kts", "md", "php", "py", "rb", "rs", "sh", "sql", "swift",
+            "ts", "tsx", "xml", "yaml", "yml",
         )
     }
 }
