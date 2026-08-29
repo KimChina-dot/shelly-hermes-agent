@@ -72,6 +72,9 @@ class MainActivity : AppCompatActivity() {
     private val attachments = mutableListOf<AttachmentRef>()
     private val artifactMessages = mutableListOf<UiMessage>()
     private var contextTokensFromModel = 0
+    private var timelineModelState = "PENDING"
+    private var timelineToolState = "PENDING"
+    private var timelineApprovalState = "PENDING"
 
     private val taskStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -326,6 +329,7 @@ class MainActivity : AppCompatActivity() {
                 state == TaskState.STOPPED.name || state == TaskForegroundService.STATE_QUEUE_UPDATED && activeTaskId.isBlank() && queueCount == 0
             ) View.GONE else View.VISIBLE
         }
+        updateTaskTimeline(state, detail, toolState, activeTaskId)
         when (state) {
             TaskState.STARTING.name -> setRunning(true)
             TaskForegroundService.STATE_MODEL_DELTA -> appendStreamDelta(detail)
@@ -398,6 +402,147 @@ class MainActivity : AppCompatActivity() {
         TaskState.CANCELLING.name -> "任务取消中"
         TaskForegroundService.STATE_AWAITING_APPROVAL -> "等待审批"
         else -> state
+    }
+
+    private fun updateTaskTimeline(
+        state: String,
+        detail: String,
+        toolState: String,
+        activeTaskId: String,
+    ) {
+        val modelState: String
+        val toolPhaseState: String
+        val approvalState: String
+        val resultState: String
+        when (state) {
+            TaskState.STARTING.name, TaskForegroundService.STATE_QUEUED -> {
+                timelineModelState = "PENDING"
+                timelineToolState = "PENDING"
+                timelineApprovalState = "PENDING"
+                modelState = timelineModelState
+                toolPhaseState = timelineToolState
+                approvalState = timelineApprovalState
+                resultState = "PENDING"
+            }
+            TaskForegroundService.STATE_AWAITING_APPROVAL -> {
+                timelineModelState = "FINISHED"
+                timelineToolState = "FINISHED"
+                timelineApprovalState = "WAITING_FOR_APPROVAL"
+                modelState = timelineModelState
+                toolPhaseState = timelineToolState
+                approvalState = timelineApprovalState
+                resultState = "PENDING"
+            }
+            TaskState.RUNNING.name, TaskForegroundService.STATE_MODEL_DELTA -> {
+                when {
+                    toolState == "RUNNING" -> {
+                        timelineModelState = "FINISHED"
+                        timelineToolState = "RUNNING"
+                    }
+                    toolState == "FINISHED" || toolState == "FAILED" -> {
+                        timelineModelState = "FINISHED"
+                        timelineToolState = toolState
+                    }
+                    detail.startsWith("模型响应耗时") -> {
+                        timelineModelState = "FINISHED"
+                        timelineToolState = "PENDING"
+                    }
+                    else -> {
+                        timelineModelState = "RUNNING"
+                        timelineToolState = "PENDING"
+                    }
+                }
+                timelineApprovalState = "PENDING"
+                modelState = timelineModelState
+                toolPhaseState = timelineToolState
+                approvalState = timelineApprovalState
+                resultState = "RUNNING"
+            }
+            TaskForegroundService.STATE_QUEUE_UPDATED -> {
+                if (activeTaskId.isBlank()) {
+                    findViewById<LinearLayout>(R.id.taskTimeline).visibility = View.GONE
+                    return
+                }
+                modelState = timelineModelState
+                toolPhaseState = timelineToolState
+                approvalState = timelineApprovalState
+                resultState = "RUNNING"
+            }
+            TaskState.COMPLETED.name -> {
+                timelineModelState = "FINISHED"
+                if (timelineToolState == "RUNNING") timelineToolState = "FINISHED"
+                timelineApprovalState = "PENDING"
+                modelState = timelineModelState
+                toolPhaseState = timelineToolState
+                approvalState = timelineApprovalState
+                resultState = "FINISHED"
+            }
+            TaskState.STOPPED.name -> {
+                if (timelineModelState == "RUNNING") timelineModelState = "CANCELLED"
+                if (timelineToolState == "RUNNING") timelineToolState = "CANCELLED"
+                modelState = timelineModelState
+                toolPhaseState = timelineToolState
+                approvalState = timelineApprovalState
+                resultState = "CANCELLED"
+            }
+            TaskState.STOPPING.name, TaskState.CANCELLING.name -> {
+                modelState = timelineModelState
+                toolPhaseState = timelineToolState
+                approvalState = timelineApprovalState
+                resultState = "RUNNING"
+            }
+            TaskState.FAILED.name -> {
+                if (timelineModelState == "RUNNING") timelineModelState = "FAILED"
+                if (timelineToolState == "RUNNING") timelineToolState = "FAILED"
+                modelState = timelineModelState
+                toolPhaseState = timelineToolState
+                approvalState = timelineApprovalState
+                resultState = "FAILED"
+            }
+            else -> {
+                findViewById<LinearLayout>(R.id.taskTimeline).visibility = View.GONE
+                return
+            }
+        }
+        val timeline = findViewById<LinearLayout>(R.id.taskTimeline)
+        timeline.visibility = View.VISIBLE
+        bindTimelineStep(R.id.timelineModel, "模型", modelState)
+        bindTimelineStep(R.id.timelineTool, "工具", toolPhaseState)
+        bindTimelineStep(R.id.timelineApproval, "审批", approvalState)
+        bindTimelineStep(R.id.timelineResult, "结果", resultState)
+    }
+
+    private fun bindTimelineStep(viewId: Int, label: String, state: String) {
+        findViewById<TextView>(viewId).apply {
+            text = when (state) {
+                "RUNNING" -> "$label · 进行中"
+                "FINISHED" -> "$label · 完成"
+                "FAILED" -> "$label · 失败"
+                "WAITING_FOR_APPROVAL" -> "$label · 等待"
+                "CANCELLED" -> "$label · 已停止"
+                else -> label
+            }
+            contentDescription = "任务阶段 $text"
+            background = ContextCompat.getDrawable(context, timelineBackground(state))
+            setTextColor(getColor(timelineTextColor(state)))
+        }
+    }
+
+    private fun timelineBackground(state: String): Int = when (state) {
+        "RUNNING" -> R.drawable.bg_chip_running
+        "FINISHED" -> R.drawable.bg_chip_success
+        "FAILED" -> R.drawable.bg_chip_error
+        "WAITING_FOR_APPROVAL" -> R.drawable.bg_chip_warning
+        "CANCELLED" -> R.drawable.bg_chip_warning
+        else -> R.drawable.bg_chip
+    }
+
+    private fun timelineTextColor(state: String): Int = when (state) {
+        "RUNNING" -> R.color.accent_primary
+        "FINISHED" -> R.color.status_success
+        "FAILED" -> R.color.status_error
+        "WAITING_FOR_APPROVAL", "CANCELLED" -> R.color.status_warning
+        else -> R.color.text_secondary
     }
 
     private fun appendMessage(role: UiMessageRole, text: String) {
