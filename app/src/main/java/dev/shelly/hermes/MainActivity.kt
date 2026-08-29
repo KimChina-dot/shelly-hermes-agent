@@ -85,9 +85,21 @@ class MainActivity : AppCompatActivity() {
             val toolState = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_STATE).orEmpty()
             val toolArgs = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_ARGS).orEmpty()
             val toolResult = intent.getStringExtra(TaskForegroundService.EXTRA_TOOL_RESULT).orEmpty()
+            val toolDurationMillis = intent.getLongExtra(TaskForegroundService.EXTRA_TOOL_DURATION_MILLIS, -1L)
             val contextTokens = intent.getIntExtra(TaskForegroundService.EXTRA_CONTEXT_TOKENS, -1)
             if (contextTokens > 0) contextTokensFromModel = contextTokens
-            renderTaskState(state, detail, activeTaskId, queueCount, toolName, toolCallId, toolState, toolArgs, toolResult)
+            renderTaskState(
+                state,
+                detail,
+                activeTaskId,
+                queueCount,
+                toolName,
+                toolCallId,
+                toolState,
+                toolArgs,
+                toolResult,
+                if (toolDurationMillis >= 0) toolDurationMillis else null,
+            )
         }
     }
 
@@ -301,6 +313,7 @@ class MainActivity : AppCompatActivity() {
         toolState: String = "",
         toolArgs: String = "",
         toolResult: String = "",
+        toolDurationMillis: Long? = null,
     ) {
         if (queueCount >= 0) findViewById<Button>(R.id.taskQueue).text = "任务 $queueCount"
         findViewById<TextView>(R.id.taskStatus).apply {
@@ -325,7 +338,14 @@ class MainActivity : AppCompatActivity() {
                 setRunning(true)
                 when (toolState) {
                     "RUNNING" -> appendToolMessage(toolName, toolCallId, detail, toolState, toolArgs)
-                    "FINISHED", "FAILED" -> updateToolMessage(toolCallId, detail, toolState, toolResult, toolName)
+                    "FINISHED", "FAILED" -> updateToolMessage(
+                        toolCallId,
+                        detail,
+                        toolState,
+                        toolResult,
+                        toolName,
+                        toolDurationMillis,
+                    )
                     else -> if (detail.startsWith("正在请求模型")) {
                         flushStreaming()
                         streamingMessage = null
@@ -397,11 +417,23 @@ class MainActivity : AppCompatActivity() {
         scrollToLatest()
     }
 
-    private fun updateToolMessage(toolCallId: String, detail: String, state: String, result: String = "", toolName: String = "") {
+    private fun updateToolMessage(
+        toolCallId: String,
+        detail: String,
+        state: String,
+        result: String = "",
+        toolName: String = "",
+        durationMillis: Long? = null,
+    ) {
         if (toolCallId.isBlank()) return
         val index = messages.indexOfLast { it.role == UiMessageRole.TOOL && it.toolCallId == toolCallId }
         if (index < 0) return
-        messages[index] = messages[index].copy(text = detail, toolState = state, toolResult = result)
+        messages[index] = messages[index].copy(
+            text = detail,
+            toolState = state,
+            toolDurationMillis = durationMillis,
+            toolResult = result,
+        )
         if (state == "FINISHED") appendArtifactIfNeeded(toolName, messages[index].toolArgs.orEmpty(), result)
         messageAdapter.notifyDataSetChanged()
         updateContextIndicator()

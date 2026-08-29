@@ -21,6 +21,7 @@ data class UiMessage(
     val title: String? = null,
     val toolCallId: String? = null,
     val toolState: String? = null,
+    val toolDurationMillis: Long? = null,
     val streaming: Boolean = false,
     val toolArgs: String? = null,
     val toolResult: String? = null,
@@ -83,7 +84,7 @@ class AgentMessageAdapter(
             } else {
                 label.text
             }
-            stateChip.text = visibleStateLabel(message.toolState)
+            stateChip.text = visibleStateLabel(message.toolState, message.toolDurationMillis)
             stateChip.visibility = if (stateChip.text.isNullOrBlank()) {
                 android.view.View.GONE
             } else {
@@ -92,7 +93,7 @@ class AgentMessageAdapter(
                 android.view.View.VISIBLE
             }
             stateChip.contentDescription = if (message.role == UiMessageRole.TOOL) {
-                "工具状态 ${stateChip.text}"
+                "工具状态 ${stateChip.text}，耗时 ${formatDuration(message.toolDurationMillis)}"
             } else {
                 stateChip.text
             }
@@ -221,19 +222,33 @@ class AgentMessageAdapter(
             }
         }
 
-        private fun visibleStateLabel(state: String?): String? = when (state) {
+        private fun visibleStateLabel(state: String?, durationMillis: Long?): String {
+            val stateText = when (state) {
             null, "" -> null
+            "PENDING" -> "等待执行"
             "RUNNING" -> "执行中"
             "FINISHED" -> "已完成"
             "FAILED" -> "失败"
+            "CANCELLED" -> "已取消"
             "WAITING_FOR_APPROVAL" -> "等待审批"
             else -> state
         }
+            val duration = formatDuration(durationMillis)
+            return if (duration == null) stateText else "$stateText · $duration"
+        }
+
+        private fun formatDuration(durationMillis: Long?): String? {
+            val millis = durationMillis ?: return null
+            if (millis < 0) return null
+            return if (millis < 1_000) "${millis}ms" else "%.1fs".format(millis / 1_000.0)
+        }
 
         private fun stateBackground(state: String?): Int = when (state) {
+            "PENDING" -> R.drawable.bg_chip
             "RUNNING" -> R.drawable.bg_chip_running
             "FINISHED" -> R.drawable.bg_chip_success
             "FAILED" -> R.drawable.bg_chip_error
+            "CANCELLED" -> R.drawable.bg_chip
             "WAITING_FOR_APPROVAL" -> R.drawable.bg_chip_warning
             else -> R.drawable.bg_chip
         }

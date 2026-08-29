@@ -366,6 +366,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
                         event.toolCallId,
                         if (event.succeeded) "FINISHED" else "FAILED",
                         event.result,
+                        toolDurationMillis = event.durationMillis,
                     )
                 }
             },
@@ -454,6 +455,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         toolState: String? = null,
         toolArgs: String? = null,
         toolResult: String? = null,
+        toolDurationMillis: Long? = null,
         contextTokens: Int = -1,
     ) {
         sendBroadcast(Intent(ACTION_STATUS).apply {
@@ -465,6 +467,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
             putExtra(EXTRA_TOOL_STATE, toolState.orEmpty())
             putExtra(EXTRA_TOOL_ARGS, toolArgs.orEmpty())
             putExtra(EXTRA_TOOL_RESULT, toolResult.orEmpty())
+            putExtra(EXTRA_TOOL_DURATION_MILLIS, toolDurationMillis ?: -1L)
             putExtra(EXTRA_CONTEXT_TOKENS, contextTokens)
         })
     }
@@ -534,6 +537,7 @@ class TaskForegroundService : Service(), ForegroundServiceConnection, TaskStateL
         const val EXTRA_TOOL_STATE = "tool_state"
         const val EXTRA_TOOL_ARGS = "tool_args"
         const val EXTRA_TOOL_RESULT = "tool_result"
+        const val EXTRA_TOOL_DURATION_MILLIS = "extra_tool_duration_millis"
         const val EXTRA_CONTEXT_TOKENS = "context_tokens"
         const val STATE_AWAITING_APPROVAL = "AWAITING_APPROVAL"
         const val STATE_MODEL_DELTA = "MODEL_DELTA"
