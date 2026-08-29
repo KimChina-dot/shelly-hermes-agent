@@ -12,6 +12,7 @@
     <string name="tasks_zero">任务 0</string>
     <string name="resume">恢复</string>
     <string name="start_task">开始一个任务</string>
+    <string name="stop_current_task">停止当前任务</string>
     <string name="retry">重试</string>
     <string name="review_and_approve">查看变更并审批</string>
     <string name="task_hint">交给 Luma 一个任务</string>

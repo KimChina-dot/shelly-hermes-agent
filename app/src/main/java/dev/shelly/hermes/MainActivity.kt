@@ -883,12 +883,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun setRunning(running: Boolean) {
         findViewById<ProgressBar>(R.id.progress).visibility = if (running) View.VISIBLE else View.GONE
-        findViewById<Button>(R.id.startTask).visibility = View.VISIBLE
+        findViewById<Button>(R.id.startTask).apply {
+            visibility = View.VISIBLE
+            isEnabled = !running
+            alpha = if (running) 0.6f else 1f
+        }
         findViewById<Button>(R.id.stopTask).visibility = if (running) View.VISIBLE else View.GONE
         findViewById<EditText>(R.id.taskInput).isEnabled = true
         findViewById<Button>(R.id.taskMode).isEnabled = true
         findViewById<Button>(R.id.agentProfile).isEnabled = true
         findViewById<Button>(R.id.resumeTask).isEnabled = true
+        if (!running) findViewById<EditText>(R.id.taskInput).requestFocus()
     }
 
     private fun scrollToLatest() {
