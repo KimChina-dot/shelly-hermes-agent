@@ -198,6 +198,16 @@ class MainActivity : AppCompatActivity() {
                 startTask()
             }
         }
+        findViewById<Button>(R.id.startNewTask).setOnClickListener {
+            findViewById<View>(R.id.errorContainer).visibility = View.GONE
+            contextTokensFromModel = 0
+            val input = findViewById<EditText>(R.id.taskInput)
+            input.text.clear()
+            input.requestFocus()
+            getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
+                ?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            updateContextIndicator()
+        }
         findViewById<Button>(R.id.approval).setOnClickListener {
             startActivity(Intent(this, ApprovalActivity::class.java))
         }
@@ -433,12 +443,18 @@ class MainActivity : AppCompatActivity() {
                 flushStreaming()
                 streamingMessage = null
                 setRunning(false)
-                findViewById<View>(R.id.errorContainer).visibility = View.VISIBLE
                 val normalized = detail.lowercase()
-                findViewById<TextView>(R.id.errorText).text = if ("context" in normalized || "token" in normalized) {
-                    "上下文过长或超出模型限制：${detail.ifBlank { "请求超出可用上下文" }}"
+                val contextOverLimit = "context" in normalized || "token" in normalized
+                findViewById<TextView>(R.id.errorText).text = if (contextOverLimit) {
+                    "上下文过长：请减少附件或用更短的任务描述重新开始。模型返回：${detail.ifBlank { "请求超出可用上下文" }}"
                 } else {
                     detail.ifBlank { "任务执行失败" }
+                }
+                findViewById<View>(R.id.errorContainer).visibility = View.VISIBLE
+                findViewById<Button>(R.id.startNewTask).visibility = if (contextOverLimit) {
+                    View.VISIBLE
+                } else {
+                    View.GONE
                 }
             }
         }
@@ -1022,7 +1038,13 @@ class MainActivity : AppCompatActivity() {
         val window = config.contextWindow.coerceAtLeast(1_000)
         val used = estimatedTokens()
         val percent = (used * 100 / window).coerceIn(0, 100)
-        val warning = percent >= 80
+        val nearLimit = percent in 80..94
+        val overLimit = percent >= 95
+        val riskSuffix = when {
+            overLimit -> " · 已超限"
+            nearLimit -> " · 接近上限"
+            else -> ""
+        }
         val attachmentSuffix = if (attachments.isEmpty()) {
             ""
         } else {
@@ -1032,12 +1054,28 @@ class MainActivity : AppCompatActivity() {
         bar.progress = percent
         bar.progressTintList = ContextCompat.getColorStateList(
             this,
-            if (warning) R.color.status_error else R.color.accent_primary,
+            when {
+                overLimit -> R.color.status_error
+                nearLimit -> R.color.status_warning
+                else -> R.color.accent_primary
+            },
         )
         bar.visibility = View.VISIBLE
-        text.text = "${formatTokens(used)} / ${formatTokens(window)}$attachmentSuffix"
-        text.contentDescription = "上下文使用 ${formatTokens(used)} / ${formatTokens(window)}$attachmentSuffix"
-        text.setTextColor(getColor(if (warning) R.color.status_error else R.color.text_tertiary))
+        text.text = "${formatTokens(used)} / ${formatTokens(window)}$attachmentSuffix$riskSuffix"
+        text.contentDescription = when {
+            overLimit -> "上下文已超限，使用 ${formatTokens(used)} / ${formatTokens(window)}$attachmentSuffix"
+            nearLimit -> "上下文接近上限，使用 ${formatTokens(used)} / ${formatTokens(window)}$attachmentSuffix"
+            else -> "上下文使用 ${formatTokens(used)} / ${formatTokens(window)}$attachmentSuffix"
+        }
+        text.setTextColor(
+            getColor(
+                when {
+                    overLimit -> R.color.status_error
+                    nearLimit -> R.color.status_warning
+                    else -> R.color.text_tertiary
+                },
+            ),
+        )
         text.visibility = View.VISIBLE
     }
 

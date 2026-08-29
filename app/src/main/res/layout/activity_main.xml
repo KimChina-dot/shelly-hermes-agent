@@ -359,6 +359,15 @@
             android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:text="@string/retry" />
+
+        <Button
+            android:id="@+id/startNewTask"
+            style="@style/Widget.Luma.ToolbarButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginStart="6dp"
+            android:text="输入新任务"
+            android:visibility="gone" />
     </LinearLayout>
 
     <Button
