@@ -689,7 +689,7 @@ class MainActivity : AppCompatActivity() {
                 modelState = timelineModelState
                 toolPhaseState = timelineToolState
                 approvalState = timelineApprovalState
-                resultState = "RUNNING"
+                resultState = "CANCELLING"
             }
             TaskState.FAILED.name -> {
                 if (timelineModelState == "RUNNING") timelineModelState = "FAILED"
@@ -724,6 +724,7 @@ class MainActivity : AppCompatActivity() {
                 "FAILED" -> "$label · 失败"
                 "WAITING_FOR_APPROVAL" -> "$label · 等待"
                 "CANCELLED" -> "$label · 已停止"
+                "CANCELLING" -> "$label · 停止中"
                 else -> label
             }
             contentDescription = "任务阶段 $text"
@@ -738,6 +739,7 @@ class MainActivity : AppCompatActivity() {
         "FAILED" -> R.drawable.bg_chip_error
         "WAITING_FOR_APPROVAL" -> R.drawable.bg_chip_warning
         "CANCELLED" -> R.drawable.bg_chip_warning
+        "CANCELLING" -> R.drawable.bg_chip_warning
         else -> R.drawable.bg_chip
     }
 
@@ -745,7 +747,7 @@ class MainActivity : AppCompatActivity() {
         "RUNNING" -> R.color.accent_primary
         "FINISHED" -> R.color.status_success
         "FAILED" -> R.color.status_error
-        "WAITING_FOR_APPROVAL", "CANCELLED" -> R.color.status_warning
+        "WAITING_FOR_APPROVAL", "CANCELLED", "CANCELLING" -> R.color.status_warning
         else -> R.color.text_secondary
     }
 
