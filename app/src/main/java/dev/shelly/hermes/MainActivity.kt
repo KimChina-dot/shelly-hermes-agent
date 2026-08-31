@@ -1299,11 +1299,26 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.stopTask).visibility = if (running) View.VISIBLE else View.GONE
         findViewById<Button>(R.id.stopTask).isEnabled = !cancelling
+        findViewById<Button>(R.id.stopTask).contentDescription = if (cancelling) {
+            "停止请求已发送，正在停止任务"
+        } else {
+            getString(R.string.stop_current_task)
+        }
         findViewById<EditText>(R.id.taskInput).isEnabled = true
         findViewById<Button>(R.id.taskMode).isEnabled = !running
         findViewById<Button>(R.id.agentProfile).isEnabled = !running
+        updateComposerControlDescriptions()
         findViewById<Button>(R.id.resumeTask).isEnabled = true
         if (!running) findViewById<EditText>(R.id.taskInput).requestFocus()
+    }
+
+    private fun updateComposerControlDescriptions() {
+        val mode = if (currentMode == AgentMode.PLAN) "Plan" else "Act"
+        val profile = profiles.findProfile(currentProfileId)?.name ?: "Team"
+        val modeSuffix = if (isTaskRunning) "，任务运行中，暂不可切换" else "，点击切换"
+        val profileSuffix = if (isTaskRunning) "，任务运行中，暂不可选择" else "，点击选择 Agent 角色"
+        findViewById<Button>(R.id.taskMode).contentDescription = "当前模式 $mode$modeSuffix"
+        findViewById<Button>(R.id.agentProfile).contentDescription = "当前角色 $profile$profileSuffix"
     }
 
     private fun scrollToLatest() {
@@ -1317,9 +1332,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.taskMode).text = if (currentMode == AgentMode.PLAN) "PLAN" else "ACT"
         val profileButton = findViewById<Button>(R.id.agentProfile)
         profileButton.text = profile?.name ?: "Team"
-        profileButton.contentDescription = "当前角色 ${profile?.name ?: "Team"}，点击选择 Agent 角色"
-        findViewById<Button>(R.id.taskMode).contentDescription =
-            "当前模式 ${if (currentMode == AgentMode.PLAN) "Plan" else "Act"}，点击切换"
+        updateComposerControlDescriptions()
     }
 
     private fun selectProfile(id: String) {
