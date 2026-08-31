@@ -159,17 +159,25 @@
         android:textSize="@dimen/type_caption"
         android:visibility="gone" />
 
-    <TextView
-        android:id="@+id/details"
+    <ScrollView
+        android:id="@+id/detailsScroll"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/space_8"
         android:background="@color/surface_container"
-        android:fontFamily="monospace"
-        android:lineSpacingExtra="2dp"
-        android:padding="@dimen/space_12"
-        android:textColor="@color/text_secondary"
-        android:textIsSelectable="true"
-        android:textSize="@dimen/type_micro"
-        android:visibility="gone" />
+        android:maxHeight="@dimen/detail_pane_max_height"
+        android:scrollbars="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/details"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:lineSpacingExtra="2dp"
+            android:padding="@dimen/space_12"
+            android:textColor="@color/text_secondary"
+            android:textIsSelectable="true"
+            android:textSize="@dimen/type_micro" />
+    </ScrollView>
 </LinearLayout>

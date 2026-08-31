@@ -11,6 +11,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ImageView
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
@@ -71,6 +72,7 @@ class AgentMessageAdapter(
         private val copyHint = row.findViewById<TextView>(R.id.copyHint)
         private val content = row.findViewById<TextView>(R.id.content)
         private val failureSuggestion = row.findViewById<TextView>(R.id.failureSuggestion)
+        private val detailsScroll = row.findViewById<ScrollView>(R.id.detailsScroll)
         private val details = row.findViewById<TextView>(R.id.details)
         private val artifactImage = row.findViewById<ImageView>(R.id.artifactImage)
         private val artifactActions = row.findViewById<LinearLayout>(R.id.artifactActions)
@@ -341,6 +343,7 @@ class AgentMessageAdapter(
                 (!message.toolArgs.isNullOrBlank() || !message.toolResult.isNullOrBlank())
             if (!hasDetails) {
                 expandHint.visibility = View.GONE
+                detailsScroll.visibility = View.GONE
                 details.visibility = View.GONE
                 expandHint.setOnClickListener(null)
                 return
@@ -363,6 +366,7 @@ class AgentMessageAdapter(
                 if (position >= 0) notifyItemChanged(position)
             }
             details.visibility = if (expanded) View.VISIBLE else View.GONE
+            detailsScroll.visibility = if (expanded) View.VISIBLE else View.GONE
             if (expanded) {
                 details.text = buildString {
                     if (message.role == UiMessageRole.ARTIFACT && !message.artifactPath.isNullOrBlank()) {
