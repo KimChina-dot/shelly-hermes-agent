@@ -24,6 +24,8 @@ class TaskQueueActivity : Activity() {
     private lateinit var summary: TextView
     private lateinit var errorContainer: LinearLayout
     private lateinit var errorText: TextView
+    private val pendingCancelIds = mutableSetOf<String>()
+    private val pendingRetryIds = mutableSetOf<String>()
 
     private val queueStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -73,6 +75,7 @@ class TaskQueueActivity : Activity() {
         list.removeAllViews()
         runCatching { store.list().sortedByDescending { it.createdAt } }.fold(
             onSuccess = { tasks ->
+                prunePendingActions(tasks)
                 errorContainer.visibility = View.GONE
                 empty.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
                 scroll.visibility = if (tasks.isEmpty()) View.GONE else View.VISIBLE
@@ -135,26 +138,34 @@ class TaskQueueActivity : Activity() {
             }
         })
         when (task.state) {
-            QueuedTaskState.PENDING -> addView(actionButton("取消排队") { cancel(task.id) })
-            QueuedTaskState.FAILED, QueuedTaskState.CANCELLED -> addView(actionButton("重新排队") { retry(task.id) })
+            QueuedTaskState.PENDING -> addView(
+                actionButton("取消排队", task.id in pendingCancelIds) { cancel(task.id) },
+            )
+            QueuedTaskState.FAILED, QueuedTaskState.CANCELLED -> addView(
+                actionButton("重新排队", task.id in pendingRetryIds) { retry(task.id) },
+            )
             else -> Unit
         }
     }
 
-    private fun actionButton(label: String, action: () -> Unit) = Button(this).apply {
+    private fun actionButton(label: String, pending: Boolean, action: () -> Unit) = Button(this).apply {
         text = label
         isAllCaps = false
         background = ContextCompat.getDrawable(this@TaskQueueActivity, R.drawable.bg_button_secondary)
         setTextColor(getColor(R.color.text_primary))
-        setOnClickListener { action() }
+        isEnabled = !pending
+        alpha = if (pending) 0.6f else 1f
+        setOnClickListener { if (!pending) action() }
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(48),
         ).apply { topMargin = dp(10) }
-        contentDescription = label
+        contentDescription = if (pending) "$label 处理中" else label
     }
 
     private fun cancel(id: String) {
+        pendingCancelIds.add(id)
+        pendingRetryIds.remove(id)
         startService(Intent(this, TaskForegroundService::class.java).apply {
             action = TaskForegroundService.ACTION_CANCEL_QUEUED
             putExtra(TaskForegroundService.EXTRA_TASK_ID, id)
@@ -163,11 +174,27 @@ class TaskQueueActivity : Activity() {
     }
 
     private fun retry(id: String) {
+        pendingRetryIds.add(id)
+        pendingCancelIds.remove(id)
         startService(Intent(this, TaskForegroundService::class.java).apply {
             action = TaskForegroundService.ACTION_RETRY_QUEUED
             putExtra(TaskForegroundService.EXTRA_TASK_ID, id)
         })
         runOnUiThread { render() }
+    }
+
+    private fun prunePendingActions(tasks: List<QueuedAgentTask>) {
+        val terminalStates = setOf(
+            QueuedTaskState.COMPLETED,
+            QueuedTaskState.FAILED,
+            QueuedTaskState.CANCELLED,
+        )
+        pendingCancelIds.removeAll { id ->
+            tasks.none { it.id == id } || tasks.first { it.id == id }.state != QueuedTaskState.PENDING
+        }
+        pendingRetryIds.removeAll { id ->
+            tasks.none { it.id == id } || tasks.first { it.id == id }.state !in terminalStates
+        }
     }
 
     private fun stateLabel(state: QueuedTaskState): String = when (state) {
