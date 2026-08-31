@@ -68,6 +68,8 @@ class HistoryActivity : Activity() {
         val maxSequence = events.lastOrNull()?.sequence ?: 0L
         val messages = runCatching { eventStore.deriveMessages() }.getOrDefault(emptyList())
         val checkpoint = runCatching { eventStore.latestCheckpoint() }.getOrNull()
+        val completedTools = completedToolCount(events)
+        val partial = isPartiallyCompleted(session.status, completedTools)
         orientation = LinearLayout.VERTICAL
         background = ContextCompat.getDrawable(context, R.drawable.bg_surface_card)
         setPadding(dp(16), dp(14), dp(16), dp(14))
@@ -83,12 +85,16 @@ class HistoryActivity : Activity() {
             ellipsize = android.text.TextUtils.TruncateAt.END
         })
         addView(TextView(context).apply {
-            text = statusLabel(session.status)
+            text = statusLabel(session.status, partial)
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, resources.getDimension(R.dimen.type_micro))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(getColor(statusColor(session.status)))
-            background = ContextCompat.getDrawable(context, statusBackground(session.status))
-            contentDescription = "任务状态 ${statusLabel(session.status)}"
+            setTextColor(getColor(statusColor(session.status, partial)))
+            background = ContextCompat.getDrawable(context, statusBackground(session.status, partial))
+            contentDescription = if (partial) {
+                "任务状态：部分完成，已完成 $completedTools 个工具操作"
+            } else {
+                "任务状态 ${statusLabel(session.status, partial)}"
+            }
             setPadding(dp(10), dp(4), dp(10), dp(4))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -109,6 +115,7 @@ class HistoryActivity : Activity() {
                 append(session.summary.ifBlank { "旧版会话暂无事件摘要，可继续恢复此任务。" })
                 if (maxSequence > 0L) append("\n事件：$maxSequence 条")
                 if (messages.isNotEmpty()) append("\n消息：${messages.size} 条")
+                if (completedTools > 0L) append("\n工具：$completedTools 项已完成")
                 append(
                     when {
                         checkpoint != null -> "\n检查点：可从此处恢复"
@@ -223,7 +230,11 @@ class HistoryActivity : Activity() {
                 isAllCaps = false
                 background = ContextCompat.getDrawable(context, R.drawable.bg_button_secondary)
                 setTextColor(getColor(R.color.text_primary))
-                contentDescription = "恢复会话 ${session.prompt.ifBlank { session.id }}"
+                contentDescription = if (partial) {
+                    "恢复部分完成的会话 ${session.prompt.ifBlank { session.id }}"
+                } else {
+                    "恢复会话 ${session.prompt.ifBlank { session.id }}"
+                }
                 setOnClickListener { resumeSession(session) }
             }, actionLayoutParams())
             addView(Button(context).apply {
@@ -253,7 +264,9 @@ class HistoryActivity : Activity() {
         SessionEventType.MODEL_DELTA -> "流式输出"
     }
 
-    private fun statusLabel(status: String): String = when (status.uppercase()) {
+    private fun statusLabel(status: String, partial: Boolean): String = if (partial) {
+        "部分完成"
+    } else when (status.uppercase()) {
         "RUNNING", "STARTING" -> "运行中"
         "AWAITING_APPROVAL", "WAITING_FOR_APPROVAL" -> "等待审批"
         "COMPLETED" -> "已完成"
@@ -262,7 +275,9 @@ class HistoryActivity : Activity() {
         else -> "历史记录"
     }
 
-    private fun statusBackground(status: String): Int = when (status.uppercase()) {
+    private fun statusBackground(status: String, partial: Boolean): Int = if (partial) {
+        R.drawable.bg_chip_warning
+    } else when (status.uppercase()) {
         "RUNNING", "STARTING" -> R.drawable.bg_chip_running
         "AWAITING_APPROVAL", "WAITING_FOR_APPROVAL" -> R.drawable.bg_chip_warning
         "COMPLETED" -> R.drawable.bg_chip_success
@@ -271,7 +286,9 @@ class HistoryActivity : Activity() {
         else -> R.drawable.bg_chip
     }
 
-    private fun statusColor(status: String): Int = when (status.uppercase()) {
+    private fun statusColor(status: String, partial: Boolean): Int = if (partial) {
+        getColor(R.color.status_warning)
+    } else when (status.uppercase()) {
         "RUNNING", "STARTING" -> getColor(R.color.accent_primary)
         "AWAITING_APPROVAL", "WAITING_FOR_APPROVAL" -> getColor(R.color.status_warning)
         "COMPLETED" -> getColor(R.color.status_success)
@@ -279,6 +296,14 @@ class HistoryActivity : Activity() {
         "FAILED" -> getColor(R.color.status_error)
         else -> getColor(R.color.text_secondary)
     }
+
+    private fun completedToolCount(events: List<SessionEventEnvelope>): Int = events.count {
+        it.event.type == SessionEventType.TOOL_FINISHED &&
+            it.event.detail.contains(Regex("(?:^|,)succeeded=true(?:,|$)"))
+    }
+
+    private fun isPartiallyCompleted(status: String, completedTools: Int): Boolean =
+        completedTools > 0 && status.uppercase() in setOf("STOPPED", "FAILED")
 
     private fun confirmClearHistory() {
         val sessions = runCatching { store.list() }.getOrDefault(emptyList())
