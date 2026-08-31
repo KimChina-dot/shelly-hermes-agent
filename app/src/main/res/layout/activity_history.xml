@@ -61,7 +61,7 @@
             android:layout_marginTop="@dimen/space_8"
             android:gravity="center"
             android:maxWidth="@dimen/empty_state_text_width"
-            android:lineSpacingExtra="4dp"
+            android:lineSpacingExtra="@dimen/line_spacing_relaxed"
             android:text="完成任务后会在这里保存本机会话。之后可以恢复任务、查看事件时间线，或从指定事件创建分支。"
             android:textAlignment="center"
             android:textAppearance="@style/TextAppearance.Luma.Body"

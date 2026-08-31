@@ -8,6 +8,16 @@
     <dimen name="space_32">32dp</dimen>
     <dimen name="empty_state_text_width">320dp</dimen>
     <dimen name="detail_pane_max_height">320dp</dimen>
+    <dimen name="artifact_preview_max_height">320dp</dimen>
+    <dimen name="message_max_width">720dp</dimen>
+    <dimen name="workspace_card_max_width">760dp</dimen>
+    <dimen name="workspace_selector_max_width">220dp</dimen>
+    <dimen name="model_status_max_width">180dp</dimen>
+    <dimen name="app_bar_height">56dp</dimen>
+    <dimen name="nav_bar_height">64dp</dimen>
+    <dimen name="line_spacing_tight">2dp</dimen>
+    <dimen name="line_spacing_normal">3dp</dimen>
+    <dimen name="line_spacing_relaxed">4dp</dimen>
 
     <dimen name="radius_small">8dp</dimen>
     <dimen name="radius_medium">12dp</dimen>

@@ -92,7 +92,7 @@
             android:layout_marginTop="@dimen/space_8"
             android:gravity="center"
             android:maxWidth="@dimen/empty_state_text_width"
-            android:lineSpacingExtra="4dp"
+            android:lineSpacingExtra="@dimen/line_spacing_relaxed"
             android:text="任务提交后会在这里显示排队、运行、失败和取消状态；失败的队列任务可以重新排队。"
             android:textAlignment="center"
             android:textAppearance="@style/TextAppearance.Luma.Body"

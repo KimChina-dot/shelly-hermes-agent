@@ -68,7 +68,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/space_8"
-                android:lineSpacingExtra="3dp"
+            android:lineSpacingExtra="@dimen/line_spacing_normal"
                 android:textAppearance="@style/TextAppearance.Luma.Body"
                 android:textColor="@color/text_secondary" />
         </LinearLayout>
@@ -114,7 +114,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/space_8"
-                android:lineSpacingExtra="3dp"
+            android:lineSpacingExtra="@dimen/line_spacing_normal"
                 android:textAppearance="@style/TextAppearance.Luma.Body"
                 android:textColor="@color/text_secondary" />
         </LinearLayout>
