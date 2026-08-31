@@ -575,6 +575,7 @@ class MainActivity : AppCompatActivity() {
         TaskState.CANCELLING.name -> "任务取消中"
         TaskForegroundService.STATE_QUEUE_UPDATED -> "任务队列运行中"
         TaskForegroundService.STATE_AWAITING_APPROVAL -> "等待审批"
+        TaskState.COMPLETED.name -> "等待新输入"
         else -> state
     }
 
@@ -586,10 +587,11 @@ class MainActivity : AppCompatActivity() {
         toolState: String,
     ) {
         val status = findViewById<TextView>(R.id.taskStatus)
-        val hidden = state == TaskState.COMPLETED.name || state == TaskState.FAILED.name ||
+        val hidden = state == TaskState.FAILED.name ||
             state == TaskState.STOPPED.name ||
             (state == TaskForegroundService.STATE_QUEUE_UPDATED && activeTaskId.isBlank() && queueCount == 0)
         status.text = when {
+            state == TaskState.COMPLETED.name -> stateDescription(state)
             state == TaskForegroundService.STATE_MODEL_DELTA -> stateDescription(state)
             state == TaskForegroundService.STATE_QUEUE_UPDATED -> stateDescription(state)
             state == TaskState.RUNNING.name && toolState == "RUNNING" -> detail.ifBlank { "正在执行工具" }
