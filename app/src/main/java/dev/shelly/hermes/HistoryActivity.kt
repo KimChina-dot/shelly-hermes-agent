@@ -11,7 +11,6 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.core.content.ContextCompat
 import java.text.DateFormat
 import java.util.Date
@@ -24,6 +23,7 @@ class HistoryActivity : Activity() {
     private lateinit var historyScroll: ScrollView
     private lateinit var clearButton: Button
     private lateinit var historySummary: TextView
+    private lateinit var actionStatus: TextView
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -35,6 +35,7 @@ class HistoryActivity : Activity() {
         clearButton = findViewById(R.id.clearHistoryButton)
         clearButton.background = ContextCompat.getDrawable(this, R.drawable.bg_button_danger)
         historySummary = findViewById(R.id.historySummary)
+        actionStatus = findViewById(R.id.historyActionStatus)
         clearButton.contentDescription = getString(R.string.clear_history_content)
         clearButton.setOnClickListener {
             confirmClearHistory()
@@ -44,6 +45,7 @@ class HistoryActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        actionStatus.visibility = View.GONE
         renderHistory()
     }
 
@@ -321,7 +323,7 @@ class HistoryActivity : Activity() {
                 store.clear()
                 SessionEventStore.clearAll(this)
                 renderHistory()
-                Toast.makeText(this, "已清空全部历史", Toast.LENGTH_SHORT).show()
+                showActionStatus("已清空全部历史")
             }
             .show()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(getColor(R.color.status_error))
@@ -337,7 +339,7 @@ class HistoryActivity : Activity() {
                 putExtra(TaskForegroundService.EXTRA_MODE, AgentMode.ACT.wireValue)
             },
         )
-        Toast.makeText(this, "正在恢复会话", Toast.LENGTH_SHORT).show()
+        showActionStatus("恢复已启动，返回对话页查看任务进度")
     }
 
     private fun showForkDialog(session: Session, maxSequence: Long) {
@@ -382,7 +384,13 @@ class HistoryActivity : Activity() {
                 putExtra(TaskForegroundService.EXTRA_SOURCE_SEQUENCE, sourceSequence)
             },
         )
-        Toast.makeText(this, "正在创建会话分支", Toast.LENGTH_SHORT).show()
+        showActionStatus("分支创建已启动，返回对话页查看任务进度")
+    }
+
+    private fun showActionStatus(text: String) {
+        actionStatus.text = text
+        actionStatus.contentDescription = "历史操作状态：$text"
+        actionStatus.visibility = View.VISIBLE
     }
 
     private fun actionLayoutParams(startMargin: Int = 0): LinearLayout.LayoutParams =
