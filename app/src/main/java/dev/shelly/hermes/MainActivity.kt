@@ -418,6 +418,20 @@ class MainActivity : AppCompatActivity() {
         updateStoppedRecovery(state, activeTaskId)
         updateTaskStatus(state, detail, activeTaskId, queueCount, toolState)
         updateTaskTimeline(state, detail, toolState, activeTaskId, toolName)
+        findViewById<Button>(R.id.approval).visibility = if (
+            state == TaskForegroundService.STATE_AWAITING_APPROVAL
+        ) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        findViewById<View>(R.id.errorContainer).visibility = if (
+            state == TaskState.FAILED.name
+        ) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
         when (state) {
             TaskState.STARTING.name -> setRunning(true)
             TaskForegroundService.STATE_MODEL_DELTA -> appendStreamDelta(detail)
@@ -426,7 +440,6 @@ class MainActivity : AppCompatActivity() {
             TaskForegroundService.STATE_AWAITING_APPROVAL -> {
                 flushStreaming()
                 setRunning(true)
-                findViewById<Button>(R.id.approval).visibility = View.VISIBLE
                 if (toolName.isNotBlank() && toolCallId.isNotBlank()) {
                     appendToolMessage(
                         toolName,
@@ -472,7 +485,6 @@ class MainActivity : AppCompatActivity() {
             }
             TaskState.COMPLETED.name -> {
                 setRunning(false)
-                findViewById<Button>(R.id.approval).visibility = View.GONE
                 val completion = detail.ifBlank { "任务已完成" }
                 flushStreaming()
                 if (streamingMessage?.text != completion) {
@@ -495,7 +507,6 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     detail.ifBlank { "任务执行失败" }
                 }
-                findViewById<View>(R.id.errorContainer).visibility = View.VISIBLE
                 findViewById<Button>(R.id.retry).visibility = if (contextOverLimit) View.GONE else View.VISIBLE
                 findViewById<Button>(R.id.startNewTask).visibility = if (contextOverLimit) View.VISIBLE else View.GONE
                 findViewById<Button>(R.id.retry).contentDescription = "重试上次任务"
