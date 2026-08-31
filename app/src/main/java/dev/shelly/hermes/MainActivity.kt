@@ -1496,6 +1496,17 @@ class MainActivity : AppCompatActivity() {
         container.addView(model)
         container.addView(apiKey)
         container.addView(contextWindow)
+        val saveError = TextView(this).apply {
+            visibility = View.GONE
+            background = ContextCompat.getDrawable(context, R.drawable.bg_chip_error)
+            setTextColor(ContextCompat.getColor(context, R.color.status_error))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(12) }
+        }
+        container.addView(saveError)
 
         val dialog = AlertDialog.Builder(this)
             .setTitle("模型设置")
@@ -1525,6 +1536,7 @@ class MainActivity : AppCompatActivity() {
                     contextWindow.error = "请输入 1000 - 10000000 之间的数字"
                     return@setOnClickListener
                 }
+                saveError.visibility = View.GONE
                 runCatching { store.save(ModelConfig(endpointValue, modelValue, keyValue, contextWindowValue)) }
                     .onSuccess {
                         Toast.makeText(this, "模型设置已安全保存", Toast.LENGTH_SHORT).show()
@@ -1533,7 +1545,9 @@ class MainActivity : AppCompatActivity() {
                         dialog.dismiss()
                     }
                     .onFailure {
-                        Toast.makeText(this, "保存失败：${it.message ?: "未知错误"}", Toast.LENGTH_LONG).show()
+                        saveError.text = "保存失败：${it.message ?: "未知错误"}"
+                        saveError.contentDescription = "模型设置保存失败。${saveError.text}"
+                        saveError.visibility = View.VISIBLE
                     }
             }
         }
