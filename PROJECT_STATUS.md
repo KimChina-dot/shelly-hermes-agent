@@ -3,9 +3,15 @@
 > 原名：Shelly Hermes
 > 当前分支：`feat/android-release`
 > 内部引擎：Hermes Core
-> 更新日期：2026-08-12
+> 更新日期：2026-08-31
 
-## 本轮完成
+## UI 定型状态（2026-08-31）
+
+- Android UI 已完成一轮系统性定型：设计 Token、Material 3 深浅主题、对话工作区、工具卡、任务时间线、审批卡、产物卡、完整状态、无障碍、响应式和运行态锁定已收口。
+- 详细范围、验证和阻塞见 `docs/ui-finalization.zh-CN.md`。
+- 当前唯一外部阻塞仍是 GitHub Actions 额度/计费；恢复后需跑真实 Android 测试、Lint 和 Debug APK 构建。
+
+## 历史基线
 
 - 恢复归档中的 Git 元数据，项目目录现为可用的 `feat/android-release` 工作树；原无效 worktree 指针保留为 `.git.worktree-pointer`。
 - 修复 Android 主界面和审批页中损坏的 UTF-8 文本、未闭合 XML 属性及无效资源引用。
