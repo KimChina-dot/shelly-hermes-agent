@@ -493,7 +493,8 @@ class MainActivity : AppCompatActivity() {
                 streamingMessage = null
             }
             TaskState.STOPPED.name, TaskState.CANCELLING.name, TaskState.STOPPING.name -> {
-                setRunning(state == TaskState.CANCELLING.name || state == TaskState.STOPPING.name)
+                val cancelling = state == TaskState.CANCELLING.name || state == TaskState.STOPPING.name
+                setRunning(running = cancelling, cancelling = cancelling)
                 if (state == TaskState.STOPPED.name) appendMessage(UiMessageRole.STATUS, "任务已停止")
             }
             TaskState.FAILED.name -> {
@@ -1288,7 +1289,7 @@ class MainActivity : AppCompatActivity() {
         scrollToLatest()
     }
 
-    private fun setRunning(running: Boolean) {
+    private fun setRunning(running: Boolean, cancelling: Boolean = false) {
         isTaskRunning = running
         findViewById<ProgressBar>(R.id.progress).visibility = if (running) View.VISIBLE else View.GONE
         findViewById<Button>(R.id.startTask).apply {
@@ -1297,9 +1298,10 @@ class MainActivity : AppCompatActivity() {
             alpha = if (running) 0.6f else 1f
         }
         findViewById<Button>(R.id.stopTask).visibility = if (running) View.VISIBLE else View.GONE
+        findViewById<Button>(R.id.stopTask).isEnabled = !cancelling
         findViewById<EditText>(R.id.taskInput).isEnabled = true
-        findViewById<Button>(R.id.taskMode).isEnabled = true
-        findViewById<Button>(R.id.agentProfile).isEnabled = true
+        findViewById<Button>(R.id.taskMode).isEnabled = !running
+        findViewById<Button>(R.id.agentProfile).isEnabled = !running
         findViewById<Button>(R.id.resumeTask).isEnabled = true
         if (!running) findViewById<EditText>(R.id.taskInput).requestFocus()
     }
