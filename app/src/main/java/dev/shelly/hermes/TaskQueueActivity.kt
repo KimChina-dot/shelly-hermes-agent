@@ -20,6 +20,8 @@ class TaskQueueActivity : Activity() {
     private lateinit var empty: View
     private lateinit var scroll: ScrollView
     private lateinit var summary: TextView
+    private lateinit var errorContainer: LinearLayout
+    private lateinit var errorText: TextView
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -29,7 +31,13 @@ class TaskQueueActivity : Activity() {
         empty = findViewById(R.id.taskQueueEmpty)
         scroll = findViewById(R.id.taskQueueScroll)
         summary = findViewById(R.id.taskQueueSummary)
+        errorContainer = findViewById(R.id.taskQueueError)
+        errorText = findViewById(R.id.taskQueueErrorText)
         findViewById<Button>(R.id.refreshTaskQueue).setOnClickListener { render() }
+        findViewById<Button>(R.id.taskQueueErrorRetry).apply {
+            contentDescription = "重试读取任务队列"
+            setOnClickListener { render() }
+        }
         findViewById<Button>(R.id.startNewTaskFromQueue).setOnClickListener { finish() }
     }
 
@@ -39,18 +47,28 @@ class TaskQueueActivity : Activity() {
     }
 
     private fun render() {
-        val tasks = runCatching { store.list() }.getOrElse {
-            Toast.makeText(this, "读取任务队列失败：${it.message}", Toast.LENGTH_LONG).show()
-            emptyList()
-        }.sortedByDescending { it.createdAt }
         list.removeAllViews()
-        empty.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
-        scroll.visibility = if (tasks.isEmpty()) View.GONE else View.VISIBLE
-        val pending = tasks.count { it.state == QueuedTaskState.PENDING }
-        val running = tasks.count { it.state == QueuedTaskState.RUNNING }
-        summary.text = "${tasks.size} 项任务 · $running 项运行 · $pending 项等待"
-        summary.contentDescription = summary.text
-        tasks.forEach { list.addView(card(it)) }
+        runCatching { store.list().sortedByDescending { it.createdAt } }.fold(
+            onSuccess = { tasks ->
+                errorContainer.visibility = View.GONE
+                empty.visibility = if (tasks.isEmpty()) View.VISIBLE else View.GONE
+                scroll.visibility = if (tasks.isEmpty()) View.GONE else View.VISIBLE
+                val pending = tasks.count { it.state == QueuedTaskState.PENDING }
+                val running = tasks.count { it.state == QueuedTaskState.RUNNING }
+                summary.text = "${tasks.size} 项任务 · $running 项运行 · $pending 项等待"
+                summary.contentDescription = summary.text
+                tasks.forEach { list.addView(card(it)) }
+            },
+            onFailure = { error ->
+                empty.visibility = View.GONE
+                scroll.visibility = View.GONE
+                errorContainer.visibility = View.VISIBLE
+                errorText.text = "无法读取任务队列：${error.message ?: "未知错误"}"
+                errorText.contentDescription = "任务队列读取失败。${errorText.text}"
+                summary.text = "读取失败"
+                summary.contentDescription = summary.text
+            },
+        )
     }
 
     private fun card(task: QueuedAgentTask): LinearLayout = LinearLayout(this).apply {
@@ -110,6 +128,7 @@ class TaskQueueActivity : Activity() {
             LinearLayout.LayoutParams.MATCH_PARENT,
             dp(48),
         ).apply { topMargin = dp(10) }
+        contentDescription = label
     }
 
     private fun cancel(id: String) {

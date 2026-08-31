@@ -41,6 +41,37 @@
         android:textAppearance="@style/TextAppearance.Luma.Caption" />
 
     <LinearLayout
+        android:id="@+id/taskQueueError"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/space_12"
+        android:background="@drawable/bg_chip_error"
+        android:accessibilityLiveRegion="assertive"
+        android:gravity="center_vertical"
+        android:minHeight="@dimen/touch_target"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/space_16"
+        android:paddingTop="@dimen/space_12"
+        android:paddingEnd="@dimen/space_8"
+        android:paddingBottom="@dimen/space_12"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/taskQueueErrorText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/status_error" />
+
+        <Button
+            android:id="@+id/taskQueueErrorRetry"
+            style="@style/Widget.Luma.ToolbarButton"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/touch_target"
+            android:text="重试" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/taskQueueEmpty"
         android:layout_width="match_parent"
         android:layout_height="0dp"
