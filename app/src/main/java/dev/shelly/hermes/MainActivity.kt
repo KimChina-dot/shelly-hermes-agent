@@ -539,7 +539,7 @@ class MainActivity : AppCompatActivity() {
         val actionButton = findViewById<Button>(R.id.setupAction)
         if (actionText != null && action != null) {
             actionButton.text = actionText
-            actionButton.contentDescription = "$actionText：解决当前设置问题"
+            actionButton.contentDescription = "$actionText：处理当前问题"
             actionButton.setOnClickListener { setupActionHandler?.invoke() }
             actionButton.visibility = View.VISIBLE
         } else {
@@ -1046,11 +1046,7 @@ class MainActivity : AppCompatActivity() {
         )
         actions.addView(
             galleryAction("复制路径", "复制产物路径 ${message.artifactPath.orEmpty()}") {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(
-                    ClipData.newPlainText("Luma artifact path", message.artifactPath.orEmpty()),
-                )
-                Toast.makeText(this, "已复制产物路径", Toast.LENGTH_SHORT).show()
+                copyArtifactPath(message)
             },
         )
         card.addView(actions)
@@ -1120,7 +1116,9 @@ class MainActivity : AppCompatActivity() {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         runCatching { startActivity(intent) }.onFailure {
-            Toast.makeText(this, "没有可打开此文件的应用", Toast.LENGTH_SHORT).show()
+            showSetupIssue("没有找到可打开此文件的应用。可以先复制产物路径，再使用其他应用打开。", "复制路径") {
+                copyArtifactPath(message)
+            }
         }
     }
 
@@ -1131,7 +1129,11 @@ class MainActivity : AppCompatActivity() {
             putExtra(Intent.EXTRA_STREAM, documentUri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        startActivity(Intent.createChooser(send, "分享 ${message.title}"))
+        runCatching { startActivity(Intent.createChooser(send, "分享 ${message.title}")) }.onFailure {
+            showSetupIssue("没有找到可分享此文件的应用。可以先复制产物路径。", "复制路径") {
+                copyArtifactPath(message)
+            }
+        }
     }
 
     private fun downloadArtifact(message: UiMessage) {
@@ -1151,7 +1153,9 @@ class MainActivity : AppCompatActivity() {
         val target = runCatching {
             contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
         }.getOrNull() ?: run {
-            Toast.makeText(this, "无法创建下载文件", Toast.LENGTH_SHORT).show()
+            showSetupIssue("无法创建下载文件，请检查系统存储状态后重试。", "重试保存") {
+                downloadArtifact(message)
+            }
             return
         }
         try {
@@ -1167,7 +1171,9 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "已保存到下载目录/Luma", Toast.LENGTH_SHORT).show()
         } catch (_: Exception) {
             runCatching { contentResolver.delete(target, null, null) }
-            Toast.makeText(this, "保存产物失败", Toast.LENGTH_SHORT).show()
+            showSetupIssue("保存产物失败，已取消未完成的下载项。可重新保存。", "重试保存") {
+                downloadArtifact(message)
+            }
         }
     }
 
@@ -1186,14 +1192,29 @@ class MainActivity : AppCompatActivity() {
 
     private fun resolveDocumentUri(message: UiMessage): Uri? {
         val tree = workspaceUri() ?: run {
-            Toast.makeText(this, "尚未选择项目目录", Toast.LENGTH_SHORT).show()
+            showSetupIssue("尚未选择项目目录，无法访问产物文件。", "选择项目") {
+                picker.launch(null)
+            }
             return null
         }
-        val path = message.artifactPath ?: return null
+        val path = message.artifactPath ?: run {
+            showSetupIssue("这个产物没有可用的文件路径，无法打开或保存。")
+            return null
+        }
         return runCatching { SafWorkspaceFileExecutor(this, tree).documentUri(path) }.getOrNull() ?: run {
-            Toast.makeText(this, "产物文件不存在或已移除", Toast.LENGTH_SHORT).show()
+            showSetupIssue("产物文件不存在或已移除，请确认是否仍选择了原工作区。", "选择项目") {
+                picker.launch(null)
+            }
             null
         }
+    }
+
+    private fun copyArtifactPath(message: UiMessage) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText("Luma artifact path", message.artifactPath.orEmpty()),
+        )
+        Toast.makeText(this, "已复制产物路径", Toast.LENGTH_SHORT).show()
     }
 
     private fun pathFrom(args: String, result: String): String? {
