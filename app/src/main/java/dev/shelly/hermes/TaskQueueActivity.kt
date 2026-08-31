@@ -1,14 +1,16 @@
 package dev.shelly.hermes
 
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import androidx.core.content.ContextCompat
 import java.text.DateFormat
 import java.util.Date
@@ -22,6 +24,16 @@ class TaskQueueActivity : Activity() {
     private lateinit var summary: TextView
     private lateinit var errorContainer: LinearLayout
     private lateinit var errorText: TextView
+
+    private val queueStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.getStringExtra(TaskForegroundService.EXTRA_STATE) ==
+                TaskForegroundService.STATE_QUEUE_UPDATED
+            ) {
+                runOnUiThread { render() }
+            }
+        }
+    }
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -44,6 +56,17 @@ class TaskQueueActivity : Activity() {
     override fun onResume() {
         super.onResume()
         render()
+        ContextCompat.registerReceiver(
+            this,
+            queueStateReceiver,
+            IntentFilter(TaskForegroundService.ACTION_STATUS),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun onPause() {
+        unregisterReceiver(queueStateReceiver)
+        super.onPause()
     }
 
     private fun render() {
@@ -136,8 +159,7 @@ class TaskQueueActivity : Activity() {
             action = TaskForegroundService.ACTION_CANCEL_QUEUED
             putExtra(TaskForegroundService.EXTRA_TASK_ID, id)
         })
-        Toast.makeText(this, "已请求取消", Toast.LENGTH_SHORT).show()
-        window.decorView.postDelayed({ render() }, 250)
+        runOnUiThread { render() }
     }
 
     private fun retry(id: String) {
@@ -145,8 +167,7 @@ class TaskQueueActivity : Activity() {
             action = TaskForegroundService.ACTION_RETRY_QUEUED
             putExtra(TaskForegroundService.EXTRA_TASK_ID, id)
         })
-        Toast.makeText(this, "已重新加入队列", Toast.LENGTH_SHORT).show()
-        window.decorView.postDelayed({ render() }, 250)
+        runOnUiThread { render() }
     }
 
     private fun stateLabel(state: QueuedTaskState): String = when (state) {
