@@ -1,0 +1,136 @@
+import 'dart:convert';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../core/models.dart';
+
+/// Model endpoint configuration. The API key is stored locally (secure
+/// AndroidKeyStore storage replaces this on the Android host in stage 5)
+/// and is never logged or echoed to the UI in full.
+class ModelConfig {
+  const ModelConfig({
+    this.baseUrl = '',
+    this.apiKey = '',
+    this.model = '',
+  });
+
+  final String baseUrl;
+  final String apiKey;
+  final String model;
+
+  bool get isComplete => baseUrl.isNotEmpty && apiKey.isNotEmpty && model.isNotEmpty;
+
+  ModelConfig copyWith({String? baseUrl, String? apiKey, String? model}) =>
+      ModelConfig(
+        baseUrl: baseUrl ?? this.baseUrl,
+        apiKey: apiKey ?? this.apiKey,
+        model: model ?? this.model,
+      );
+
+  Map<String, dynamic> toJson() =>
+      {'baseUrl': baseUrl, 'apiKey': apiKey, 'model': model};
+
+  static ModelConfig fromJson(Map<String, dynamic> json) => ModelConfig(
+        baseUrl: json['baseUrl'] as String? ?? '',
+        apiKey: json['apiKey'] as String? ?? '',
+        model: json['model'] as String? ?? '',
+      );
+
+  /// Masks the key for display: keeps a short prefix and suffix.
+  String get maskedApiKey {
+    if (apiKey.isEmpty) return '';
+    if (apiKey.length <= 8) return '••••';
+    return '${apiKey.substring(0, 4)}••••${apiKey.substring(apiKey.length - 4)}';
+  }
+}
+
+/// Conversation summary for the history page.
+class ConversationSummary {
+  const ConversationSummary({
+    required this.id,
+    required this.title,
+    required this.updatedAt,
+    required this.messageCount,
+  });
+
+  final String id;
+  final String title;
+  final DateTime updatedAt;
+  final int messageCount;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'updatedAt': updatedAt.toIso8601String(),
+        'messageCount': messageCount,
+      };
+
+  static ConversationSummary fromJson(Map<String, dynamic> json) =>
+      ConversationSummary(
+        id: json['id'] as String,
+        title: json['title'] as String,
+        updatedAt: DateTime.parse(json['updatedAt'] as String),
+        messageCount: json['messageCount'] as int,
+      );
+}
+
+/// Key-value settings and checkpoint persistence backed by
+/// SharedPreferences (works on Android and the web dev harness).
+class SettingsStore {
+  SettingsStore(this._prefs);
+
+  final SharedPreferences _prefs;
+
+  static const _modelConfigKey = 'shelly.model.config';
+  static const _conversationsKey = 'shelly.conversations';
+  static const _checkpointPrefix = 'shelly.checkpoint.';
+
+  ModelConfig loadModelConfig() {
+    final raw = _prefs.getString(_modelConfigKey);
+    if (raw == null) return const ModelConfig();
+    try {
+      return ModelConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } on FormatException {
+      return const ModelConfig();
+    }
+  }
+
+  Future<void> saveModelConfig(ModelConfig config) =>
+      _prefs.setString(_modelConfigKey, jsonEncode(config.toJson()));
+
+  List<ConversationSummary> loadConversations() {
+    final raw = _prefs.getString(_conversationsKey);
+    if (raw == null) return const [];
+    try {
+      return (jsonDecode(raw) as List<dynamic>)
+          .map((e) => ConversationSummary.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on FormatException {
+      return const [];
+    }
+  }
+
+  Future<void> saveConversations(List<ConversationSummary> conversations) =>
+      _prefs.setString(
+        _conversationsKey,
+        jsonEncode([for (final c in conversations) c.toJson()]),
+      );
+
+  AgentCheckpoint? loadCheckpoint(String conversationId) {
+    final raw = _prefs.getString('$_checkpointPrefix$conversationId');
+    if (raw == null) return null;
+    try {
+      return AgentCheckpoint.decode(raw);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  Future<void> saveCheckpoint(String conversationId, AgentCheckpoint checkpoint) =>
+      _prefs.setString('$_checkpointPrefix$conversationId', checkpoint.encode());
+}
+
+final settingsStoreProvider = FutureProvider<SettingsStore>(
+  (ref) async => SettingsStore(await SharedPreferences.getInstance()),
+);
