@@ -16,6 +16,9 @@ dependencies:
   # State management for chat streams, task queues and settings.
   flutter_riverpod: ^2.6.1
 
+  # HTTP client for the OpenAI-compatible model gateway.
+  http: ^1.2.0
+
   # Pure-Dart syntax highlighting used by the code block component.
   highlight: ^0.7.0
 
