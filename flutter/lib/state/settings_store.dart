@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/agent_profile.dart';
 import '../core/models.dart';
 import '../platform/secure_box.dart';
 
@@ -92,6 +93,8 @@ class SettingsStore {
   static const _apiKeySecureKey = 'model.apiKey';
   static const _conversationsKey = 'shelly.conversations';
   static const _checkpointPrefix = 'shelly.checkpoint.';
+  static const _profilesKey = 'shelly.agent.profiles';
+  static const _activeProfileKey = 'shelly.agent.profile.active';
 
   /// Convenience accessor for reactive UI reads.
   ModelConfig get modelConfig => loadModelConfig();
@@ -171,6 +174,44 @@ class SettingsStore {
 
   Future<void> saveCheckpoint(String conversationId, AgentCheckpoint checkpoint) =>
       _prefs.setString('$_checkpointPrefix$conversationId', checkpoint.encode());
+
+  /// Agent profiles (PHASE 19). An empty store resolves to the built-in
+  /// presets; the active id falls back to the first preset.
+  List<AgentProfile> loadProfiles() {
+    final raw = _prefs.getString(_profilesKey);
+    if (raw == null) return List.of(agentProfilePresets);
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      final profiles = decoded
+          .map((e) => AgentProfile.fromJson(e as Map<String, dynamic>))
+          .where((p) => p.isValid)
+          .toList();
+      return profiles.isEmpty ? List.of(agentProfilePresets) : profiles;
+    } on FormatException {
+      return List.of(agentProfilePresets);
+    }
+  }
+
+  Future<void> saveProfiles(List<AgentProfile> profiles) => _prefs.setString(
+        _profilesKey,
+        jsonEncode([for (final p in profiles) p.toJson()]),
+      );
+
+  String? loadActiveProfileId() => _prefs.getString(_activeProfileKey);
+
+  Future<void> saveActiveProfileId(String? id) => id == null
+      ? _prefs.remove(_activeProfileKey)
+      : _prefs.setString(_activeProfileKey, id);
+
+  /// The profile tasks actually run with; never null.
+  AgentProfile activeProfile() {
+    final profiles = loadProfiles();
+    final activeId = loadActiveProfileId();
+    for (final profile in profiles) {
+      if (profile.id == activeId) return profile;
+    }
+    return profiles.first;
+  }
 }
 
 final settingsStoreProvider = FutureProvider<SettingsStore>(

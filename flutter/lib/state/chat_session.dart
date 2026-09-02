@@ -456,6 +456,7 @@ class _TaskRunner implements AgentTaskRunner {
     AgentCheckpoint? resumeFrom,
   }) async {
     final config = _store.loadModelConfig();
+    final profile = _store.activeProfile();
     final workspace = _workspaceManager.workspace;
     final project = await _workspaceManager.detectProject();
     final workspaceTools = WorkspaceToolRegistry(workspace: workspace);
@@ -490,7 +491,11 @@ class _TaskRunner implements AgentTaskRunner {
         project: project,
         hermes: HermesMemory(
           store: knowledgeStore,
-          autoCapture: config.isComplete,
+          autoCapture: config.isComplete && profile.autoCapture,
+        ),
+        limits: AgentLimits(
+          maxRounds: profile.maxRounds,
+          maxToolCalls: profile.maxToolCalls,
         ),
         approvalPolicy: ShellApprovalPolicy(
           base: ToolPolicy.standard.toApprovalPolicy(),
@@ -500,7 +505,14 @@ class _TaskRunner implements AgentTaskRunner {
       observer: _SessionObserver(_session),
     );
 
-    return runtime.run(messages, cancellation, resumeFrom: resumeFrom);
+    // Persona prompt opens every fresh task; a resume keeps its checkpoint.
+    final effectiveMessages = resumeFrom == null && profile.systemPrompt.isNotEmpty
+        ? [
+            AgentMessage(role: MessageRole.system, content: profile.systemPrompt),
+            ...messages,
+          ]
+        : messages;
+    return runtime.run(effectiveMessages, cancellation, resumeFrom: resumeFrom);
   }
 }
 
