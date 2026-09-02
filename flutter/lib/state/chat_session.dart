@@ -9,6 +9,9 @@ import '../core/agent_core.dart';
 import '../core/approval_broker.dart';
 import '../core/gateway/openai_gateway.dart';
 import '../core/models.dart';
+import '../core/runtime/agent_context.dart';
+import '../core/runtime/agent_runtime.dart';
+import '../core/runtime/tool_registry.dart';
 import '../core/task_queue.dart';
 import '../core/tools/registry.dart';
 import '../core/tools/workspace.dart';
@@ -447,25 +450,30 @@ class _TaskRunner implements AgentTaskRunner {
     AgentCheckpoint? resumeFrom,
   }) async {
     final config = _store.loadModelConfig();
+    final workspaceTools = WorkspaceToolRegistry(workspace: _workspace);
+    final registry = CompositeToolRegistry([workspaceTools]);
     final ModelGateway model = config.isComplete
         ? OpenAiCompatibleGateway(
             baseUrl: config.baseUrl,
             apiKey: config.apiKey,
             model: config.model,
+            tools: workspaceTools.openAiToolsJson(),
           )
         : DemoModelGateway();
 
-    final core = AgentCore(
-      model: model,
-      tools: WorkspaceToolRegistry(workspace: _workspace),
+    final runtime = AgentRuntime(
+      context: AgentContext(
+        sessionId: _conversationId,
+        workspace: _workspace,
+        model: model,
+        tools: registry,
+        checkpoints: _StoreCheckpoints(_store, _conversationId),
+      ),
       approvals: _session.broker,
-      checkpoints: _StoreCheckpoints(_store, _conversationId),
-      approvalPolicy: ToolPolicy.standard.toApprovalPolicy(),
       observer: _SessionObserver(_session),
-      limits: const AgentLimits(maxRounds: 16, maxToolCalls: 32),
     );
 
-    return core.run(messages, cancellation, resumeFrom: resumeFrom);
+    return runtime.run(messages, cancellation, resumeFrom: resumeFrom);
   }
 }
 

@@ -107,6 +107,7 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
     required String baseUrl,
     required String apiKey,
     required String model,
+    this.tools,
     this.temperature,
     this.maxTokens,
     ChatTransport? transport,
@@ -131,6 +132,10 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
   final Duration retryDelay;
   final double? temperature;
   final int? maxTokens;
+
+  /// OpenAI function-calling definitions advertised to the model; taken
+  /// from the tool registry's [WorkspaceToolRegistry.openAiToolsJson].
+  final List<Map<String, dynamic>>? tools;
 
   @override
   Future<ModelReply> complete(List<AgentMessage> messages) async {
@@ -232,6 +237,7 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
       'model': _model,
       'messages': encodeMessages(messages),
       'stream': stream,
+      if (tools != null && tools!.isNotEmpty) 'tools': tools,
       if (temperature != null) 'temperature': temperature,
       if (maxTokens != null) 'max_tokens': maxTokens,
     };

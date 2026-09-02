@@ -1,5 +1,6 @@
 import '../agent_core.dart';
 import '../models.dart';
+import '../runtime/tool_registry.dart';
 import 'workspace.dart';
 
 /// Trust level of a tool in the strategy engine.
@@ -64,13 +65,13 @@ class ToolSpec {
 /// interface so it plugs straight into [AgentCore]. Deny decisions short-
 /// circuit execution: the model gets a denial string it can react to, and
 /// the workspace stays untouched.
-class WorkspaceToolRegistry implements ToolExecutor {
+class WorkspaceToolRegistry implements AgentToolRegistry {
   WorkspaceToolRegistry({required this.workspace, this.policy = ToolPolicy.standard});
 
   final Workspace workspace;
   final ToolPolicy policy;
 
-  static const specs = <ToolSpec>[
+  static const workspaceSpecs = <ToolSpec>[
     ToolSpec('read_file', '读取工作区文件内容', 'low'),
     ToolSpec('exists', '检查文件是否存在', 'low'),
     ToolSpec('list_files', '列出工作区文件', 'low'),
@@ -78,6 +79,70 @@ class WorkspaceToolRegistry implements ToolExecutor {
     ToolSpec('write_file', '写入或覆盖文件', 'medium'),
     ToolSpec('apply_patch', '按 hunk 应用代码补丁', 'high'),
   ];
+
+  @override
+  List<ToolSpec> get specs => workspaceSpecs;
+
+  /// OpenAI function-calling definitions for these tools, so a real model
+  /// can discover and call them. Parameter shapes mirror [execute].
+  List<Map<String, dynamic>> openAiToolsJson() => [
+        for (final spec in workspaceSpecs)
+          {
+            'type': 'function',
+            'function': {
+              'name': spec.name,
+              'description': spec.description,
+              'parameters': _parameterSchemas[spec.name] ??
+                  {'type': 'object', 'properties': <String, dynamic>{}},
+            },
+          },
+      ];
+
+  static const _parameterSchemas = <String, Map<String, dynamic>>{
+    'read_file': {
+      'type': 'object',
+      'properties': {
+        'path': {'type': 'string', 'description': '工作区内的相对路径'},
+      },
+      'required': ['path'],
+    },
+    'exists': {
+      'type': 'object',
+      'properties': {
+        'path': {'type': 'string', 'description': '工作区内的相对路径'},
+      },
+      'required': ['path'],
+    },
+    'list_files': {
+      'type': 'object',
+      'properties': {
+        'prefix': {'type': 'string', 'description': '可选,按子串过滤文件路径'},
+      },
+    },
+    'search_files': {
+      'type': 'object',
+      'properties': {
+        'query': {'type': 'string', 'description': '按名称或内容搜索的关键词'},
+      },
+      'required': ['query'],
+    },
+    'write_file': {
+      'type': 'object',
+      'properties': {
+        'path': {'type': 'string', 'description': '工作区内的相对路径'},
+        'content': {'type': 'string', 'description': '完整文件内容'},
+      },
+      'required': ['path', 'content'],
+    },
+    'apply_patch': {
+      'type': 'object',
+      'properties': {
+        'path': {'type': 'string', 'description': '要修改的文件相对路径'},
+        'patch': {'type': 'string', 'description': 'Shelly 风格补丁:@@ 段落,行首为空格/减号/加号'},
+      },
+      'required': ['path', 'patch'],
+    },
+  };
 
   @override
   Future<String> execute(ToolCall call) async {

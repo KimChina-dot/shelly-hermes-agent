@@ -54,7 +54,7 @@ class CapabilitiesPage extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          ...WorkspaceToolRegistry.specs.map((spec) {
+          ...WorkspaceToolRegistry.workspaceSpecs.map((spec) {
             final level = levels[spec.name] ?? ToolPolicyLevel.confirm;
             return _ToolTile(spec: spec, level: level);
           }),
