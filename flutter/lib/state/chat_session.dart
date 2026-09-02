@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/agent_core.dart';
+import '../core/dsh/tool_registry.dart';
 import '../core/approval_broker.dart';
 import '../core/gateway/openai_gateway.dart';
 import '../core/hermes/hermes_memory.dart';
@@ -24,6 +25,7 @@ import '../core/workspace/workspace_manager.dart';
 import '../platform/platform_workspace.dart';
 import '../platform/process_runner.dart';
 import '../platform/task_service.dart';
+import 'dsh_provider.dart';
 import 'settings_store.dart';
 
 /// One row in the chat transcript.
@@ -252,6 +254,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
         session: this,
         store: store,
         workspaceManager: manager,
+        dshTools: _ref.read(dshToolsProvider),
         conversationId: conversationId,
       ),
       listener: (status) {
@@ -455,15 +458,18 @@ class _TaskRunner implements AgentTaskRunner {
     required ChatSessionController session,
     required SettingsStore store,
     required WorkspaceManager workspaceManager,
+    required DshToolRegistry dshTools,
     required String conversationId,
   })  : _session = session,
         _store = store,
         _workspaceManager = workspaceManager,
+        _dshTools = dshTools,
         _conversationId = conversationId;
 
   final ChatSessionController _session;
   final SettingsStore _store;
   final WorkspaceManager _workspaceManager;
+  final DshToolRegistry _dshTools;
   final String _conversationId;
 
   @override
@@ -488,6 +494,7 @@ class _TaskRunner implements AgentTaskRunner {
         executor: ShellExecutor(runner: shellRunner),
       ),
       KnowledgeToolRegistry(store: knowledgeStore),
+      _dshTools,
     ]);
     final ModelGateway model = config.isComplete
         ? OpenAiCompatibleGateway(

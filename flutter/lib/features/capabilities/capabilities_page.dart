@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/dsh/installer.dart';
+import '../../core/dsh/plugin.dart';
 import '../../core/tools/registry.dart';
 import '../../design/components/risk_chip.dart';
 import '../../design/tokens.dart';
 import '../../state/chat_session.dart';
+import '../../state/dsh_provider.dart';
 
 /// Live file count of the active workspace, shown on the capability page.
 final workspaceFileCountProvider = FutureProvider<int>((ref) async {
@@ -59,6 +62,8 @@ class CapabilitiesPage extends ConsumerWidget {
             return _ToolTile(spec: spec, level: level);
           }),
           const SizedBox(height: AppSpacing.lg),
+          const _PluginSection(),
+          const SizedBox(height: AppSpacing.lg),
           Container(
             padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
@@ -87,6 +92,225 @@ class CapabilitiesPage extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// DSH plugin management (PHASE 22): install declarative plugins from a
+/// manifest path inside the workspace, inspect their lifecycle and remove
+/// them again. Installed plugins join every new task's tool surface.
+class _PluginSection extends ConsumerStatefulWidget {
+  const _PluginSection();
+
+  @override
+  ConsumerState<_PluginSection> createState() => _PluginSectionState();
+}
+
+class _PluginSectionState extends ConsumerState<_PluginSection> {
+  final _manifestPath = TextEditingController(text: 'manifest.json');
+  String? _note;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _manifestPath.dispose();
+    super.dispose();
+  }
+
+  Future<void> _install() async {
+    final registry = ref.read(dshRegistryProvider);
+    final workspace = ref.read(workspaceProvider);
+    final installer = DshInstaller(registry: registry, workspace: workspace);
+    setState(() {
+      _busy = true;
+      _note = null;
+    });
+    try {
+      final plugin = await installer.installFrom(_manifestPath.text.trim());
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _note = '已安装 ${plugin.manifest.id} v${plugin.manifest.version}'
+            '(首次调用其工具时会请求确认)';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _note = '安装失败:$error';
+      });
+    }
+  }
+
+  Future<void> _uninstall(String pluginId) async {
+    final registry = ref.read(dshRegistryProvider);
+    final workspace = ref.read(workspaceProvider);
+    final installer = DshInstaller(registry: registry, workspace: workspace);
+    try {
+      await installer.uninstall(pluginId);
+      if (!mounted) return;
+      setState(() => _note = '已卸载 $pluginId');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _note = '卸载失败:$error');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final registry = ref.watch(dshRegistryProvider);
+    final plugins = registry.list();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('插件(DSH)',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: semantic.textTertiary)),
+        const SizedBox(height: AppSpacing.sm),
+        for (final plugin in plugins)
+          Container(
+            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: semantic.card,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(color: semantic.border),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.extension_outlined,
+                    size: 18, color: AppColors.brandViolet),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${plugin.manifest.name} · ${plugin.manifest.id}',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: semantic.textPrimary)),
+                      Text(
+                        'v${plugin.manifest.version} · '
+                        '${plugin.manifest.runtime} · '
+                        '${plugin.tools.length} 个工具 · ${plugin.manifest.permissions.join(', ')}',
+                        style: TextStyle(
+                            fontSize: 11.5, color: semantic.textTertiary),
+                      ),
+                    ],
+                  ),
+                ),
+                _LifecycleBadge(
+                    lifecycle: registry.lifecycleOf(plugin.manifest.id) ??
+                        DshLifecycle.unloaded),
+                const SizedBox(width: AppSpacing.sm),
+                if (registry.lifecycleOf(plugin.manifest.id) ==
+                    DshLifecycle.enabled)
+                  GestureDetector(
+                    onTap: () => _uninstall(plugin.manifest.id),
+                    child: Icon(Icons.delete_outline,
+                        size: 18, color: semantic.textTertiary),
+                  ),
+              ],
+            ),
+          ),
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: semantic.card,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: Border.all(color: semantic.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _manifestPath,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    color: semantic.textPrimary),
+                decoration: InputDecoration(
+                  hintText: '工作区内的 manifest.json 路径',
+                  hintStyle:
+                      TextStyle(fontSize: 12, color: semantic.textTertiary),
+                  isDense: true,
+                  filled: true,
+                  fillColor: semantic.background,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    borderSide: BorderSide(color: semantic.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    borderSide: BorderSide(color: semantic.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    borderSide: const BorderSide(color: AppColors.brandBlue),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              OutlinedButton.icon(
+                onPressed: _busy ? null : _install,
+                icon: _busy
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.add_circle_outline, size: 16),
+                label: const Text('安装插件', style: TextStyle(fontSize: 12.5)),
+                style: OutlinedButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  side: BorderSide(color: semantic.border),
+                ),
+              ),
+              if (_note != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text(_note!,
+                    style: TextStyle(
+                        fontSize: 11.5, color: semantic.textSecondary)),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+      ],
+    );
+  }
+}
+
+class _LifecycleBadge extends StatelessWidget {
+  const _LifecycleBadge({required this.lifecycle});
+
+  final DshLifecycle lifecycle;
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final (color, label) = switch (lifecycle) {
+      DshLifecycle.enabled => (AppColors.success, '启用中'),
+      DshLifecycle.loaded ||
+      DshLifecycle.registered ||
+      DshLifecycle.disabled =>
+        (AppColors.warning, lifecycle.name),
+      DshLifecycle.failed => (AppColors.danger, '失败'),
+      DshLifecycle.unloaded => (semantic.textTertiary, '未加载'),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 10.5, fontWeight: FontWeight.w600, color: color)),
     );
   }
 }
