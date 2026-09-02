@@ -4,6 +4,24 @@
 > 内部引擎：Hermes Core(TypeScript 遗产)+ Dart Agent Core(Flutter 1.0 主线)
 > 更新日期：2026-09-02
 
+## V2.0 交付状态(三系统融合,2026-09-03)
+
+按 V2.0 路线图(SHELLY HERMES.md)PHASE 01→22 全部落地,**158 个测试全绿,dart analyze 零问题**:
+
+- **PHASE 01** 审计报告:`docs/v2-roadmap-audit.zh-CN.md`(V2.0 功能路线基线)。
+- **PHASE 02** 统一 Runtime:`AgentContext` + `AgentRuntime`(Hermes 钩子内聚),UI 层不再装配引擎;`AgentToolRegistry`/`CompositeToolRegistry` 注册缝隙。
+- **PHASE 03** Shelly:`WorkspaceManager`(项目检测 Flutter>Android>Git、状态存储端口、快照 diff,FNV-1a64)。
+- **PHASE 04** Shelly:`ShellExecutor` + 命令风险四级分级(low/medium/high/critical,critical 一票否决)+ `ShellApprovalPolicy` fail-closed;`ProcessRunner` 条件导入(Io/Stub)。
+- **PHASE 05** Shelly:`GitManager`(porcelain v1 解析)+ `GitSandbox` 全量快照/回滚(SAF-only 主机可用)。
+- **PHASE 06–10** Hermes:JSONL 知识账本 + Markdown 投影(无向量库)、关键词召回(CJK 字元)、append 工具、Reflection(精确/近重复归并,Jaccard ≥0.7)、Forgetting(ACTIVE/COOLING/EXPIRED + 频次保护 + ≈2000 token 预算)。
+- **PHASE 11–16** DSH:声明式 JSON Manifest(反向 DNS/semver/权限校验)、生命周期 Registry(register→load→enable⇄disable→unload)、信任策略(unknown=block/new=ask)、安装器(暂存 `.shelly/plugins/<id>/`)、Shell 插件命令模板(经宿主 ShellExecutor,critical 仍拦截)、Hermes 联动桥。
+- **PHASE 17** 三系统闭环 Demo:`test/core/closed_loop_demo_test.dart` — Flutter 登录修复 12 步场景(检测→空账本→工具执行→经验入账→Git/沙箱→Reflection→Forgetting→插件安装/信任→二次运行记忆回注→频次计数→持久化)。
+- **PHASE 18** Provider 预设(OpenAI/DeepSeek/Moonshot/Qwen/OpenRouter/Ollama/LM Studio/自定义)+ Model Discovery(GET /models,兼容 Ollama 原生形态)。
+- **PHASE 19** AgentProfile:人设/轮次预算/Hermes 采集开关,三预设 + 持久化 + 运行时接入(persona 系统消息 + limits)。
+- **PHASE 20** 后台 Agent:前台服务保活(已有)+ `TaskRecovery` 中断记录与恢复扫描(进程死亡检测,checkpoint 续跑语义保留)。
+- **PHASE 21** 统一 Task Runtime:`TaskState` 扩展 queued/waitingTool/paused/recovering,协调器支持并发上限、排队/暂停/恢复/丢弃、审批等待上报。
+- **PHASE 22** UI 2.0(首批):我的页新增 Agent 档案选择 + Provider 预设 chips + 获取模型列表(GET /models);能力页新增 DSH 插件安装/生命周期/卸载;任务页渲染新增四态;版本 → 2.0.0。
+
 ## 1.0 交付状态(Flutter Android 成品,2026-09-02)
 
 - **Flutter 1.0 Android App 已完成开发、集成与打包**,仓库位于 `flutter/`(org `dev.shelly`,applicationId `dev.shelly.shelly_hermes`)。旧 Kotlin app 与 TypeScript core 保留为 legacy,不再演进。
