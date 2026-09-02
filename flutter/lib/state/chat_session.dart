@@ -12,11 +12,13 @@ import '../core/models.dart';
 import '../core/runtime/agent_context.dart';
 import '../core/runtime/agent_runtime.dart';
 import '../core/runtime/tool_registry.dart';
+import '../core/shell/shell_executor.dart';
 import '../core/task_queue.dart';
 import '../core/tools/registry.dart';
 import '../core/tools/workspace.dart';
 import '../core/workspace/workspace_manager.dart';
 import '../platform/platform_workspace.dart';
+import '../platform/process_runner.dart';
 import '../platform/task_service.dart';
 import 'settings_store.dart';
 
@@ -453,13 +455,19 @@ class _TaskRunner implements AgentTaskRunner {
     final config = _store.loadModelConfig();
     final workspace = _workspaceManager.workspace;
     final workspaceTools = WorkspaceToolRegistry(workspace: workspace);
-    final registry = CompositeToolRegistry([workspaceTools]);
+    final shellRunner = createProcessRunner();
+    final registry = CompositeToolRegistry([
+      workspaceTools,
+      ShellToolRegistry(
+        executor: ShellExecutor(runner: shellRunner),
+      ),
+    ]);
     final ModelGateway model = config.isComplete
         ? OpenAiCompatibleGateway(
             baseUrl: config.baseUrl,
             apiKey: config.apiKey,
             model: config.model,
-            tools: workspaceTools.openAiToolsJson(),
+            tools: registry.openAiToolsJson(),
           )
         : DemoModelGateway();
 
@@ -471,6 +479,9 @@ class _TaskRunner implements AgentTaskRunner {
         tools: registry,
         checkpoints: _StoreCheckpoints(_store, _conversationId),
         project: await _workspaceManager.detectProject(),
+        approvalPolicy: ShellApprovalPolicy(
+          base: ToolPolicy.standard.toApprovalPolicy(),
+        ),
       ),
       approvals: _session.broker,
       observer: _SessionObserver(_session),

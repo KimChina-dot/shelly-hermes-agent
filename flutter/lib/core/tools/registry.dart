@@ -85,6 +85,7 @@ class WorkspaceToolRegistry implements AgentToolRegistry {
 
   /// OpenAI function-calling definitions for these tools, so a real model
   /// can discover and call them. Parameter shapes mirror [execute].
+  @override
   List<Map<String, dynamic>> openAiToolsJson() => [
         for (final spec in workspaceSpecs)
           {

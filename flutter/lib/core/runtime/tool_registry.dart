@@ -9,6 +9,9 @@ import '../tools/registry.dart';
 abstract interface class AgentToolRegistry implements ToolExecutor {
   /// All tool specs exposed by this registry (merged, deduplicated by name).
   List<ToolSpec> get specs;
+
+  /// OpenAI function-calling definitions for the exposed tools.
+  List<Map<String, dynamic>> openAiToolsJson();
 }
 
 /// Merges several registries behind one executor. Dispatch goes to the
@@ -22,6 +25,11 @@ class CompositeToolRegistry implements AgentToolRegistry {
   @override
   List<ToolSpec> get specs => [
         for (final child in _children) ...child.specs,
+      ];
+
+  @override
+  List<Map<String, dynamic>> openAiToolsJson() => [
+        for (final child in _children) ...child.openAiToolsJson(),
       ];
 
   @override

@@ -50,6 +50,9 @@ class _PluginTools implements AgentToolRegistry {
       ];
 
   @override
+  List<Map<String, dynamic>> openAiToolsJson() => const [];
+
+  @override
   Future<String> execute(ToolCall call) async {
     calls += 1;
     return 'plugin result';
