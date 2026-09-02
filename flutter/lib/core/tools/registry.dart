@@ -33,6 +33,8 @@ class ToolPolicy {
     'batch_read': ToolPolicyLevel.allow,
     'write_file': ToolPolicyLevel.confirm,
     'apply_patch': ToolPolicyLevel.confirm,
+    // Shelly-owned memory, never project code — safe to auto-approve.
+    'append_knowledge': ToolPolicyLevel.allow,
   });
 
   ToolPolicyLevel levelFor(String toolName) => levels[toolName] ?? defaultLevel;

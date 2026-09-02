@@ -8,6 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/agent_core.dart';
 import '../core/approval_broker.dart';
 import '../core/gateway/openai_gateway.dart';
+import '../core/hermes/hermes_memory.dart';
+import '../core/hermes/knowledge_store.dart';
+import '../core/hermes/knowledge_tool.dart';
 import '../core/models.dart';
 import '../core/runtime/agent_context.dart';
 import '../core/runtime/agent_runtime.dart';
@@ -454,13 +457,19 @@ class _TaskRunner implements AgentTaskRunner {
   }) async {
     final config = _store.loadModelConfig();
     final workspace = _workspaceManager.workspace;
+    final project = await _workspaceManager.detectProject();
     final workspaceTools = WorkspaceToolRegistry(workspace: workspace);
+    final knowledgeStore = HermesKnowledgeStore(
+      workspace: workspace,
+      project: project.name,
+    );
     final shellRunner = createProcessRunner();
     final registry = CompositeToolRegistry([
       workspaceTools,
       ShellToolRegistry(
         executor: ShellExecutor(runner: shellRunner),
       ),
+      KnowledgeToolRegistry(store: knowledgeStore),
     ]);
     final ModelGateway model = config.isComplete
         ? OpenAiCompatibleGateway(
@@ -478,7 +487,11 @@ class _TaskRunner implements AgentTaskRunner {
         model: model,
         tools: registry,
         checkpoints: _StoreCheckpoints(_store, _conversationId),
-        project: await _workspaceManager.detectProject(),
+        project: project,
+        hermes: HermesMemory(
+          store: knowledgeStore,
+          autoCapture: config.isComplete,
+        ),
         approvalPolicy: ShellApprovalPolicy(
           base: ToolPolicy.standard.toApprovalPolicy(),
         ),
