@@ -228,6 +228,11 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
         conversationId: conversationId,
       ),
       listener: (status) {
+        final history = _ref.read(taskHistoryProvider);
+        _ref.read(taskHistoryProvider.notifier).state = [
+          ...history.take(49),
+          status,
+        ];
         switch (status.state) {
           case TaskState.completed:
           case TaskState.stopped:
@@ -566,6 +571,12 @@ final workspaceProvider = Provider<Workspace>((ref) => MemoryWorkspace());
 /// awaits each decision before issuing the next request, so apply_patch
 /// hunks arrive one at a time and the approval UI drains this queue FIFO.
 final approvalQueueProvider = StateProvider<List<PendingApproval>>(
+  (ref) => const [],
+);
+
+/// Rolling log of task status transitions (newest last), consumed by the
+/// tasks page. Capped at 50 entries.
+final taskHistoryProvider = StateProvider<List<TaskStatus>>(
   (ref) => const [],
 );
 

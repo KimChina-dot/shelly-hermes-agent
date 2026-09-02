@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../chat/chat_page.dart';
 import '../capabilities/capabilities_page.dart';
@@ -6,18 +7,15 @@ import '../history/history_page.dart';
 import '../profile/profile_page.dart';
 import '../tasks/tasks_page.dart';
 
+/// Currently selected bottom-navigation tab. Global so feature pages
+/// (e.g. 历史 → 对话 after resuming) can drive tab switches.
+final tabIndexProvider = StateProvider<int>((ref) => 0);
+
 /// Five-tab bottom navigation shell: 对话 / 任务 / 历史 / 能力 / 我的.
 /// An [IndexedStack] keeps every tab's scroll and stream state alive while
 /// the user switches destinations.
-class HomeShell extends StatefulWidget {
+class HomeShell extends ConsumerWidget {
   const HomeShell({super.key});
-
-  @override
-  State<HomeShell> createState() => _HomeShellState();
-}
-
-class _HomeShellState extends State<HomeShell> {
-  int _index = 0;
 
   static const _pages = <Widget>[
     ChatPage(),
@@ -28,12 +26,14 @@ class _HomeShellState extends State<HomeShell> {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final index = ref.watch(tabIndexProvider);
     return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
+      body: IndexedStack(index: index, children: _pages),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
+        selectedIndex: index,
+        onDestinationSelected: (value) =>
+            ref.read(tabIndexProvider.notifier).state = value,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.chat_bubble_outline_rounded),

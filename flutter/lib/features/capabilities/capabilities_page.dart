@@ -1,84 +1,113 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/tools/registry.dart';
 import '../../design/components/risk_chip.dart';
 import '../../design/tokens.dart';
+import '../../state/chat_session.dart';
 
-/// Capability catalog: the workspace toolset the agent may call, each with
-/// its approval policy so the user can see the trust boundary at a glance.
-class CapabilitiesPage extends StatelessWidget {
+/// Live file count of the active workspace, shown on the capability page.
+final workspaceFileCountProvider = FutureProvider<int>((ref) async {
+  final files = await ref.watch(workspaceProvider).listFiles();
+  return files.length;
+});
+
+/// Capability page: every workspace tool with its description, risk level
+/// and the approval policy level actually enforced by [ToolPolicy.standard].
+class CapabilitiesPage extends ConsumerWidget {
   const CapabilitiesPage({super.key});
 
-  static const _tools = <_ToolInfo>[
-    _ToolInfo(Icons.read_more_rounded, 'read_file', '读取工作区文件内容', RiskLevel.low),
-    _ToolInfo(Icons.list_rounded, 'list_files', '列出目录与文件树', RiskLevel.low),
-    _ToolInfo(Icons.search_rounded, 'search_files', '按名称或内容搜索文件', RiskLevel.low),
-    _ToolInfo(Icons.article_outlined, 'exists', '检查文件是否存在', RiskLevel.low),
-    _ToolInfo(Icons.edit_note_rounded, 'write_file', '写入或覆盖文件', RiskLevel.medium),
-    _ToolInfo(Icons.difference_outlined, 'apply_patch', '按 hunk 应用代码补丁,逐段审批', RiskLevel.high),
-  ];
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final fileCount = ref.watch(workspaceFileCountProvider);
+    final levels = ToolPolicy.standard.levels;
+
     return Scaffold(
+      backgroundColor: semantic.background,
       appBar: AppBar(
         titleSpacing: AppSpacing.lg,
-        title: Text(
-          '能力',
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w700,
-            color: semantic.textPrimary,
-          ),
-        ),
+        title: Text('能力',
+            style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w700,
+                color: semantic.textPrimary)),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.sm,
-          AppSpacing.lg,
-          AppSpacing.xxl,
-        ),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          Text(
-            '工作区工具',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.3,
-              color: semantic.textTertiary,
+          Row(
+            children: [
+              Text('工作区工具',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: semantic.textTertiary)),
+              const Spacer(),
+              Text(fileCount.when(
+                    data: (count) => '$count 个文件',
+                    loading: () => '…',
+                    error: (_, _) => '文件统计不可用',
+                  ),
+                  style: TextStyle(
+                      fontSize: 12, color: semantic.textTertiary)),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          ...WorkspaceToolRegistry.specs.map((spec) {
+            final level = levels[spec.name] ?? ToolPolicyLevel.confirm;
+            return _ToolTile(spec: spec, level: level);
+          }),
+          const SizedBox(height: AppSpacing.lg),
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: semantic.card,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(color: semantic.border),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.policy_outlined,
+                    size: 18, color: AppColors.brandBlue),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    '只读工具自动放行;写文件与补丁需要逐段确认;'
+                    '未登记的工具一律先确认(fail closed)。',
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.6,
+                        color: semantic.textSecondary),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
-          ..._tools.map((t) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                child: _ToolCard(info: t),
-              )),
         ],
       ),
     );
   }
 }
 
-class _ToolInfo {
-  const _ToolInfo(this.icon, this.name, this.description, this.risk);
+class _ToolTile extends StatelessWidget {
+  const _ToolTile({required this.spec, required this.level});
 
-  final IconData icon;
-  final String name;
-  final String description;
-  final RiskLevel risk;
-}
-
-class _ToolCard extends StatelessWidget {
-  const _ToolCard({required this.info});
-
-  final _ToolInfo info;
+  final ToolSpec spec;
+  final ToolPolicyLevel level;
 
   @override
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final levelLabel = switch (level) {
+      ToolPolicyLevel.allow => ('自动放行', AppColors.success),
+      ToolPolicyLevel.confirm => ('需要确认', AppColors.warning),
+      ToolPolicyLevel.deny => ('已禁用', AppColors.danger),
+    };
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: semantic.card,
         borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -86,42 +115,44 @@ class _ToolCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              color: semantic.floating,
-            ),
-            child: Icon(info.icon, size: 20, color: semantic.textSecondary),
-          ),
-          const SizedBox(width: AppSpacing.lg),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  info.name,
-                  style: const TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'monospace',
-                    color: AppColors.brandBlue,
-                  ),
-                ),
+                Text(spec.name,
+                    style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'monospace',
+                        color: semantic.textPrimary)),
                 const SizedBox(height: 2),
-                Text(
-                  info.description,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: semantic.textTertiary,
-                  ),
-                ),
+                Text(spec.description,
+                    style: TextStyle(
+                        fontSize: 12, color: semantic.textTertiary)),
               ],
             ),
           ),
-          const SizedBox(width: AppSpacing.md),
-          RiskChip(level: info.risk),
+          const SizedBox(width: AppSpacing.sm),
+          RiskChip(
+            level: switch (spec.risk) {
+              'high' => RiskLevel.high,
+              'medium' => RiskLevel.medium,
+              _ => RiskLevel.low,
+            },
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: levelLabel.$2.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            child: Text(levelLabel.$1,
+                style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: levelLabel.$2)),
+          ),
         ],
       ),
     );
