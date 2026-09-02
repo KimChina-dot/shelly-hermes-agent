@@ -60,6 +60,11 @@ class PlatformWorkspace implements Workspace {
   }
 
   @override
+  Future<bool> deleteFile(String path) async {
+    return await _channel.invokeMethod<bool>('deleteFile', path) ?? false;
+  }
+
+  @override
   Future<bool> exists(String path) async {
     return await readFile(path) != null;
   }

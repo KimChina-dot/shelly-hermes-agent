@@ -9,6 +9,10 @@ abstract interface class Workspace {
   /// Creates or overwrites a file.
   Future<void> writeFile(String path, String content);
 
+  /// Deletes a file. Returns true when something was deleted; a missing
+  /// file is not an error.
+  Future<bool> deleteFile(String path);
+
   Future<bool> exists(String path);
 
   /// Lists files whose path contains [prefix] (empty = all), sorted.
@@ -32,6 +36,10 @@ class MemoryWorkspace implements Workspace {
   Future<void> writeFile(String path, String content) async {
     files[path] = content;
   }
+
+  @override
+  Future<bool> deleteFile(String path) async =>
+      files.remove(path) != null;
 
   @override
   Future<bool> exists(String path) async => files.containsKey(path);
