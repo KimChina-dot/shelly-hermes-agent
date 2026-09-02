@@ -12,6 +12,8 @@ import '../core/models.dart';
 import '../core/task_queue.dart';
 import '../core/tools/registry.dart';
 import '../core/tools/workspace.dart';
+import '../platform/platform_workspace.dart';
+import '../platform/task_service.dart';
 import 'settings_store.dart';
 
 /// One row in the chat transcript.
@@ -219,6 +221,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     final taskId = 'task-${DateTime.now().millisecondsSinceEpoch}';
     final entries = [...state.entries, AssistantEntry(streaming: true)];
     state = state.copyWith(entries: entries, activeTaskId: taskId);
+    unawaited(TaskService.start());
 
     final coordinator = TaskCoordinator(
       agentFactory: (_) => _TaskRunner(
@@ -236,11 +239,13 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
         switch (status.state) {
           case TaskState.completed:
           case TaskState.stopped:
+            unawaited(TaskService.stop());
             _drainApprovals();
             _finishAssistantEntry();
             state = state.copyWith(phase: SessionPhase.idle, clearActiveTask: true);
             _persistConversation();
           case TaskState.failed:
+            unawaited(TaskService.stop());
             _drainApprovals();
             _finishAssistantEntry();
             final entries = [
@@ -590,7 +595,8 @@ class DemoModelGateway implements StreamingModelGateway {
   }
 }
 
-final workspaceProvider = Provider<Workspace>((ref) => MemoryWorkspace());
+/// SAF-backed workspace on Android, in-memory storage on the dev harness.
+final workspaceProvider = Provider<Workspace>((ref) => createWorkspace());
 
 /// Approval requests awaiting a user decision, in engine order. The engine
 /// awaits each decision before issuing the next request, so apply_patch

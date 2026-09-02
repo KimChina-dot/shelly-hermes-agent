@@ -21,6 +21,7 @@ dependencies:
 
   # Pure-Dart syntax highlighting used by the code block component.
   highlight: ^0.7.0
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:

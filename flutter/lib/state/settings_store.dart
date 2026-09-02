@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/models.dart';
+import '../platform/secure_box.dart';
 
 /// Model endpoint configuration. The API key is stored locally (secure
 /// AndroidKeyStore storage replaces this on the Android host in stage 5)
@@ -78,11 +79,17 @@ class ConversationSummary {
 /// Key-value settings and checkpoint persistence backed by
 /// SharedPreferences (works on Android and the web dev harness).
 class SettingsStore {
-  SettingsStore(this._prefs);
+  /// When [secureBox] is provided the API key is persisted through it
+  /// (AndroidKeyStore on Android) and never written into the plain prefs
+  /// JSON; an in-memory cache keeps sync reads working after restore.
+  SettingsStore(this._prefs, {SecureBox? secureBox}) : _secure = secureBox;
 
   final SharedPreferences _prefs;
+  final SecureBox? _secure;
+  String _apiKeyCache = '';
 
   static const _modelConfigKey = 'shelly.model.config';
+  static const _apiKeySecureKey = 'model.apiKey';
   static const _conversationsKey = 'shelly.conversations';
   static const _checkpointPrefix = 'shelly.checkpoint.';
 
@@ -93,14 +100,46 @@ class SettingsStore {
     final raw = _prefs.getString(_modelConfigKey);
     if (raw == null) return const ModelConfig();
     try {
-      return ModelConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      final config = ModelConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      if (_secure == null) return config;
+      return config.copyWith(apiKey: _apiKeyCache);
     } on FormatException {
       return const ModelConfig();
     }
   }
 
-  Future<void> saveModelConfig(ModelConfig config) =>
-      _prefs.setString(_modelConfigKey, jsonEncode(config.toJson()));
+  Future<void> saveModelConfig(ModelConfig config) async {
+    if (_secure == null) {
+      await _prefs.setString(_modelConfigKey, jsonEncode(config.toJson()));
+      return;
+    }
+    _apiKeyCache = config.apiKey;
+    await _secure.write(_apiKeySecureKey, config.apiKey);
+    await _prefs.setString(
+      _modelConfigKey,
+      jsonEncode(config.copyWith(apiKey: '').toJson()),
+    );
+  }
+
+  /// Loads the API key out of secure storage into the sync read cache.
+  /// Call once after construction, before the UI reads the config.
+  Future<void> restoreApiKey() async {
+    final box = _secure;
+    if (box == null) return;
+    var key = await box.read(_apiKeySecureKey);
+    if ((key == null || key.isEmpty)) {
+      // Legacy configs kept the key inside the prefs JSON; migrate it.
+      final raw = _prefs.getString(_modelConfigKey);
+      if (raw != null) {
+        try {
+          key = ModelConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>).apiKey;
+        } on FormatException {
+          // Corrupt legacy record — treat as no key.
+        }
+      }
+    }
+    _apiKeyCache = key ?? '';
+  }
 
   List<ConversationSummary> loadConversations() {
     final raw = _prefs.getString(_conversationsKey);
@@ -135,5 +174,12 @@ class SettingsStore {
 }
 
 final settingsStoreProvider = FutureProvider<SettingsStore>(
-  (ref) async => SettingsStore(await SharedPreferences.getInstance()),
+  (ref) async {
+    final store = SettingsStore(
+      await SharedPreferences.getInstance(),
+      secureBox: createSecureBox(),
+    );
+    await store.restoreApiKey();
+    return store;
+  },
 );

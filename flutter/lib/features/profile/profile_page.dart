@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app.dart' show themeModeProvider;
 import '../../design/components/buttons.dart';
 import '../../design/tokens.dart';
+import '../../platform/platform_workspace.dart';
 
 import '../../state/settings_store.dart';
 
@@ -22,6 +23,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   final _model = TextEditingController();
   bool _initialized = false;
   bool _saved = false;
+  String? _workspaceNote;
 
   @override
   void dispose() {
@@ -36,6 +38,23 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _baseUrl.text = config.baseUrl;
     _apiKey.text = config.apiKey;
     _model.text = config.model;
+  }
+
+  Future<void> _checkWorkspace() async {
+    final workspace = PlatformWorkspace();
+    final has = await workspace.hasDirectory();
+    if (!mounted) return;
+    setState(() {
+      _workspaceNote = has ? '已授权 SAF 工作区目录' : '尚未选择目录,点按右侧授权';
+    });
+  }
+
+  Future<void> _pickWorkspace() async {
+    final uri = await PlatformWorkspace().pickDirectory();
+    if (!mounted) return;
+    setState(() {
+      _workspaceNote = uri == null ? '未选择目录' : '已授权 SAF 工作区目录';
+    });
   }
 
   Future<void> _save() async {
@@ -59,7 +78,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final storeAsync = ref.watch(settingsStoreProvider);
     final config = storeAsync.valueOrNull?.modelConfig ?? const ModelConfig();
-    if (!_initialized) _hydrate(config);
+    if (!_initialized) {
+      _hydrate(config);
+      if (isAndroidHost) _checkWorkspace();
+    }
 
     final themeMode = ref.watch(themeModeProvider);
 
@@ -189,9 +211,18 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: semantic.textPrimary)),
-                  subtitle: Text('内存工作区(演示) · 安卓端将使用 SAF 目录',
+                  subtitle: Text(
+                      isAndroidHost
+                          ? (_workspaceNote ?? '检查工作区授权状态…')
+                          : '内存工作区(演示) · Web 仅作开发调试',
                       style: TextStyle(
                           fontSize: 12, color: semantic.textTertiary)),
+                  trailing: isAndroidHost
+                      ? TextButton(
+                          onPressed: _pickWorkspace,
+                          child: const Text('选择目录'),
+                        )
+                      : null,
                 ),
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(
