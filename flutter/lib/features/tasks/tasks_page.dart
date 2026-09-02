@@ -138,6 +138,26 @@ class _StatusRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final (color, label, icon) = switch (status.state) {
+      TaskState.queued => (
+          semantic.textTertiary,
+          '排队中',
+          Icons.schedule_outlined
+        ),
+      TaskState.paused => (
+          AppColors.warning,
+          '已暂停',
+          Icons.pause_circle_outline
+        ),
+      TaskState.recovering => (
+          AppColors.brandBlue,
+          '恢复中',
+          Icons.restore_outlined
+        ),
+      TaskState.waitingTool => (
+          AppColors.warning,
+          '等待确认',
+          Icons.touch_app_outlined
+        ),
       TaskState.starting => (
           AppColors.brandBlue,
           '启动中',
