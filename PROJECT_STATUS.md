@@ -1,17 +1,34 @@
-# Luma 项目开发状态
+# Shelly Hermes 1.0 项目状态
 
-> 原名：Shelly Hermes
 > 当前分支：`feat/android-release`
-> 内部引擎：Hermes Core
-> 更新日期：2026-08-31
+> 内部引擎：Hermes Core(TypeScript 遗产)+ Dart Agent Core(Flutter 1.0 主线)
+> 更新日期：2026-09-02
 
-## UI 定型状态（2026-08-31）
+## 1.0 交付状态(Flutter Android 成品,2026-09-02)
 
-- Android UI 已完成一轮系统性定型：设计 Token、Material 3 深浅主题、对话工作区、工具卡、任务时间线、审批卡、产物卡、完整状态、无障碍、响应式和运行态锁定已收口。
-- 详细范围、验证和阻塞见 `docs/ui-finalization.zh-CN.md`。
-- 当前唯一外部阻塞仍是 GitHub Actions 额度/计费；恢复后需跑真实 Android 测试、Lint 和 Debug APK 构建。
+- **Flutter 1.0 Android App 已完成开发、集成与打包**,仓库位于 `flutter/`(org `dev.shelly`,applicationId `dev.shelly.shelly_hermes`)。旧 Kotlin app 与 TypeScript core 保留为 legacy,不再演进。
+- **技术栈**:Flutter 3.47.2 / Dart 3.13.2;Dart 重写 Agent 核心(轮次引擎、DiffHunk 审批、ApprovalBroker、checkpoint、任务队列、OpenAI 兼容 SSE 网关、策略引擎 + 审计 JSONL)。
+- **UI**:五 Tab 信息架构(对话/任务/历史/能力/我的)+ 逐 hunk 审批模态;三层深灰设计系统 + 蓝紫品牌渐变;流式打字机、工具卡脉冲动画、Markdown/代码块渲染;每页经前端 MCP(Chrome 真机交互/截图/控制台清零)验收。
+- **质量基线**:`dart analyze` 零问题;`flutter test` **62/62 全绿**(含 checkpoint 恢复重建工具卡、审批队列、SSE 解析、patch 语义等)。
+- **Android 平台集成**:SAF 目录授权与读写(`dev.shelly/workspace`)、AndroidKeyStore AES/GCM 密钥安全存储(`dev.shelly/secure_store`,apiKey 不再落明文 prefs)、前台服务 + 通知权限引导(`dev.shelly/task_service`,foregroundServiceType=dataSync)。
+- **打包产物**:
+  - `flutter/build/app/outputs/flutter-apk/app-release.apk`(53.5MB,自签名,SHA256 `4a9efdb5535b10fd7dccda7c861769755e5817d92b9f61e70a416977230d4a98`,minSdk 24 / targetSdk 36)
+  - `flutter/build/app/outputs/flutter-apk/app-debug.apk`(154MB,调试用途)
+  - 签名:自签名 keystore(`flutter/android/create_keystore.ps1` 入库,**keystore 与 key.properties 不入库**)
+- **构建环境备注**(中文路径机器):gradle wrapper 走腾讯镜像;`android.overridePathCheck=true` + `kotlin.incremental=false` 解决 AGP/Kotlin 对非 ASCII 路径的兼容;release AOT 需经 `subst X:` 盘符路径构建(脚本化见下)。
+- **CI**:新增 `.github/workflows/flutter.yml`(pub get → analyze → test → assembleDebug → SHA256 artifact),与 legacy android.yml 并存。
+- **版本清单**:`version-manifest.json` → 1.0.0(android.status=releasable),`package.json` 同步 1.0.0,release gate PASS。
 
-## 历史基线
+### Windows 本机构建 release APK 流程
+
+```powershell
+subst X: "I:\电脑手机agnet制作\shelly-hermes-release"   # AOT 快照器不兼容非 ASCII 路径
+cd X:\flutter
+flutter build apk --release                              # 需 JAVA_HOME=JDK17, ANDROID_HOME=I:\android-sdk
+subst X: /D
+```
+
+## 历史基线(legacy Kotlin / TS 线)
 
 - 恢复归档中的 Git 元数据，项目目录现为可用的 `feat/android-release` 工作树；原无效 worktree 指针保留为 `.git.worktree-pointer`。
 - 修复 Android 主界面和审批页中损坏的 UTF-8 文本、未闭合 XML 属性及无效资源引用。

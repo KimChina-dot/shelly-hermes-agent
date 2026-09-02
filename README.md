@@ -1,6 +1,14 @@
 # Shelly Hermes Agent
 
-面向 Android 与 Windows 的极简编程 Agent 核心。
+面向 Android 的 1.0 Agent 成品(Flutter + Dart),附 Windows CLI 与 TypeScript 核心遗产。
+
+## Flutter 1.0 Android App(当前主线)
+
+- 位置:`flutter/`(org `dev.shelly`,applicationId `dev.shelly.shelly_hermes`)。
+- Dart 重写 Agent 核心:流式模型网关、工具策略引擎、逐 hunk 人工审批、checkpoint 恢复、任务队列。
+- 平台集成:SAF 工作区读写、AndroidKeyStore 密钥安全存储、前台服务与通知权限。
+- 构建:`flutter build apk --release`(需 JDK 17 + Android SDK 36);签名脚本 `flutter/android/create_keystore.ps1`(keystore 不入库)。
+- 状态:`version-manifest.json` 1.0.0 · android.status=releasable · 62/62 测试全绿。
 
 ## 设计约束
 
@@ -22,9 +30,9 @@ Copy-Item .env.example .env
 
 ## 交付与支持矩阵
 
-- 核心：Linux、Windows、macOS；Node.js 20/22。
-- Windows：Node CLI 专项 CI 与可校验目录产物。
-- Android：当前仅有 TypeScript bridge/契约测试，**尚不能视为 APK 或实机交付**。
+- 核心(TypeScript legacy):Linux、Windows、macOS;Node.js 20/22。
+- Windows:Node CLI 专项 CI 与可校验目录产物。
+- Android:**Flutter 1.0 已交付可安装 APK**(debug/release,自签名),CI `flutter.yml` 随每 push 构建并上传 debug 产物。
 
 交付文档：
 
