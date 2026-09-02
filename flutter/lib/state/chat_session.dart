@@ -15,6 +15,7 @@ import '../core/runtime/tool_registry.dart';
 import '../core/task_queue.dart';
 import '../core/tools/registry.dart';
 import '../core/tools/workspace.dart';
+import '../core/workspace/workspace_manager.dart';
 import '../platform/platform_workspace.dart';
 import '../platform/task_service.dart';
 import 'settings_store.dart';
@@ -218,7 +219,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
       );
       return;
     }
-    final workspace = _ref.read(workspaceProvider);
+    final manager = _ref.read(workspaceManagerProvider);
     final conversationId = state.conversationId ?? '';
 
     final taskId = 'task-${DateTime.now().millisecondsSinceEpoch}';
@@ -230,7 +231,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
       agentFactory: (_) => _TaskRunner(
         session: this,
         store: store,
-        workspace: workspace,
+        workspaceManager: manager,
         conversationId: conversationId,
       ),
       listener: (status) {
@@ -431,16 +432,16 @@ class _TaskRunner implements AgentTaskRunner {
   _TaskRunner({
     required ChatSessionController session,
     required SettingsStore store,
-    required Workspace workspace,
+    required WorkspaceManager workspaceManager,
     required String conversationId,
   })  : _session = session,
         _store = store,
-        _workspace = workspace,
+        _workspaceManager = workspaceManager,
         _conversationId = conversationId;
 
   final ChatSessionController _session;
   final SettingsStore _store;
-  final Workspace _workspace;
+  final WorkspaceManager _workspaceManager;
   final String _conversationId;
 
   @override
@@ -450,7 +451,8 @@ class _TaskRunner implements AgentTaskRunner {
     AgentCheckpoint? resumeFrom,
   }) async {
     final config = _store.loadModelConfig();
-    final workspaceTools = WorkspaceToolRegistry(workspace: _workspace);
+    final workspace = _workspaceManager.workspace;
+    final workspaceTools = WorkspaceToolRegistry(workspace: workspace);
     final registry = CompositeToolRegistry([workspaceTools]);
     final ModelGateway model = config.isComplete
         ? OpenAiCompatibleGateway(
@@ -464,10 +466,11 @@ class _TaskRunner implements AgentTaskRunner {
     final runtime = AgentRuntime(
       context: AgentContext(
         sessionId: _conversationId,
-        workspace: _workspace,
+        workspace: workspace,
         model: model,
         tools: registry,
         checkpoints: _StoreCheckpoints(_store, _conversationId),
+        project: await _workspaceManager.detectProject(),
       ),
       approvals: _session.broker,
       observer: _SessionObserver(_session),
@@ -605,6 +608,11 @@ class DemoModelGateway implements StreamingModelGateway {
 
 /// SAF-backed workspace on Android, in-memory storage on the dev harness.
 final workspaceProvider = Provider<Workspace>((ref) => createWorkspace());
+
+/// Unified workspace entry: project detection, snapshots, root persistence.
+final workspaceManagerProvider = Provider<WorkspaceManager>(
+  (ref) => WorkspaceManager(workspace: ref.watch(workspaceProvider)),
+);
 
 /// Approval requests awaiting a user decision, in engine order. The engine
 /// awaits each decision before issuing the next request, so apply_patch

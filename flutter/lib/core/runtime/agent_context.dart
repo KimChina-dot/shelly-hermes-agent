@@ -1,6 +1,7 @@
 import '../agent_core.dart';
 import '../models.dart';
 import '../tools/workspace.dart';
+import '../workspace/project.dart';
 import 'tool_registry.dart';
 
 /// Seam for the Hermes memory system (PHASE 06+). The runtime consults it
@@ -26,6 +27,7 @@ class AgentContext {
     required this.checkpoints,
     this.hermes,
     this.taskId,
+    this.project,
     this.limits = const AgentLimits(maxRounds: 16, maxToolCalls: 32),
     this.approvalPolicy,
   });
@@ -45,6 +47,10 @@ class AgentContext {
 
   final CheckpointStore checkpoints;
   final AgentMemoryAccess? hermes;
+
+  /// Workspace project detection (PHASE 03): kind/name/git, consumed by
+  /// Hermes (per-project knowledge) and DSH (permission scoping).
+  final ProjectInfo? project;
 
   /// Null resolves to the standard policy (read-only allow, writes confirm).
   final ToolApprovalPolicy? approvalPolicy;
