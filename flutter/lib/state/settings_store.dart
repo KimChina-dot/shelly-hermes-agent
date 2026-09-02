@@ -164,6 +164,7 @@ class SettingsStore implements TaskRecoveryStore {
         jsonEncode([for (final c in conversations) c.toJson()]),
       );
 
+  @override
   AgentCheckpoint? loadCheckpoint(String conversationId) {
     final raw = _prefs.getString('$_checkpointPrefix$conversationId');
     if (raw == null) return null;
