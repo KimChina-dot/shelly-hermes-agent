@@ -129,6 +129,8 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
 
   void _onApprovalRequested(PendingApproval approval) {
     state = state.copyWith(phase: SessionPhase.waitingApproval);
+    final queue = _ref.read(approvalQueueProvider);
+    _ref.read(approvalQueueProvider.notifier).state = [...queue, approval];
     _approvalRouter.route(approval);
   }
 
@@ -141,6 +143,30 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     // Surface an approval that arrived before a handler was attached.
     final pending = _approvalRouter.pending;
     if (pending != null) handler?.call(pending);
+  }
+
+  /// Delivers the user's decision for one queued approval request.
+  void resolveApproval(PendingApproval approval, ApprovalDecision decision) {
+    final queue = [..._ref.read(approvalQueueProvider)]..remove(approval);
+    _ref.read(approvalQueueProvider.notifier).state = queue;
+    if (!approval.decision.isCompleted) approval.decision.complete(decision);
+    if (queue.isEmpty && state.phase == SessionPhase.waitingApproval) {
+      state = state.copyWith(phase: SessionPhase.working);
+    }
+  }
+
+  /// Completes any still-queued approvals with a rejection when the task
+  /// ends abnormally, so no UI listener is left hanging.
+  void _drainApprovals() {
+    final queue = _ref.read(approvalQueueProvider);
+    for (final approval in queue) {
+      if (!approval.decision.isCompleted) {
+        approval.decision.complete(ApprovalDecision.reject);
+      }
+    }
+    if (queue.isNotEmpty) {
+      _ref.read(approvalQueueProvider.notifier).state = const [];
+    }
   }
 
   Future<void> send(String text) async {
@@ -205,10 +231,12 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
         switch (status.state) {
           case TaskState.completed:
           case TaskState.stopped:
+            _drainApprovals();
             _finishAssistantEntry();
             state = state.copyWith(phase: SessionPhase.idle, clearActiveTask: true);
             _persistConversation();
           case TaskState.failed:
+            _drainApprovals();
             _finishAssistantEntry();
             final entries = [
               ...state.entries,
@@ -533,6 +561,13 @@ class DemoModelGateway implements StreamingModelGateway {
 }
 
 final workspaceProvider = Provider<Workspace>((ref) => MemoryWorkspace());
+
+/// Approval requests awaiting a user decision, in engine order. The engine
+/// awaits each decision before issuing the next request, so apply_patch
+/// hunks arrive one at a time and the approval UI drains this queue FIFO.
+final approvalQueueProvider = StateProvider<List<PendingApproval>>(
+  (ref) => const [],
+);
 
 final chatSessionProvider =
     StateNotifierProvider<ChatSessionController, ChatSessionState>(

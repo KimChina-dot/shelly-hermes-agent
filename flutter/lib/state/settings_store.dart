@@ -86,6 +86,9 @@ class SettingsStore {
   static const _conversationsKey = 'shelly.conversations';
   static const _checkpointPrefix = 'shelly.checkpoint.';
 
+  /// Convenience accessor for reactive UI reads.
+  ModelConfig get modelConfig => loadModelConfig();
+
   ModelConfig loadModelConfig() {
     final raw = _prefs.getString(_modelConfigKey);
     if (raw == null) return const ModelConfig();

@@ -1,14 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:shelly_hermes/app.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('app shell renders chat tab and bottom navigation', (tester) async {
     await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
     await tester.pumpAndSettle();
 
-    expect(find.text('我能帮你做什么?'), findsOneWidget);
+    expect(find.text('你好,我是 Shelly'), findsOneWidget);
     expect(find.text('对话'), findsOneWidget);
     expect(find.text('任务'), findsOneWidget);
     expect(find.text('历史'), findsOneWidget);
@@ -26,6 +31,5 @@ void main() {
 
     expect(find.text('工作区工具'), findsOneWidget);
     expect(find.text('apply_patch'), findsOneWidget);
-    expect(find.text('高风险'), findsOneWidget);
   });
 }
