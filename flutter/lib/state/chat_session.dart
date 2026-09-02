@@ -17,6 +17,7 @@ import '../core/runtime/agent_runtime.dart';
 import '../core/runtime/tool_registry.dart';
 import '../core/shell/shell_executor.dart';
 import '../core/task_queue.dart';
+import '../core/task_recovery.dart';
 import '../core/tools/registry.dart';
 import '../core/tools/workspace.dart';
 import '../core/workspace/workspace_manager.dart';
@@ -205,6 +206,15 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     );
   }
 
+  /// The task that was running when the previous process died, if any.
+  /// The UI surfaces this at startup; resuming goes through the unified
+  /// runtime's `recovering` state.
+  RecoveryCandidate? interruptedTask() {
+    final store = _store;
+    if (store == null) return null;
+    return const TaskRecovery().scan(store).firstOrNull;
+  }
+
   void newConversation() {
     if (state.isBusy) return;
     state = const ChatSessionState();
@@ -231,6 +241,11 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     final entries = [...state.entries, AssistantEntry(streaming: true)];
     state = state.copyWith(entries: entries, activeTaskId: taskId);
     unawaited(TaskService.start());
+    unawaited(store.saveActiveTask(TaskRecoveryRecord(
+      conversationId: conversationId,
+      taskId: taskId,
+      startedAt: DateTime.now(),
+    )));
 
     final coordinator = TaskCoordinator(
       agentFactory: (_) => _TaskRunner(
@@ -249,12 +264,14 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
           case TaskState.completed:
           case TaskState.stopped:
             unawaited(TaskService.stop());
+            unawaited(store.clearActiveTask());
             _drainApprovals();
             _finishAssistantEntry();
             state = state.copyWith(phase: SessionPhase.idle, clearActiveTask: true);
             _persistConversation();
           case TaskState.failed:
             unawaited(TaskService.stop());
+            unawaited(store.clearActiveTask());
             _drainApprovals();
             _finishAssistantEntry();
             final entries = [

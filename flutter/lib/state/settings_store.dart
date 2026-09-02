@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/agent_profile.dart';
 import '../core/models.dart';
+import '../core/task_recovery.dart';
 import '../platform/secure_box.dart';
 
 /// Model endpoint configuration. The API key is stored locally (secure
@@ -79,7 +80,7 @@ class ConversationSummary {
 
 /// Key-value settings and checkpoint persistence backed by
 /// SharedPreferences (works on Android and the web dev harness).
-class SettingsStore {
+class SettingsStore implements TaskRecoveryStore {
   /// When [secureBox] is provided the API key is persisted through it
   /// (AndroidKeyStore on Android) and never written into the plain prefs
   /// JSON; an in-memory cache keeps sync reads working after restore.
@@ -95,6 +96,7 @@ class SettingsStore {
   static const _checkpointPrefix = 'shelly.checkpoint.';
   static const _profilesKey = 'shelly.agent.profiles';
   static const _activeProfileKey = 'shelly.agent.profile.active';
+  static const _activeTaskKey = 'shelly.task.active';
 
   /// Convenience accessor for reactive UI reads.
   ModelConfig get modelConfig => loadModelConfig();
@@ -212,6 +214,27 @@ class SettingsStore {
     }
     return profiles.first;
   }
+
+  /// Background-agent recovery port (PHASE 20). The record exists only
+  /// while a task runs; it survives process death so the next launch can
+  /// detect and resume the interrupted task.
+  @override
+  TaskRecoveryRecord? loadActiveTask() {
+    final raw = _prefs.getString(_activeTaskKey);
+    if (raw == null) return null;
+    try {
+      return TaskRecoveryRecord.decode(raw);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> saveActiveTask(TaskRecoveryRecord record) =>
+      _prefs.setString(_activeTaskKey, record.encode());
+
+  @override
+  Future<void> clearActiveTask() => _prefs.remove(_activeTaskKey);
 }
 
 final settingsStoreProvider = FutureProvider<SettingsStore>(
