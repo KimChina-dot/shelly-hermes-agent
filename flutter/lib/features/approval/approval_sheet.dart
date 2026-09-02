@@ -235,12 +235,18 @@ class _DecisionCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           if (hunk != null)
             _DiffView(patch: hunk)
-          else if (call.name == 'write_file')
+          else if (call.name == 'write_file') ...[
+            Text('新文件内容',
+                style: TextStyle(
+                    fontSize: 11.5, color: semantic.textTertiary)),
+            const SizedBox(height: 4),
             _DiffView(
-              patch:
-                  '@@ 新文件 @@\n${(args['content'] as String?) ?? ''}'.split('\n').map((l) => l.isEmpty ? l : '+$l').join('\n'),
-            )
-          else
+              patch: ((args['content'] as String?) ?? '')
+                  .split('\n')
+                  .map((l) => '+$l')
+                  .join('\n'),
+            ),
+          ] else
             Text(
               const JsonEncoder.withIndent('  ').convert(args),
               style: TextStyle(

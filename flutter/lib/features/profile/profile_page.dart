@@ -158,7 +158,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                 segments: const [
-                  ButtonSegment(value: ThemeMode.system, label: Text('跟随系统')),
+                  ButtonSegment(value: ThemeMode.system, label: Text('系统')),
                   ButtonSegment(value: ThemeMode.light, label: Text('浅色')),
                   ButtonSegment(value: ThemeMode.dark, label: Text('深色')),
                 ],

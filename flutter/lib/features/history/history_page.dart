@@ -101,16 +101,16 @@ class _ConversationTile extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: semantic.card,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: semantic.border),
       ),
       child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+        tileColor: semantic.card,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.lg),
         ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
         leading: Container(
           width: 38,
           height: 38,

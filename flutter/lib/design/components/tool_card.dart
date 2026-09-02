@@ -51,25 +51,32 @@ class _ToolCardState extends State<ToolCard>
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-      decoration: BoxDecoration(
-        color: semantic.card,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(
-          color: accent.withValues(alpha: failed || running ? 0.4 : 0.25),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+        childrenPadding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          0,
+          AppSpacing.md,
+          AppSpacing.md,
         ),
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          childrenPadding: const EdgeInsets.fromLTRB(
-            AppSpacing.md,
-            0,
-            AppSpacing.md,
-            AppSpacing.md,
+        backgroundColor: semantic.card,
+        collapsedBackgroundColor: semantic.card,
+        iconColor: semantic.textTertiary,
+        collapsedIconColor: semantic.textTertiary,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          side: BorderSide(
+            color: accent.withValues(alpha: failed || running ? 0.4 : 0.25),
           ),
-          initiallyExpanded: false,
-          onExpansionChanged: (v) => setState(() => _expanded = v),
+        ),
+        collapsedShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          side: BorderSide(
+            color: accent.withValues(alpha: failed || running ? 0.4 : 0.25),
+          ),
+        ),
+        initiallyExpanded: false,
+        onExpansionChanged: (v) => setState(() => _expanded = v),
           leading: _ToolIcon(name: widget.entry.call.name, accent: accent),
           title: Row(
             children: [
@@ -121,8 +128,7 @@ class _ToolCardState extends State<ToolCard>
               ),
           ],
         ),
-      ),
-    );
+      );
   }
 
   String _briefTarget() {

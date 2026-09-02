@@ -278,9 +278,15 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
 
   List<ChatEntry> _entriesFromCheckpoint(AgentCheckpoint checkpoint) {
     final entries = <ChatEntry>[];
-    var pendingCalls = <ToolCall>{};
+    final openCalls = <String, ToolEntry>{};
     for (final message in checkpoint.messages) {
-      pendingCalls.addAll(message.toolCalls);
+      for (final call in message.toolCalls) {
+        // Historical tool calls finished before the checkpoint was taken;
+        // their result text arrives with the matching tool message.
+        final entry = ToolEntry(call: call);
+        openCalls[call.id] = entry;
+        entries.add(entry);
+      }
       switch (message.role) {
         case MessageRole.user:
           entries.add(UserEntry(message.content));
@@ -289,6 +295,14 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
             entries.add(AssistantEntry(text: message.content));
           }
         case MessageRole.tool:
+          final entry = message.toolCallId == null
+              ? null
+              : openCalls[message.toolCallId];
+          if (entry != null) {
+            entry
+              ..status = ToolRunStatus.succeeded
+              ..result = message.content;
+          }
         case MessageRole.system:
           break;
       }
@@ -349,7 +363,17 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
         entry.result = finished.result;
         entry.durationMillis = finished.durationMillis;
       }
-      entries.add(entry);
+      // Tool work precedes the assistant's final reply in the transcript:
+      // insert before the streaming assistant entry, not after it.
+      var insertAt = entries.length;
+      for (var i = entries.length - 1; i >= 0; i--) {
+        if (entries[i] is AssistantEntry) {
+          insertAt = i;
+        } else {
+          break;
+        }
+      }
+      entries.insert(insertAt, entry);
     } else if (finished != null) {
       existing
         ..status = finished.succeeded ? ToolRunStatus.succeeded : ToolRunStatus.failed
@@ -526,7 +550,8 @@ class DemoModelGateway implements StreamingModelGateway {
           ToolCall(
             id: 'demo-w1',
             name: 'write_file',
-            argumentsJson: '{"path":"demo/notes.md","content":"第一行\\n第二行\\n第三行\\n"}',
+            argumentsJson:
+                '{"path":"demo/notes.md","content":"第一行\\n第二行\\n第三行\\n第四行\\n"}',
           ),
         ]);
       }
@@ -536,7 +561,7 @@ class DemoModelGateway implements StreamingModelGateway {
             id: 'demo-p1',
             name: 'apply_patch',
             argumentsJson:
-                '{"path":"demo/notes.md","patch":"@@ -1,3 +1,3 @@\\n 第一行\\n-第二行\\n+第二行(已修改)\\n 第三行\\n@@ -3,1 +3,1 @@\\n-第三行\\n+第三行(也修改了)"}',
+                '{"path":"demo/notes.md","patch":"@@ -1,2 +1,2 @@\\n 第一行\\n-第二行\\n+第二行(已修改)\\n@@ -3,2 +3,2 @@\\n 第三行\\n-第四行\\n+第四行(也修改了)"}',
           ),
         ]);
       }
