@@ -9,6 +9,8 @@ import '../../design/components/buttons.dart';
 import '../../design/tokens.dart';
 import '../../features/memory/memory_page.dart';
 import '../../platform/platform_workspace.dart';
+import '../../state/chat_session.dart'
+    show workspaceAuthorizedProvider, workspaceProvider;
 
 import '../../state/settings_store.dart';
 
@@ -60,16 +62,28 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 
   Future<void> _checkWorkspace() async {
-    final workspace = PlatformWorkspace();
-    final has = await workspace.hasDirectory();
+    // Use the shared resilient instance so the note matches the actual
+    // workspace routing (SAF once granted, sandbox before that).
+    final workspace = ref.read(workspaceProvider);
+    if (workspace is! ResilientWorkspace) {
+      if (!mounted) return;
+      setState(() => _workspaceNote = '内存工作区(演示) · Web 仅作开发调试');
+      return;
+    }
+    await workspace.refreshAuthorization();
     if (!mounted) return;
     setState(() {
-      _workspaceNote = has ? '已授权 SAF 工作区目录' : '尚未选择目录,点按右侧授权';
+      _workspaceNote = workspace.authorized.value
+          ? '已授权 SAF 工作区目录'
+          : '尚未选择目录,点按右侧授权';
     });
   }
 
   Future<void> _pickWorkspace() async {
-    final uri = await PlatformWorkspace().pickDirectory();
+    final workspace = ref.read(workspaceProvider);
+    if (workspace is! ResilientWorkspace) return;
+    final uri = await workspace.pickDirectory();
+    ref.invalidate(workspaceAuthorizedProvider);
     if (!mounted) return;
     setState(() {
       _workspaceNote = uri == null ? '未选择目录' : '已授权 SAF 工作区目录';

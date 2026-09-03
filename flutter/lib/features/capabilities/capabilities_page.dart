@@ -173,6 +173,24 @@ class _PluginSectionState extends ConsumerState<_PluginSection> {
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: semantic.textTertiary)),
+        if (ref.watch(workspaceAuthorizedProvider).asData?.value == false)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xs),
+            child: Row(
+              children: [
+                const Icon(Icons.folder_off_outlined,
+                    size: 13, color: AppColors.warning),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: Text(
+                    '工作区未授权:插件将装入演示沙箱,授权目录后需重新安装',
+                    style: TextStyle(
+                        fontSize: 11.5, color: semantic.textTertiary),
+                  ),
+                ),
+              ],
+            ),
+          ),
         const SizedBox(height: AppSpacing.sm),
         for (final plugin in plugins)
           Container(

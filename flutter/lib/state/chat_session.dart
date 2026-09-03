@@ -696,6 +696,18 @@ class DemoModelGateway implements StreamingModelGateway {
 /// SAF-backed workspace on Android, in-memory storage on the dev harness.
 final workspaceProvider = Provider<Workspace>((ref) => createWorkspace());
 
+/// Whether the workspace is writable for real: always true off Android;
+/// on Android true once a SAF directory is granted, false while running
+/// in the in-memory demo sandbox. Invalidate after picking a directory.
+final workspaceAuthorizedProvider = FutureProvider.autoDispose<bool>((ref) async {
+  final workspace = ref.watch(workspaceProvider);
+  if (workspace is ResilientWorkspace) {
+    await workspace.refreshAuthorization();
+    return workspace.authorized.value;
+  }
+  return true;
+});
+
 /// Unified workspace entry: project detection, snapshots, root persistence.
 final workspaceManagerProvider = Provider<WorkspaceManager>(
   (ref) => WorkspaceManager(workspace: ref.watch(workspaceProvider)),
