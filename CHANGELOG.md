@@ -1,5 +1,40 @@
 # Changelog
 
+## 2.0.0 (2026-09-03)
+
+三系统融合版本:Shelly(执行)+ Hermes(记忆)+ DSH(能力),按 V2.0 路线图 PHASE 01→22 落地。
+
+### 新增(core)
+
+- 统一 Runtime:`AgentContext` + `AgentRuntime`(Hermes 钩子内聚),UI 层不再装配引擎;
+  `AgentToolRegistry`/`CompositeToolRegistry` 统一注册缝隙。
+- Shelly:`WorkspaceManager`(Flutter/Android/Git 项目检测、快照 diff)、
+  `ShellExecutor`(四级风险分级,critical 一票否决,fail-closed 审批策略)、
+  `GitManager`(porcelain v1)+ `GitSandbox` 全量快照回滚。
+- Hermes(无向量库):JSONL 知识账本 + Markdown 投影、CJK 关键词召回、
+  经验自动采集、Reflection(精确/近重复归并)、Forgetting(ACTIVE/COOLING/EXPIRED + 频次保护)。
+- DSH:声明式插件 Manifest(反向 DNS/semver/权限校验)、生命周期 Registry、
+  信任策略(unknown=block/new=ask)、安装器(暂存 `.shelly/plugins/`)、
+  Shell 插件命令模板(经宿主 ShellExecutor,仍受 critical 拦截)、Hermes 联动桥。
+- 三系统闭环 Demo:`closed_loop_demo_test.dart`(Flutter 登录修复 12 步场景)。
+- Provider 预设(OpenAI/DeepSeek/Moonshot/Qwen/OpenRouter/Ollama/LM Studio/自定义)
+  + Model Discovery(GET /models,兼容 Ollama 原生形态)。
+- AgentProfile:人设/轮次预算/Hermes 采集开关(三预设 + 持久化)。
+- 后台 Agent:任务运行记录持久化,进程死亡后经 `TaskRecovery` 扫描恢复。
+- 统一 Task Runtime:`TaskState` 扩展 queued/waitingTool/paused/recovering,
+  并发上限、排队/暂停/恢复/丢弃、审批等待上报。
+
+### 新增(UI)
+
+- 我的页:Agent 档案选择、Provider 预设 chips、获取模型列表(GET /models)。
+- 能力页:DSH 插件安装/生命周期徽章/卸载;安装的插件进入新任务工具面。
+- 任务页:渲染 queued/paused/recovering/waitingTool 四个新任务态。
+- 版本标识 → 2.0.0。
+
+### 质量
+
+- `dart analyze` 零问题;`flutter test` 158/158 全绿。
+
 ## 1.0.0 (2026-09-02)
 
 首个 Flutter Android 成品版本。
