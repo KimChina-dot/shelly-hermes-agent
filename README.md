@@ -1,14 +1,14 @@
 # Shelly Hermes Agent
 
-面向 Android 的 1.0 Agent 成品(Flutter + Dart),附 Windows CLI 与 TypeScript 核心遗产。
+面向 Android 的 2.0 Agent 成品(Flutter + Dart):Shelly 执行、Hermes 记忆、DSH 能力三系统融合;附 Windows CLI 与 TypeScript 核心遗产。
 
-## Flutter 1.0 Android App(当前主线)
+## Flutter 2.0 Android App(当前主线)
 
 - 位置:`flutter/`(org `dev.shelly`,applicationId `dev.shelly.shelly_hermes`)。
-- Dart 重写 Agent 核心:流式模型网关、工具策略引擎、逐 hunk 人工审批、checkpoint 恢复、任务队列。
-- 平台集成:SAF 工作区读写、AndroidKeyStore 密钥安全存储、前台服务与通知权限。
-- 构建:`flutter build apk --release`(需 JDK 17 + Android SDK 36);签名脚本 `flutter/android/create_keystore.ps1`(keystore 不入库)。
-- 状态:`version-manifest.json` 1.0.0 · android.status=releasable · 62/62 测试全绿。
+- Dart 重写 Agent 核心:流式模型网关、工具策略引擎、逐 hunk 人工审批、checkpoint 恢复、统一任务运行时(排队/暂停/恢复/后台恢复)。
+- V2.0:DSH 插件系统(manifest 生命周期/信任策略/安装器)、Hermes 记忆(知识账本/反思/遗忘,纯文本无向量库)、Provider 预设与模型发现、Agent 档案人设。
+- 打包:**完全走 git 云端**——GitHub Actions `flutter.yml` 随 push/PR 构建 debug + release APK 并上传 artifact(release 无 key.properties 时回退 debug 签名);签名密钥不入库。
+- 状态:`version-manifest.json` 2.0.0 · android.status=releasable · 161/161 测试全绿。
 
 ## 设计约束
 
