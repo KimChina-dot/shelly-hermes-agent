@@ -27,13 +27,24 @@
 ### 新增(UI)
 
 - 我的页:Agent 档案选择、Provider 预设 chips、获取模型列表(GET /models)。
-- 能力页:DSH 插件安装/生命周期徽章/卸载;安装的插件进入新任务工具面。
+- 能力页:DSH 插件安装/生命周期徽章/卸载;插件工具信任列表(封锁/询问/已信任);
+  安装的插件进入新任务工具面。
+- 对话页:插件工具调用渲染与核心工具一致的工具卡,附「插件」徽标。
+- 历史页:被中断任务「可恢复」横幅(从检查点重跑 / 忽略)。
 - 任务页:渲染 queued/paused/recovering/waitingTool 四个新任务态。
 - 版本标识 → 2.0.0。
 
 ### 质量
 
-- `dart analyze` 零问题;`flutter test` 158/158 全绿。
+- `dart analyze` 零问题;`flutter test` 161/161 全绿。
+
+### 打包(全面转云端)
+
+- 打包方式:本地打包环境已移除,release APK 由 GitHub Actions `flutter.yml` 云端构建,
+  artifact 名 `shelly-hermes-flutter-release`(release 无 key.properties 时回退 debug 签名)。
+- `app-release.apk`(57.3MB,minSdk 24 / targetSdk 36),CI run 33771435104:
+  SHA256 `4de542cf7c673b51adf3bdd135f9c94957a25669bfafe4005a992d9d6cc49f62`。
+- keystore 与 `key.properties` 不入库。
 
 ## 1.0.0 (2026-09-02)
 

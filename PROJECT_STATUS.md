@@ -21,6 +21,11 @@
 - **PHASE 20** 后台 Agent:前台服务保活(已有)+ `TaskRecovery` 中断记录与恢复扫描(进程死亡检测,checkpoint 续跑语义保留)。
 - **PHASE 21** 统一 Task Runtime:`TaskState` 扩展 queued/waitingTool/paused/recovering,协调器支持并发上限、排队/暂停/恢复/丢弃、审批等待上报。
 - **PHASE 22** UI 2.0(首批):我的页新增 Agent 档案选择 + Provider 预设 chips + 获取模型列表(GET /models);能力页新增 DSH 插件安装/生命周期/卸载;任务页渲染新增四态;版本 → 2.0.0。
+- **A1** 版本清单同步:manifest/package/pubspec/CHANGELOG → 2.0.0。
+- **A4** UI 2.0(二批):对话页插件工具卡(附「插件」徽标);历史页被中断任务「可恢复」横幅(检查点重跑/忽略);能力页插件工具信任列表(封锁/询问/已信任)。
+- **A2/A5 打包转云端**:本机 Android 打包环境(Android SDK/JDK17/Gradle 缓存)已卸载,release APK 完全由 GitHub Actions `flutter.yml` 构建(PR/push 触发,artifact `shelly-hermes-flutter-release`,无 key.properties 时回退 debug 签名)。
+  - 2.0.0 release APK(CI run 33771435104):57.3MB,SHA256 `4de542cf7c673b51adf3bdd135f9c94957a25669bfafe4005a992d9d6cc49f62`。
+  - **A3 真机回归待办**:需安装该 APK 后人工验证对话/审批/插件/恢复链路。
 
 ## 1.0 交付状态(Flutter Android 成品,2026-09-02)
 
