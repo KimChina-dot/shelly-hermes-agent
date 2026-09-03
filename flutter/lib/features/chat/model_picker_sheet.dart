@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/error_messages.dart';
 import '../../core/gateway/model_discovery.dart';
-import '../../core/gateway/openai_gateway.dart' show GatewayException;
 import '../../core/gateway/providers.dart';
 import '../../design/tokens.dart';
 import '../../state/settings_store.dart';
@@ -92,7 +92,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
       if (!mounted) return;
       setState(() {
         _testing = false;
-        _error = _humanizeGatewayError(error);
+        _error = humanizeAgentError(error);
       });
     }
   }
@@ -309,23 +309,4 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
       ),
     );
   }
-}
-
-/// Humanizes the gateway/discovery errors the picker can surface; the full
-/// mapping table lands in PHASE 28 (lib/core/error_messages.dart).
-String _humanizeGatewayError(Object error) {
-  if (error is GatewayException) {
-    switch (error.statusCode) {
-      case 401:
-        return '密钥无效,请到「我的」页检查 API Key';
-      case 404:
-        return '接口地址不正确,通常以 /v1 结尾';
-      case 429:
-        return '模型限流中,请稍后重试';
-      case 403:
-        return '没有访问权限(403)';
-    }
-    return '连接失败(${error.statusCode ?? '未知错误'})';
-  }
-  return '连接失败:$error';
 }
