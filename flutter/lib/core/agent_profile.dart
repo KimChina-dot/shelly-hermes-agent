@@ -33,7 +33,25 @@ class AgentProfile {
       id.trim().isNotEmpty &&
       name.trim().isNotEmpty &&
       maxRounds >= 1 &&
-      maxToolCalls >= 1;
+      maxRounds <= 200 &&
+      maxToolCalls >= 1 &&
+      maxToolCalls <= 500;
+
+  /// True for the built-in presets; presets are never edited in place —
+  /// the editor copies one into a user-owned profile instead.
+  bool get isPreset =>
+      agentProfilePresets.where((p) => p.id == id).isNotEmpty;
+
+  /// A user-owned duplicate of this profile (used when editing a preset).
+  AgentProfile asEditableCopy({required String newId}) => AgentProfile(
+        id: newId,
+        name: '$name(自定义)',
+        systemPrompt: systemPrompt,
+        autoCapture: autoCapture,
+        maxRounds: maxRounds,
+        maxToolCalls: maxToolCalls,
+        providerId: providerId,
+      );
 
   AgentProfile copyWith({
     String? id,

@@ -65,4 +65,46 @@ void main() {
     expect(corrupt.loadProfiles().first.id, 'balanced');
     expect(corrupt.activeProfile().id, 'balanced');
   });
+
+  test('asEditableCopy produces a user-owned duplicate', () {
+    const preset = AgentProfile(
+      id: 'careful',
+      name: '谨慎工程师',
+      systemPrompt: '先计划再动手',
+      maxRounds: 24,
+      maxToolCalls: 48,
+      autoCapture: true,
+    );
+
+    final copy = preset.asEditableCopy(newId: 'profile-123');
+
+    expect(copy.id, 'profile-123');
+    expect(copy.name, '谨慎工程师(自定义)');
+    expect(copy.systemPrompt, '先计划再动手');
+    expect(copy.maxRounds, 24);
+    expect(copy.maxToolCalls, 48);
+    expect(copy.autoCapture, isTrue);
+    expect(copy.isPreset, isFalse, reason: 'the copy is user-owned');
+    expect(preset.isPreset, isTrue);
+  });
+
+  test('isValid enforces the raised caps', () {
+    expect(
+      const AgentProfile(id: 'x', name: 'X', maxRounds: 200).isValid,
+      isTrue,
+    );
+    expect(
+      const AgentProfile(id: 'x', name: 'X', maxRounds: 201).isValid,
+      isFalse,
+    );
+    expect(
+      const AgentProfile(id: 'x', name: 'X', maxToolCalls: 500).isValid,
+      isTrue,
+    );
+    expect(
+      const AgentProfile(id: 'x', name: 'X', maxToolCalls: 501).isValid,
+      isFalse,
+    );
+  });
+
 }
