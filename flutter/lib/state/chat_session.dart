@@ -197,16 +197,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     _startTask(initialMessages: [AgentMessage(role: MessageRole.user, content: trimmed)]);
   }
 
-  Future<void> resume(String conversationId) async {
-    if (state.isBusy || _store == null) return;
-    final checkpoint = _store!.loadCheckpoint(conversationId);
-    if (checkpoint == null) return;
-    state = ChatSessionState(
-      phase: SessionPhase.idle,
-      conversationId: conversationId,
-      entries: _entriesFromCheckpoint(checkpoint),
-    );
-  }
+  Future<void> resume(String conversationId) async => switchTo(conversationId);
 
   /// The task that was running when the previous process died, if any.
   /// The UI surfaces this at startup; resuming goes through the unified
@@ -244,9 +235,37 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     await store.clearActiveTask();
   }
 
-  void newConversation() {
-    if (state.isBusy) return;
+  /// Starts a fresh conversation; false when a task is still running (the
+  /// UI surfaces that instead of silently dropping the request).
+  bool newConversation() {
+    if (state.isBusy) return false;
     state = const ChatSessionState();
+    return true;
+  }
+
+  /// Loads a past conversation from its checkpoint into the chat page;
+  /// false when busy or the checkpoint is gone (e.g. deleted elsewhere).
+  bool switchTo(String conversationId) {
+    if (state.isBusy || _store == null) return false;
+    final checkpoint = _store!.loadCheckpoint(conversationId);
+    if (checkpoint == null) return false;
+    state = ChatSessionState(
+      phase: SessionPhase.idle,
+      conversationId: conversationId,
+      entries: _entriesFromCheckpoint(checkpoint),
+    );
+    return true;
+  }
+
+  /// Deletes the current conversation's checkpoint and resets the chat to a
+  /// fresh state; false when nothing is loaded or a task is running.
+  Future<bool> deleteCurrentConversation() async {
+    final store = _store;
+    final conversationId = state.conversationId;
+    if (store == null || conversationId == null || state.isBusy) return false;
+    await store.deleteConversation(conversationId);
+    state = const ChatSessionState();
+    return true;
   }
 
   void cancel() {

@@ -6,6 +6,7 @@ import '../../design/components/empty_state.dart';
 import '../../design/tokens.dart';
 import '../../state/chat_session.dart';
 import '../../state/settings_store.dart';
+import '../chat/conversation_actions.dart';
 import '../shell/home_shell.dart';
 
 /// Conversation history backed by persisted checkpoints. Tapping a
@@ -19,7 +20,7 @@ class HistoryPage extends ConsumerWidget {
     final storeAsync = ref.watch(settingsStoreProvider);
 
     final conversations = storeAsync.maybeWhen(
-      data: (store) => store.loadConversations(),
+      data: (store) => sortConversations(store.loadConversations()),
       orElse: () => const <ConversationSummary>[],
     );
 
@@ -221,7 +222,7 @@ class _ConversationTile extends ConsumerWidget {
               size: 18, color: AppColors.brandViolet),
         ),
         title: Text(
-          conversation.title,
+          (conversation.pinned ? '📌 ' : '') + conversation.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
@@ -244,6 +245,52 @@ class _ConversationTile extends ConsumerWidget {
           ref.read(chatSessionProvider.notifier).resume(conversation.id);
           ref.read(tabIndexProvider.notifier).state = 0;
         },
+        onLongPress: () => showModalBottomSheet<void>(
+          context: context,
+          backgroundColor: semantic.card,
+          builder: (sheetContext) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined, size: 20),
+                  title: const Text('重命名'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    final store =
+                        ref.read(settingsStoreProvider).valueOrNull;
+                    if (store == null) return;
+                    renameConversationDialog(
+                        context, ref, store, conversation);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.push_pin_outlined, size: 20),
+                  title: Text(conversation.pinned ? '取消置顶' : '置顶'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    final store =
+                        ref.read(settingsStoreProvider).valueOrNull;
+                    if (store == null) return;
+                    toggleConversationPin(ref, store, conversation);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline, size: 20),
+                  title: const Text('删除'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    final store =
+                        ref.read(settingsStoreProvider).valueOrNull;
+                    if (store == null) return;
+                    deleteConversationDialog(
+                        context, ref, store, conversation);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
