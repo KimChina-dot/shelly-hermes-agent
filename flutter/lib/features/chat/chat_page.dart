@@ -8,6 +8,7 @@ import '../../design/components/markdown_text.dart';
 import '../../design/components/skeleton.dart';
 import '../../design/components/tool_card.dart';
 import '../../design/tokens.dart';
+import '../../platform/platform_workspace.dart' show ResilientWorkspace;
 import '../../state/chat_session.dart';
 import '../../state/dsh_provider.dart';
 import '../../state/settings_store.dart';
@@ -67,6 +68,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       data: (store) => !store.modelConfig.isComplete,
       orElse: () => true,
     );
+    final workspaceReady = ref
+            .watch(workspaceAuthorizedProvider)
+            .asData
+            ?.value ??
+        true;
+
+    Future<void> pickWorkspaceDirectory() async {
+      final workspace = ref.read(workspaceProvider);
+      if (workspace is ResilientWorkspace) {
+        await workspace.pickDirectory();
+      }
+      ref.invalidate(workspaceAuthorizedProvider);
+    }
 
     // Open the approval modal the first time a request lands; it stays up
     // until the queue drains (sequential hunk requests keep it open).
@@ -99,6 +113,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         child: Column(
           children: [
             _Header(demoMode: demoMode),
+            if (!workspaceReady)
+              _WorkspaceBanner(onPick: pickWorkspaceDirectory),
             if (demoMode) _DemoBanner(onTap: () => _send('演示补丁')),
             Expanded(
               child: session.entries.isEmpty
@@ -166,6 +182,54 @@ class _Header extends ConsumerWidget {
                 size: 21, color: semantic.textSecondary),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _WorkspaceBanner extends StatelessWidget {
+  const _WorkspaceBanner({required this.onPick});
+
+  final Future<void> Function() onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        decoration: BoxDecoration(
+          color: AppColors.warning.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.folder_off_outlined,
+                size: 15, color: AppColors.warning),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                '演示沙箱:文件改动不会落盘,选择目录后即可真实读写',
+                style:
+                    TextStyle(fontSize: 12, color: semantic.textSecondary),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            GestureDetector(
+              onTap: () => onPick(),
+              child: Text(
+                '选择目录',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.warning),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

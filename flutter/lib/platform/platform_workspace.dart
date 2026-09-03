@@ -1,6 +1,6 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show ValueNotifier, kIsWeb;
 import 'package:flutter/services.dart';
 
 import '../core/tools/workspace.dart';
@@ -101,6 +101,74 @@ class PlatformWorkspace implements Workspace {
 /// Workspace used on non-Android hosts (web dev harness, VM tests).
 final fallbackWorkspace = MemoryWorkspace();
 
-/// Returns the SAF-backed workspace on Android, the in-memory one elsewhere.
+/// Workspace that degrades gracefully while the user has not picked a SAF
+/// directory on Android: every operation lands in an in-memory sandbox
+/// instead of failing with "no workspace directory picked". Once a directory
+/// is granted (or found persisted from a previous run) operations flow
+/// through [PlatformWorkspace]; if the platform bridge still throws (e.g.
+/// a revoked grant) the sandbox answers so the app never surfaces a raw
+/// PlatformException.
+class ResilientWorkspace implements Workspace {
+  ResilientWorkspace({PlatformWorkspace? platform, MemoryWorkspace? sandbox})
+      : _platform = platform ?? PlatformWorkspace(),
+        _sandbox = sandbox ?? MemoryWorkspace();
+
+  final PlatformWorkspace _platform;
+  final MemoryWorkspace _sandbox;
+
+  /// Watched by UI banners: true once a SAF directory is authorized.
+  final ValueNotifier<bool> authorized = ValueNotifier(false);
+
+  /// Re-reads the persisted grant; call at startup and after picking.
+  Future<void> refreshAuthorization() async {
+    authorized.value = await _platform.hasDirectory();
+  }
+
+  /// Opens the system directory picker; on grant this workspace switches
+  /// onto SAF. Returns the tree URI, or null when the user cancelled.
+  Future<String?> pickDirectory() async {
+    final uri = await _platform.pickDirectory();
+    await refreshAuthorization();
+    return uri;
+  }
+
+  Workspace get _delegate => authorized.value ? _platform : _sandbox;
+
+  /// Runs [op] against the active delegate; a platform-side failure falls
+  /// back to the sandbox so an unmounted grant never breaks the feature.
+  Future<T> _guarded<T>(Future<T> Function(Workspace ws) op) async {
+    try {
+      return await op(_delegate);
+    } on PlatformException {
+      return op(_sandbox);
+    }
+  }
+
+  @override
+  Future<String?> readFile(String path) =>
+      _guarded((ws) => ws.readFile(path));
+
+  @override
+  Future<void> writeFile(String path, String content) =>
+      _guarded((ws) => ws.writeFile(path, content));
+
+  @override
+  Future<bool> deleteFile(String path) =>
+      _guarded((ws) => ws.deleteFile(path));
+
+  @override
+  Future<bool> exists(String path) => _guarded((ws) => ws.exists(path));
+
+  @override
+  Future<List<String>> listFiles([String prefix = '']) =>
+      _guarded((ws) => ws.listFiles(prefix));
+
+  @override
+  Future<List<String>> searchFiles(String query) =>
+      _guarded((ws) => ws.searchFiles(query));
+}
+
+/// Returns the resilient workspace on Android (SAF once granted, in-memory
+/// sandbox before that), the plain in-memory one elsewhere.
 Workspace createWorkspace() =>
-    isAndroidHost ? PlatformWorkspace() : fallbackWorkspace;
+    isAndroidHost ? ResilientWorkspace() : fallbackWorkspace;
