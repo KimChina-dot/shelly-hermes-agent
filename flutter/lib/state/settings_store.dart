@@ -55,18 +55,21 @@ class ConversationSummary {
     required this.title,
     required this.updatedAt,
     required this.messageCount,
+    this.pinned = false,
   });
 
   final String id;
   final String title;
   final DateTime updatedAt;
   final int messageCount;
+  final bool pinned;
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
         'updatedAt': updatedAt.toIso8601String(),
         'messageCount': messageCount,
+        'pinned': pinned,
       };
 
   static ConversationSummary fromJson(Map<String, dynamic> json) =>
@@ -75,7 +78,17 @@ class ConversationSummary {
         title: json['title'] as String,
         updatedAt: DateTime.parse(json['updatedAt'] as String),
         messageCount: json['messageCount'] as int,
+        pinned: json['pinned'] as bool? ?? false,
       );
+}
+
+/// History ordering: pinned first, then most recently updated.
+List<ConversationSummary> sortConversations(List<ConversationSummary> list) {
+  final sorted = [...list]..sort((a, b) {
+      if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+      return b.updatedAt.compareTo(a.updatedAt);
+    });
+  return sorted;
 }
 
 /// Key-value settings and checkpoint persistence backed by
@@ -163,6 +176,47 @@ class SettingsStore implements TaskRecoveryStore {
         _conversationsKey,
         jsonEncode([for (final c in conversations) c.toJson()]),
       );
+
+  /// Removes a conversation's summary and its persisted checkpoint.
+  Future<void> deleteConversation(String id) async {
+    final summaries =
+        loadConversations().where((c) => c.id != id).toList();
+    await saveConversations(summaries);
+    await _prefs.remove('$_checkpointPrefix$id');
+  }
+
+  Future<void> renameConversation(String id, String title) => _mutateSummary(
+        id,
+        (c) => ConversationSummary(
+          id: c.id,
+          title: title,
+          updatedAt: c.updatedAt,
+          messageCount: c.messageCount,
+          pinned: c.pinned,
+        ),
+      );
+
+  Future<void> setPinned(String id, bool pinned) => _mutateSummary(
+        id,
+        (c) => ConversationSummary(
+          id: c.id,
+          title: c.title,
+          updatedAt: c.updatedAt,
+          messageCount: c.messageCount,
+          pinned: pinned,
+        ),
+      );
+
+  Future<void> _mutateSummary(
+    String id,
+    ConversationSummary Function(ConversationSummary) transform,
+  ) async {
+    final summaries = loadConversations();
+    final index = summaries.indexWhere((c) => c.id == id);
+    if (index < 0) return;
+    summaries[index] = transform(summaries[index]);
+    await saveConversations(summaries);
+  }
 
   @override
   AgentCheckpoint? loadCheckpoint(String conversationId) {

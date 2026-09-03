@@ -188,4 +188,50 @@ void main() {
     // The tapped profile renders its meta line.
     expect(find.textContaining('24 轮'), findsOneWidget);
   });
+
+  testWidgets('chat header opens the session sheet with saved conversations',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final store = await container.read(settingsStoreProvider.future);
+    await store.saveCheckpoint(
+      'conv-1',
+      const AgentCheckpoint(
+        messages: [],
+        round: 1,
+        consumedTokens: 0,
+        toolCalls: 0,
+      ),
+    );
+    await store.saveConversations([
+      ConversationSummary(
+        id: 'conv-1',
+        title: '修复登录页崩溃',
+        updatedAt: DateTime(2026, 9, 3, 12),
+        messageCount: 4,
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const ShellyApp()),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap the header title area to open the session sheet.
+    await tester.tap(find.text('Shelly'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('会话'), findsOneWidget);
+    expect(find.text('修复登录页崩溃'), findsOneWidget);
+    expect(find.text('新会话'), findsOneWidget);
+    expect(find.textContaining('4 条消息'), findsOneWidget);
+
+    // Switch to the saved conversation; the sheet closes and the chat page
+    // shows its title in the header.
+    await tester.tap(find.text('修复登录页崩溃'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('会话'), findsNothing);
+    expect(find.text('修复登录页崩溃'), findsOneWidget);
+  });
 }

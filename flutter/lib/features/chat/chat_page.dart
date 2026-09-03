@@ -13,6 +13,7 @@ import '../../state/chat_session.dart';
 import '../../state/dsh_provider.dart';
 import '../../state/settings_store.dart';
 import '../approval/approval_sheet.dart';
+import 'conversation_actions.dart';
 
 /// The conversation tab: streaming transcript, tool cards, token usage and
 /// the approval modal, all driven by [chatSessionProvider].
@@ -51,6 +52,31 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         curve: AppMotion.easeOut,
       );
     });
+  }
+
+  String? _conversationTitle(AsyncValue<SettingsStore> storeAsync, String id) {
+    return storeAsync.maybeWhen(
+      data: (store) =>
+          store.loadConversations().firstWhere((c) => c.id == id).title,
+      orElse: () => null,
+    );
+  }
+
+  void _startNewConversation(BuildContext context, WidgetRef ref) {
+    final ok = ref.read(chatSessionProvider.notifier).newConversation();
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+      duration: const Duration(seconds: 2),
+      content: Text(ok ? '已开启新对话' : '任务进行中,请先停止当前任务'),
+    ));
+  }
+
+  void _showSessionSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _SessionSheet(),
+    );
   }
 
   @override
@@ -112,7 +138,14 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       body: SafeArea(
         child: Column(
           children: [
-            _Header(demoMode: demoMode),
+            _Header(
+              demoMode: demoMode,
+              conversationTitle: session.conversationId == null
+                  ? null
+                  : _conversationTitle(storeAsync, session.conversationId!),
+              onTitleTap: () => _showSessionSheet(context),
+              onNewConversation: () => _startNewConversation(context, ref),
+            ),
             if (!workspaceReady)
               _WorkspaceBanner(onPick: pickWorkspaceDirectory),
             if (demoMode) _DemoBanner(onTap: () => _send('演示补丁')),
@@ -146,9 +179,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 }
 
 class _Header extends ConsumerWidget {
-  const _Header({required this.demoMode});
+  const _Header({
+    required this.demoMode,
+    this.conversationTitle,
+    this.onTitleTap,
+    this.onNewConversation,
+  });
 
   final bool demoMode;
+  final String? conversationTitle;
+  final VoidCallback? onTitleTap;
+  final VoidCallback? onNewConversation;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -161,23 +202,48 @@ class _Header extends ConsumerWidget {
           const GradientAvatar(size: AvatarSize.medium, glow: true),
           const SizedBox(width: AppSpacing.md),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Shelly',
-                    style:
-                        TextStyle(fontSize: 16.5, fontWeight: FontWeight.w700)),
-                Text(
-                  demoMode ? '演示模式' : '随时待命的智能助手',
-                  style: TextStyle(fontSize: 12, color: semantic.textTertiary),
+            child: InkWell(
+              onTap: onTitleTap,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Shelly',
+                        style: TextStyle(
+                            fontSize: 16.5, fontWeight: FontWeight.w700)),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            conversationTitle ??
+                                (demoMode ? '演示模式' : '新对话'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: semantic.textTertiary),
+                          ),
+                        ),
+                        Icon(Icons.expand_more,
+                            size: 14, color: semantic.textTertiary),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
           IconButton(
+            tooltip: '会话列表',
+            onPressed: onTitleTap,
+            icon: Icon(Icons.toc_outlined,
+                size: 21, color: semantic.textSecondary),
+          ),
+          IconButton(
             tooltip: '开启新对话',
-            onPressed: () =>
-                ref.read(chatSessionProvider.notifier).newConversation(),
+            onPressed: onNewConversation,
             icon: Icon(Icons.add_comment_outlined,
                 size: 21, color: semantic.textSecondary),
           ),
@@ -185,6 +251,195 @@ class _Header extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Bottom sheet listing recent conversations: switch by tapping, manage
+/// (rename / pin / delete) through each row's overflow menu.
+class _SessionSheet extends ConsumerWidget {
+  const _SessionSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final storeAsync = ref.watch(settingsStoreProvider);
+    final conversations = storeAsync.maybeWhen(
+      data: (store) => sortConversations(store.loadConversations()).take(20).toList(),
+      orElse: () => const <ConversationSummary>[],
+    );
+    final currentId = ref.watch(chatSessionProvider).conversationId;
+    final busy = ref.watch(chatSessionProvider).isBusy;
+
+    return Container(
+      constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.72),
+      decoration: BoxDecoration(
+        color: semantic.card,
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: AppSpacing.sm),
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: semantic.border,
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg, AppSpacing.sm, AppSpacing.sm, AppSpacing.xs),
+            child: Row(
+              children: [
+                Text('会话',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: semantic.textPrimary)),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () {
+                          ref.read(chatSessionProvider.notifier).newConversation();
+                          Navigator.of(context).pop();
+                        },
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('新会话', style: TextStyle(fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
+          Flexible(
+            child: conversations.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(AppSpacing.xl),
+                    child: Text('发送第一条消息后会话会出现在这里',
+                        style: TextStyle(
+                            fontSize: 12.5, color: semantic.textTertiary)),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
+                    itemCount: conversations.length,
+                    itemBuilder: (context, index) {
+                      final conversation = conversations[index];
+                      final isCurrent = conversation.id == currentId;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: AppSpacing.xs),
+                        decoration: BoxDecoration(
+                          color: isCurrent
+                              ? AppColors.brandBlue.withValues(alpha: 0.10)
+                              : semantic.background,
+                          borderRadius: BorderRadius.circular(AppRadius.md),
+                        ),
+                        child: Material(
+                          type: MaterialType.transparency,
+                          child: ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.md),
+                          leading: isCurrent
+                              ? const Icon(Icons.check_circle_outline,
+                                  size: 18, color: AppColors.brandBlue)
+                              : Icon(Icons.forum_outlined,
+                                  size: 18, color: semantic.textTertiary),
+                          title: Text(
+                            (conversation.pinned ? '📌 ' : '') +
+                                conversation.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: isCurrent
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: semantic.textPrimary),
+                          ),
+                          subtitle: Text(
+                            '${conversation.messageCount} 条消息 · ${_relativeTime(conversation.updatedAt)}',
+                            style: TextStyle(
+                                fontSize: 11, color: semantic.textTertiary),
+                          ),
+                          trailing: PopupMenuButton<String>(
+                            itemBuilder: (menuContext) => [
+                              const PopupMenuItem(
+                                  value: 'rename', child: Text('重命名')),
+                              PopupMenuItem(
+                                  value: 'pin',
+                                  child: Text(conversation.pinned
+                                      ? '取消置顶'
+                                      : '置顶')),
+                              const PopupMenuItem(
+                                  value: 'delete', child: Text('删除')),
+                            ],
+                            onSelected: (action) => _handleAction(
+                              context,
+                              ref,
+                              action,
+                              conversation,
+                            ),
+                          ),
+                          onTap: () {
+                            if (busy) {
+                              Navigator.of(context).pop();
+                              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                                const SnackBar(
+                                    content: Text('任务进行中,请先停止当前任务')),
+                              );
+                              return;
+                            }
+                            if (!isCurrent) {
+                              ref
+                                  .read(chatSessionProvider.notifier)
+                                  .switchTo(conversation.id);
+                            }
+                            Navigator.of(context).pop();
+                          },
+                        ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleAction(
+    BuildContext context,
+    WidgetRef ref,
+    String action,
+    ConversationSummary conversation,
+  ) async {
+    final store = ref.read(settingsStoreProvider).valueOrNull;
+    if (store == null) return;
+    switch (action) {
+      case 'rename':
+        await renameConversationDialog(context, ref, store, conversation);
+        break;
+      case 'pin':
+        await toggleConversationPin(ref, store, conversation);
+        break;
+      case 'delete':
+        await deleteConversationDialog(context, ref, store, conversation);
+        break;
+    }
+  }
+}
+
+String _relativeTime(DateTime time) {
+  final difference = DateTime.now().difference(time);
+  if (difference.inMinutes < 1) return '刚刚';
+  if (difference.inHours < 1) return '${difference.inMinutes} 分钟前';
+  if (difference.inDays < 1) return '${difference.inHours} 小时前';
+  if (difference.inDays < 30) return '${difference.inDays} 天前';
+  return '${time.year}/${time.month}/${time.day}';
 }
 
 class _WorkspaceBanner extends StatelessWidget {
