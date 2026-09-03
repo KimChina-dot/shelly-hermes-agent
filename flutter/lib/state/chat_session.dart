@@ -13,6 +13,7 @@ import '../core/hermes/hermes_memory.dart';
 import '../core/hermes/knowledge_store.dart';
 import '../core/hermes/forgetting.dart';
 import '../core/hermes/knowledge_tool.dart';
+import '../core/error_messages.dart';
 import '../core/models.dart';
 import '../core/runtime/agent_context.dart';
 import '../core/runtime/agent_runtime.dart';
@@ -326,7 +327,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
             _finishAssistantEntry();
             final entries = [
               ...state.entries,
-              ErrorEntry('任务失败:${_brief(status.error)}'),
+              ErrorEntry(humanizeAgentError(status.error)),
             ];
             state = state.copyWith(
               entries: entries,
@@ -485,10 +486,6 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     return flat.length <= 24 ? flat : '${flat.substring(0, 24)}…';
   }
 
-  static String _brief(Object? error) {
-    final text = error?.toString() ?? '未知错误';
-    return text.length <= 120 ? text : '${text.substring(0, 120)}…';
-  }
 }
 
 /// Bridges the engine's approval requests to the UI layer. The approval
