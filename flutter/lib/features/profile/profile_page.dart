@@ -9,6 +9,7 @@ import '../../core/gateway/providers.dart';
 import '../../design/components/buttons.dart';
 import '../../design/tokens.dart';
 import '../../features/memory/memory_page.dart';
+import 'profile_editor_sheet.dart';
 import '../../platform/platform_workspace.dart';
 import '../../state/chat_session.dart'
     show workspaceAuthorizedProvider, workspaceProvider;
@@ -304,11 +305,31 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                 ],
                               ),
                             ),
+                            IconButton(
+                              tooltip: profile.isPreset ? '复制并编辑' : '编辑档案',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => showProfileEditor(
+                                  context, ref,
+                                  profile: profile),
+                              icon: Icon(
+                                profile.isPreset
+                                    ? Icons.copy_rounded
+                                    : Icons.edit_outlined,
+                                size: 17,
+                                color: semantic.textTertiary,
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     ),
                   ),
+                TextButton.icon(
+                  onPressed: () => showProfileEditor(context, ref),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('新建档案',
+                      style: TextStyle(fontSize: 12.5)),
+                ),
               ],
             ),
           ),

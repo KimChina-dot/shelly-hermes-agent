@@ -323,4 +323,73 @@ void main() {
         .value!;
     expect(store.loadMemorySettings().maxLedgerTokens, isNot(16000));
   });
+
+  testWidgets('profile page creates a custom profile', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('新建档案'));
+    await tester.pumpAndSettle();
+
+    final nameField = find.byWidgetPredicate((w) =>
+        w is TextField && (w.decoration?.hintText?.startsWith('例如') ?? false));
+    await tester.enterText(nameField, '深度调试助手');
+    await tester.pump();
+
+    await tester.scrollUntilVisible(
+      find.text('保存'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    // The sheet closes; the new profile shows up in the list and is active.
+    expect(find.text('深度调试助手'), findsOneWidget);
+    final container = ProviderScope.containerOf(
+        tester.element(find.text('深度调试助手')));
+    final store = container.read(settingsStoreProvider).value!;
+    expect(store.activeProfile().name, '深度调试助手');
+  });
+
+  testWidgets('editing a preset copies it instead of mutating it',
+      (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+
+    // Tap the copy affordance on the 谨慎工程师 preset row.
+    final row = find.ancestor(
+      of: find.text('谨慎工程师'),
+      matching: find.byType(InkWell),
+    ).first;
+    await tester.tap(find.descendant(
+      of: row,
+      matching: find.byIcon(Icons.copy_rounded),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('保存'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+        tester.element(find.text('谨慎工程师(自定义)')));
+    final store = container.read(settingsStoreProvider).value!;
+    // The copy is active and the original preset list is intact.
+    expect(store.activeProfile().name, '谨慎工程师(自定义)');
+    expect(
+      store.loadProfiles().where((p) => p.id == 'careful').length,
+      1,
+    );
+  });
 }
