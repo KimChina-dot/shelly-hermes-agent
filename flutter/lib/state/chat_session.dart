@@ -217,6 +217,33 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     return const TaskRecovery().scan(store).firstOrNull;
   }
 
+  /// Re-runs the interrupted task from its persisted checkpoint; the unified
+  /// runtime reports the `recovering` state while it catches up.
+  bool recoverInterruptedTask() {
+    final store = _store;
+    if (store == null || state.isBusy) return false;
+    final candidate = const TaskRecovery().scan(store).firstOrNull;
+    if (candidate == null) return false;
+    state = ChatSessionState(
+      phase: SessionPhase.working,
+      conversationId: candidate.record.conversationId,
+      entries: _entriesFromCheckpoint(candidate.checkpoint)
+        ..add(AssistantEntry(streaming: true)),
+    );
+    _startTask(
+      initialMessages: candidate.checkpoint.messages,
+      resumeFrom: candidate.checkpoint,
+    );
+    return true;
+  }
+
+  /// Drops the interrupted-task record without rerunning it.
+  Future<void> dismissInterruptedTask() async {
+    final store = _store;
+    if (store == null) return;
+    await store.clearActiveTask();
+  }
+
   void newConversation() {
     if (state.isBusy) return;
     state = const ChatSessionState();

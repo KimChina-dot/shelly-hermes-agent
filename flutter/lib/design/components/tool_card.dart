@@ -9,9 +9,13 @@ import '../tokens.dart';
 /// Inline tool execution card shown in the chat transcript: status pill,
 /// expandable argument/result detail, and a pulsing indicator while running.
 class ToolCard extends StatefulWidget {
-  const ToolCard({super.key, required this.entry});
+  const ToolCard({super.key, required this.entry, this.isPlugin = false});
 
   final ToolEntry entry;
+
+  /// True when the tool comes from a DSH plugin rather than the core
+  /// workspace set; renders a small 插件 badge next to the title.
+  final bool isPlugin;
 
   @override
   State<ToolCard> createState() => _ToolCardState();
@@ -91,6 +95,21 @@ class _ToolCardState extends State<ToolCard>
                   ),
                 ),
               ),
+              if (widget.isPlugin) ...[
+                const SizedBox(width: AppSpacing.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.brandViolet.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                  child: Text('插件',
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.brandViolet)),
+                ),
+              ],
               const SizedBox(width: AppSpacing.sm),
               _StatusPill(
                 status: widget.entry.status,

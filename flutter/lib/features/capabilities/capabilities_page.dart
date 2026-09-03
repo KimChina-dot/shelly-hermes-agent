@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/dsh/installer.dart';
 import '../../core/dsh/plugin.dart';
+import '../../core/dsh/tool_registry.dart' show DshTrust;
 import '../../core/tools/registry.dart';
 import '../../design/components/risk_chip.dart';
 import '../../design/tokens.dart';
@@ -63,6 +64,8 @@ class CapabilitiesPage extends ConsumerWidget {
           }),
           const SizedBox(height: AppSpacing.lg),
           const _PluginSection(),
+          const SizedBox(height: AppSpacing.lg),
+          const _TrustSection(),
           const SizedBox(height: AppSpacing.lg),
           Container(
             padding: const EdgeInsets.all(AppSpacing.md),
@@ -281,6 +284,124 @@ class _PluginSectionState extends ConsumerState<_PluginSection> {
         ),
         const SizedBox(height: AppSpacing.lg),
       ],
+    );
+  }
+}
+
+/// Per-plugin-tool trust posture (PHASE 14 policy, surfaced here for
+/// explainability): undecided tools show their fail-closed default.
+class _TrustSection extends ConsumerWidget {
+  const _TrustSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final registry = ref.watch(dshRegistryProvider);
+    final trust = ref.watch(dshTrustProvider);
+    final tools = [
+      for (final plugin in registry.listEnabled())
+        for (final tool in plugin.tools) tool.decl,
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('插件工具信任',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: semantic.textTertiary)),
+        const SizedBox(height: AppSpacing.sm),
+        if (tools.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: semantic.card,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(color: semantic.border),
+            ),
+            child: Text(
+              '尚未启用任何插件工具。安装插件后,每个工具的信任状态会在这里展示。',
+              style:
+                  TextStyle(fontSize: 12, color: semantic.textTertiary),
+            ),
+          ),
+        for (final decl in tools)
+          Container(
+            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: semantic.card,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(color: semantic.border),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(decl.name,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              fontFamily: 'monospace',
+                              color: semantic.textPrimary)),
+                      const SizedBox(height: 2),
+                      Text(decl.description,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: semantic.textTertiary)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                RiskChip(
+                  level: switch (decl.risk) {
+                    'high' => RiskLevel.high,
+                    'medium' => RiskLevel.medium,
+                    _ => RiskLevel.low,
+                  },
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                _TrustBadge(trust: trust.trustFor(decl.name)),
+              ],
+            ),
+          ),
+        if (tools.isNotEmpty)
+          Text(
+            '未记录决定的工具默认封锁;首次调用转为询问,选择"始终允许"后免确认执行。',
+            style: TextStyle(
+                fontSize: 11.5, color: semantic.textTertiary),
+          ),
+      ],
+    );
+  }
+}
+
+class _TrustBadge extends StatelessWidget {
+  const _TrustBadge({required this.trust});
+
+  final DshTrust trust;
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, label) = switch (trust) {
+      DshTrust.allowed => (AppColors.success, '已信任'),
+      DshTrust.ask => (AppColors.warning, '首次询问'),
+      DshTrust.blocked => (AppColors.danger, '已封锁'),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 10.5, fontWeight: FontWeight.w600, color: color)),
     );
   }
 }

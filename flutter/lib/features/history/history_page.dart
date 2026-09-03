@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/task_recovery.dart';
 import '../../design/components/empty_state.dart';
 import '../../design/tokens.dart';
 import '../../state/chat_session.dart';
@@ -22,6 +23,13 @@ class HistoryPage extends ConsumerWidget {
       orElse: () => const <ConversationSummary>[],
     );
 
+    // A task that was running when the previous process died; surfaced as a
+    // dedicated banner so it can be re-run from its checkpoint or dropped.
+    final interrupted = storeAsync.maybeWhen(
+      data: (store) => const TaskRecovery().scan(store).firstOrNull,
+      orElse: () => null,
+    );
+
     return Scaffold(
       backgroundColor: semantic.background,
       appBar: AppBar(
@@ -40,7 +48,7 @@ class HistoryPage extends ConsumerWidget {
             ),
         ],
       ),
-      body: conversations.isEmpty
+      body: conversations.isEmpty && interrupted == null
           ? const EmptyState(
               icon: Icons.history_rounded,
               title: '还没有历史对话',
@@ -51,9 +59,14 @@ class HistoryPage extends ConsumerWidget {
                   ref.invalidate(settingsStoreProvider),
               child: ListView.builder(
                 padding: const EdgeInsets.all(AppSpacing.lg),
-                itemCount: conversations.length,
+                itemCount:
+                    conversations.length + (interrupted == null ? 0 : 1),
                 itemBuilder: (context, index) {
-                  final conversation = conversations[index];
+                  if (interrupted != null && index == 0) {
+                    return _InterruptedBanner(candidate: interrupted);
+                  }
+                  final conversation =
+                      conversations[interrupted == null ? index : index - 1];
                   return _ConversationTile(conversation: conversation);
                 },
               ),
@@ -83,6 +96,92 @@ class HistoryPage extends ConsumerWidget {
             },
             child: const Text('清空',
                 style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Banner for a task interrupted by process death: rerun it from the saved
+/// checkpoint (unified runtime `recovering` state) or drop the record.
+class _InterruptedBanner extends ConsumerWidget {
+  const _InterruptedBanner({required this.candidate});
+
+  final RecoveryCandidate candidate;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.restore_outlined,
+                  size: 18, color: AppColors.warning),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text('有一个任务在后台被中断',
+                    style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: semantic.textPrimary)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '开始于 ${_formatTime(candidate.record.startedAt)},'
+            '可从上次检查点继续执行。',
+            style: TextStyle(fontSize: 12, color: semantic.textSecondary),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              FilledButton.icon(
+                onPressed: () {
+                  final resumed = ref
+                      .read(chatSessionProvider.notifier)
+                      .recoverInterruptedTask();
+                  if (resumed) {
+                    ref.read(tabIndexProvider.notifier).state = 0;
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('当前有任务进行中,无法恢复')),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                label: const Text('恢复任务',
+                    style: TextStyle(fontSize: 12.5)),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: AppColors.warning,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              TextButton(
+                onPressed: () async {
+                  await ref
+                      .read(chatSessionProvider.notifier)
+                      .dismissInterruptedTask();
+                  ref.invalidate(settingsStoreProvider);
+                },
+                child: Text('忽略',
+                    style: TextStyle(
+                        fontSize: 12.5, color: semantic.textTertiary)),
+              ),
+            ],
           ),
         ],
       ),

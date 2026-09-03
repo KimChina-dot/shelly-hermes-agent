@@ -32,15 +32,27 @@ jobs:
         run: flutter test
       - name: debug APK
         run: flutter build apk --debug
+      - name: release APK
+        # Signing falls back to the debug key when android/key.properties is
+        # absent (not committed) — see flutter/android/app/build.gradle.kts.
+        run: flutter build apk --release
       - name: Generate checksums
         run: |
           cd build/app/outputs/flutter-apk
-          sha256sum app-debug.apk > SHA256SUMS
+          sha256sum app-debug.apk app-release.apk > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: shelly-hermes-flutter-debug
           path: |
             flutter/build/app/outputs/flutter-apk/app-debug.apk
+            flutter/build/app/outputs/flutter-apk/SHA256SUMS
+            version-manifest.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shelly-hermes-flutter-release
+          path: |
+            flutter/build/app/outputs/flutter-apk/app-release.apk
             flutter/build/app/outputs/flutter-apk/SHA256SUMS
             version-manifest.json
           if-no-files-found: error

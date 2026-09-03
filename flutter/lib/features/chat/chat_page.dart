@@ -9,6 +9,7 @@ import '../../design/components/skeleton.dart';
 import '../../design/components/tool_card.dart';
 import '../../design/tokens.dart';
 import '../../state/chat_session.dart';
+import '../../state/dsh_provider.dart';
 import '../../state/settings_store.dart';
 import '../approval/approval_sheet.dart';
 
@@ -105,6 +106,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   : _Transcript(
                       entries: session.entries,
                       controller: _scroll,
+                      pluginToolNames: ref
+                          .watch(dshToolsProvider)
+                          .specs
+                          .map((spec) => spec.name)
+                          .toSet(),
                     ),
             ),
             _Composer(
@@ -296,10 +302,18 @@ class _Greeting extends StatelessWidget {
 }
 
 class _Transcript extends StatelessWidget {
-  const _Transcript({required this.entries, required this.controller});
+  const _Transcript({
+    required this.entries,
+    required this.controller,
+    this.pluginToolNames = const {},
+  });
 
   final List<ChatEntry> entries;
   final ScrollController controller;
+
+  /// DSH tool names currently registered; entries hitting these render with
+  /// the 插件 badge so users can tell plugin calls from core tool calls.
+  final Set<String> pluginToolNames;
 
   @override
   Widget build(BuildContext context) {
@@ -313,7 +327,10 @@ class _Transcript extends StatelessWidget {
         return switch (entry) {
           UserEntry() => _UserBubble(text: entry.text),
           AssistantEntry() => _AssistantMessage(entry: entry),
-          ToolEntry() => ToolCard(entry: entry),
+          ToolEntry() => ToolCard(
+              entry: entry,
+              isPlugin: pluginToolNames.contains(entry.call.name),
+            ),
           ErrorEntry() => _ErrorBubble(text: entry.text),
         };
       },
