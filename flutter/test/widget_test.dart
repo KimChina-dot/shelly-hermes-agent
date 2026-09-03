@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shelly_hermes/app.dart';
 import 'package:shelly_hermes/core/models.dart';
+import 'package:shelly_hermes/features/memory/memory_settings_page.dart';
 import 'package:shelly_hermes/core/task_recovery.dart';
 import 'package:shelly_hermes/design/components/tool_card.dart';
 import 'package:shelly_hermes/design/theme.dart';
@@ -274,5 +275,52 @@ void main() {
     final applied = container.read(settingsStoreProvider).value!;
     expect(applied.modelConfig.model, 'deepseek-chat');
     expect(find.text('deepseek-chat'), findsOneWidget);
+  });
+
+  testWidgets('memory page runs manual upkeep and opens memory settings',
+      (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('记忆(Hermes)'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('记忆(Hermes)'));
+    await tester.pumpAndSettle();
+
+    // The state card shows the raised default budget.
+    expect(find.textContaining('/ 16000 token'), findsOneWidget);
+
+    // Manual upkeep runs and shows its report even on an empty ledger.
+    await tester.tap(find.text('立即整理'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('整理完成'), findsOneWidget);
+
+    // Settings page: adjust the ledger budget and save.
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+    expect(find.text('存储预算'), findsOneWidget);
+    expect(find.text('召回预算'), findsOneWidget);
+
+    await tester.drag(find.byType(Slider).first, const Offset(120, 0));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('保存'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已保存'), findsOneWidget);
+    final store = ProviderScope.containerOf(
+            tester.element(find.byType(MemorySettingsPage)))
+        .read(settingsStoreProvider)
+        .value!;
+    expect(store.loadMemorySettings().maxLedgerTokens, isNot(16000));
   });
 }
