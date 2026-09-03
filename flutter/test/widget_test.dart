@@ -154,6 +154,27 @@ void main() {
     expect(find.text('Ollama(本机)'), findsOneWidget);
   });
 
+  testWidgets('profile tab opens the Hermes memory page', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('记忆(Hermes)'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('记忆(Hermes)'));
+    await tester.pumpAndSettle();
+
+    // Fresh install: the ledger exists but has no entries yet.
+    expect(find.text('账本条目'), findsOneWidget);
+    expect(find.textContaining('还没有记住任何东西'), findsOneWidget);
+    expect(find.textContaining('遗忘规则'), findsOneWidget);
+  });
+
   testWidgets('profile tab switches agent profile on tap', (tester) async {
     await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
     await tester.pumpAndSettle();

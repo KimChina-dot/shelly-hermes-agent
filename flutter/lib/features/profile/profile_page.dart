@@ -7,6 +7,7 @@ import '../../core/gateway/model_discovery.dart';
 import '../../core/gateway/providers.dart';
 import '../../design/components/buttons.dart';
 import '../../design/tokens.dart';
+import '../../features/memory/memory_page.dart';
 import '../../platform/platform_workspace.dart';
 
 import '../../state/settings_store.dart';
@@ -412,6 +413,38 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 onSelectionChanged: (selection) => ref
                     .read(themeModeProvider.notifier)
                     .state = selection.first,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          _SectionHeader('记忆', semantic),
+          Container(
+            decoration: BoxDecoration(
+              color: semantic.card,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(color: semantic.border),
+            ),
+            child: Material(
+              type: MaterialType.transparency,
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+                leading: const Icon(Icons.psychology_outlined,
+                    size: 20, color: AppColors.brandViolet),
+                title: Text('记忆(Hermes)',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: semantic.textPrimary)),
+                subtitle: Text('查看知识账本与遗忘规则',
+                    style:
+                        TextStyle(fontSize: 12, color: semantic.textTertiary)),
+                trailing: Icon(Icons.chevron_right,
+                    size: 18, color: semantic.textTertiary),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                      builder: (_) => const MemoryPage()),
+                ),
               ),
             ),
           ),
