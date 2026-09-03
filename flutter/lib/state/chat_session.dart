@@ -11,6 +11,7 @@ import '../core/approval_broker.dart';
 import '../core/gateway/openai_gateway.dart';
 import '../core/hermes/hermes_memory.dart';
 import '../core/hermes/knowledge_store.dart';
+import '../core/hermes/forgetting.dart';
 import '../core/hermes/knowledge_tool.dart';
 import '../core/models.dart';
 import '../core/runtime/agent_context.dart';
@@ -535,12 +536,15 @@ class _TaskRunner implements AgentTaskRunner {
   }) async {
     final config = _store.loadModelConfig();
     final profile = _store.activeProfile();
+    final memorySettings = _store.loadMemorySettings();
     final workspace = _workspaceManager.workspace;
     final project = await _workspaceManager.detectProject();
     final workspaceTools = WorkspaceToolRegistry(workspace: workspace);
     final knowledgeStore = HermesKnowledgeStore(
       workspace: workspace,
       project: project.name,
+      maxRecallEntries: memorySettings.recallEntries,
+      maxRecallTokens: memorySettings.recallTokens,
     );
     final shellRunner = createProcessRunner();
     final registry = CompositeToolRegistry([
@@ -571,6 +575,13 @@ class _TaskRunner implements AgentTaskRunner {
         hermes: HermesMemory(
           store: knowledgeStore,
           autoCapture: config.isComplete && profile.autoCapture,
+          maxAutoEntries: memorySettings.maxAutoEntries,
+          forgettingPolicy: ForgettingPolicy(
+            maxLedgerTokens: memorySettings.maxLedgerTokens,
+            activeDays: memorySettings.activeDays,
+            coolingDays: memorySettings.coolingDays,
+            frequencyFloor: memorySettings.frequencyFloor,
+          ),
         ),
         limits: AgentLimits(
           maxRounds: profile.maxRounds,

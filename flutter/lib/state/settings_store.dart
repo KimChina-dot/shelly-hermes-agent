@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/agent_profile.dart';
+import '../core/hermes/memory_settings.dart';
 import '../core/models.dart';
 import '../core/task_recovery.dart';
 import '../platform/secure_box.dart';
@@ -117,6 +118,7 @@ class SettingsStore implements TaskRecoveryStore {
   static const _profilesKey = 'shelly.agent.profiles';
   static const _activeProfileKey = 'shelly.agent.profile.active';
   static const _activeTaskKey = 'shelly.task.active';
+  static const _memorySettingsKey = 'shelly.memory.settings';
 
   /// Convenience accessor for reactive UI reads.
   ModelConfig get modelConfig => loadModelConfig();
@@ -261,6 +263,24 @@ class SettingsStore implements TaskRecoveryStore {
   Future<void> saveProfiles(List<AgentProfile> profiles) => _prefs.setString(
         _profilesKey,
         jsonEncode([for (final p in profiles) p.toJson()]),
+      );
+
+  /// Hermes memory knobs (V2.1 PHASE 26); corrupt records fall back to
+  /// the MemorySettings defaults.
+  MemorySettings loadMemorySettings() {
+    final raw = _prefs.getString(_memorySettingsKey);
+    if (raw == null) return const MemorySettings();
+    try {
+      return MemorySettings.fromJson(
+          jsonDecode(raw) as Map<String, dynamic>);
+    } on FormatException {
+      return const MemorySettings();
+    }
+  }
+
+  Future<void> saveMemorySettings(MemorySettings settings) => _prefs.setString(
+        _memorySettingsKey,
+        jsonEncode(settings.toJson()),
       );
 
   String? loadActiveProfileId() => _prefs.getString(_activeProfileKey);
