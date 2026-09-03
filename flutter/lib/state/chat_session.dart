@@ -390,6 +390,14 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     return entries;
   }
 
+  /// The model the current config will use, recorded on the conversation
+  /// summary for reference. The config is re-read per task, so a switch
+  /// applies from the next send.
+  String? _modelIdFrom(SettingsStore store) {
+    final config = store.loadModelConfig();
+    return config.isComplete ? config.model : null;
+  }
+
   void _persistConversation() {
     final store = _store;
     final conversationId = state.conversationId;
@@ -406,6 +414,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
           title: _titleFrom(userEntries.first.text),
           updatedAt: DateTime.now(),
           messageCount: checkpoint?.messages.length ?? state.entries.length,
+          modelId: _modelIdFrom(store),
         ),
       );
     unawaited(store.saveConversations(summaries.take(100).toList()));

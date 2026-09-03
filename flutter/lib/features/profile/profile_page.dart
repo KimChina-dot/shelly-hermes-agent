@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app.dart' show themeModeProvider;
 import '../../core/agent_profile.dart';
 import '../../core/gateway/model_discovery.dart';
+import '../../core/gateway/openai_gateway.dart' show GatewayException;
 import '../../core/gateway/providers.dart';
 import '../../design/components/buttons.dart';
 import '../../design/tokens.dart';
@@ -33,6 +34,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   bool _discovering = false;
   String? _workspaceNote;
   String? _discoveryNote;
+  bool _testing = false;
+  String? _testNote;
   String _providerId = 'custom';
   String? _activeProfileId;
 
@@ -88,6 +91,37 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     setState(() {
       _workspaceNote = uri == null ? '未选择目录' : '已授权 SAF 工作区目录';
     });
+  }
+
+  Future<void> _testConnection() async {
+    final baseUrl = _baseUrl.text.trim();
+    final model = _model.text.trim();
+    if (baseUrl.isEmpty || model.isEmpty) {
+      setState(() => _testNote = '请先填写接口地址和模型名称');
+      return;
+    }
+    setState(() {
+      _testing = true;
+      _testNote = null;
+    });
+    try {
+      final latency = await ModelDiscovery().testConnection(
+        baseUrl: baseUrl,
+        model: model,
+        apiKey: _apiKey.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _testing = false;
+        _testNote = '连接正常 · ${latency.inMilliseconds} ms';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _testing = false;
+        _testNote = _humanizeGatewayError(error);
+      });
+    }
   }
 
   Future<void> _save() async {
@@ -358,13 +392,34 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
+                    OutlinedButton.icon(
+                      onPressed: _testing ? null : _testConnection,
+                      icon: _testing
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.network_check_rounded,
+                              size: 16),
+                      label: const Text('测试连接',
+                          style: TextStyle(fontSize: 12.5)),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        side: BorderSide(color: semantic.border),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
-                        _discoveryNote ?? '',
+                        _testNote ?? _discoveryNote ?? '',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 11, color: AppColors.danger),
+                            fontSize: 11,
+                            color: (_testNote?.startsWith('连接正常') ?? false)
+                                ? AppColors.success
+                                : AppColors.danger),
                       ),
                     ),
                   ],
@@ -593,4 +648,24 @@ class _Field extends StatelessWidget {
       ],
     );
   }
+}
+
+
+/// Humanizes gateway errors for the connection test; the full mapping
+/// table lands in PHASE 28 (lib/core/error_messages.dart).
+String _humanizeGatewayError(Object error) {
+  if (error is GatewayException) {
+    switch (error.statusCode) {
+      case 401:
+        return '密钥无效,请检查 API Key';
+      case 404:
+        return '接口地址不正确,通常以 /v1 结尾';
+      case 429:
+        return '模型限流中,请稍后重试';
+      case 403:
+        return '没有访问权限(403)';
+    }
+    return '连接失败(${error.statusCode ?? '未知错误'})';
+  }
+  return '连接失败:$error';
 }

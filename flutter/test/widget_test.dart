@@ -234,4 +234,45 @@ void main() {
     expect(find.text('会话'), findsNothing);
     expect(find.text('修复登录页崩溃'), findsOneWidget);
   });
+
+  testWidgets('model chip opens the picker and applies a model config',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final store = await container.read(settingsStoreProvider.future);
+    // A key alone leaves the config incomplete, so the chip still offers
+    // model selection, but applying a model then completes the config.
+    await store.saveModelConfig(const ModelConfig(apiKey: 'sk-test'));
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const ShellyApp()),
+    );
+    await tester.pumpAndSettle();
+
+    // Fresh install: the chip offers model selection.
+    expect(find.text('选择模型'), findsOneWidget);
+
+    await tester.tap(find.text('选择模型'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('切换模型'), findsOneWidget);
+
+    // The chat composer is also a TextField — locate the sheet fields by
+    // their hint texts instead of tree order.
+    final baseUrlField = find.byWidgetPredicate((w) =>
+        w is TextField && (w.decoration?.hintText?.startsWith('https') ?? false));
+    final modelField = find.byWidgetPredicate((w) =>
+        w is TextField && (w.decoration?.hintText?.contains('deepseek-chat') ?? false));
+    await tester.enterText(baseUrlField, 'https://api.deepseek.com/v1');
+    await tester.enterText(modelField, 'deepseek-chat');
+    await tester.pump();
+
+    await tester.tap(find.text('使用此模型'));
+    await tester.pumpAndSettle();
+
+    // The sheet closes and the chip reflects the applied model.
+    final applied = container.read(settingsStoreProvider).value!;
+    expect(applied.modelConfig.model, 'deepseek-chat');
+    expect(find.text('deepseek-chat'), findsOneWidget);
+  });
 }
