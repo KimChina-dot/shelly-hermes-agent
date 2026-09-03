@@ -1,0 +1,33 @@
+name: shelly_hermes
+description: "Shelly Hermes — Android agent workbench (Flutter 1.0)."
+publish_to: 'none'
+
+version: 2.0.0+1
+
+environment:
+  sdk: ^3.13.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management for chat streams, task queues and settings.
+  flutter_riverpod: ^2.6.1
+
+  # HTTP client for the OpenAI-compatible model gateway.
+  http: ^1.2.0
+
+  # Pure-Dart syntax highlighting used by the code block component.
+  highlight: ^0.7.0
+  shared_preferences: ^2.5.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

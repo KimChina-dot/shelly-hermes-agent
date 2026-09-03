@@ -15,5 +15,14 @@ data class ProcessResult(val exitCode: Int, val stdout: String, val stderr: Stri
 data class HostNotification(val eventId: String, val kind: Kind, val title: String, val progress: Int? = null) { enum class Kind { PROGRESS, COMPLETION, ERROR } }
 
 object LogicalPath {
-    fun validate(value: String): String { require(value.isNotBlank() && !value.startsWith('/') && '\u0000' !in value); require(value.replace('\\', '/').split('/').none { it == ".." }); return value }
+    fun validate(value: String): String {
+        require(value.isNotBlank() && '\u0000' !in value) { "Path must be non-empty and contain no NUL" }
+        val normalized = value.replace('\\', '/')
+        require(!normalized.startsWith('/') && !WINDOWS_ABSOLUTE.matches(normalized)) { "Absolute paths are forbidden" }
+        val segments = normalized.split('/')
+        require(segments.none { it.isEmpty() || it == "." || it == ".." }) { "Path must stay within the selected root" }
+        return segments.joinToString("/")
+    }
+
+    private val WINDOWS_ABSOLUTE = Regex("^[A-Za-z]:/.*")
 }

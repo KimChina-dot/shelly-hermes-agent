@@ -1,5 +1,6 @@
 node_modules/
 dist/
+artifacts/
 coverage/
 release/
 *.log
@@ -16,3 +17,5 @@ local.properties
 *.jks
 *.keystore
 keystore.properties
+
+.preview-venv/

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="surface_background">#FFF7F7F5</color>
+    <color name="surface_glass">#FFFFFFFF</color>
+    <color name="surface_glass_pressed">#FFE8E9E5</color>
+    <color name="surface_subtle">#FFF0F1ED</color>
+    <color name="border_subtle">#FFD8DAD4</color>
+    <color name="text_primary">#FF20211F</color>
+    <color name="text_secondary">#FF666962</color>
+    <color name="text_tertiary">#FF898C84</color>
+    <color name="accent_primary">#FF146C5A</color>
+    <color name="accent_primary_pressed">#FF0E5749</color>
+    <color name="accent_subtle">#FFE1F0EB</color>
+    <color name="accent_foreground">#FFFFFFFF</color>
+    <color name="status_success">#FF258A68</color>
+    <color name="status_warning">#FFC17A17</color>
+    <color name="status_error">#FFB3261E</color>
+    <color name="risk_background">#FFFFF2F0</color>
+    <color name="divider_subtle">#FFD8DAD4</color>
+    <color name="surface_container">#FFF4F5F1</color>
+    <color name="surface_container_high">#FFECEEE9</color>
+    <color name="surface_tint">#FF146C5A</color>
+    <color name="status_success_bg">#FFE2F3EC</color>
+    <color name="status_warning_bg">#FFFBF0DC</color>
+    <color name="status_error_bg">#FFFBE8E6</color>
+    <color name="status_neutral_bg">#FFF0F1ED</color>
+    <color name="text_on_accent">#FFFFFFFF</color>
+    <color name="overlay_scrim">#66000000</color>
+</resources>

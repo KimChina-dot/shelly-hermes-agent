@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CodingAgent, AgentLimitError } from "../src/agent/index.js";
 import type { ChatCompletionRequest, ChatModelPort } from "../src/agent/index.js";
+import { SessionEventLog } from "../src/session/index.js";
 
 class QueueModel implements ChatModelPort {
   readonly requests: ChatCompletionRequest[] = [];
@@ -61,4 +62,28 @@ test("enforces the tool-call budget", async () => {
     async execute() { return {}; },
   }]);
   await assert.rejects(agent.run("开始", { systemPrompt: "system", maxToolCalls: 0 }), AgentLimitError);
+});
+
+test("records every model-visible message in the session event log", async () => {
+  const model = new QueueModel([
+    {
+      message: {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ id: "call-1", name: "echo", arguments: '{"text":"hello"}' }],
+      },
+    },
+    { message: { role: "assistant", content: "done" } },
+  ]);
+  const log = new SessionEventLog("agent-session");
+  const agent = new CodingAgent(model, [{
+    definition: { name: "echo", description: "echo", inputSchema: { type: "object" } },
+    async execute(input) { return input; },
+  }]);
+
+  const result = await agent.run("start", { systemPrompt: "system", sessionLog: log });
+
+  assert.deepEqual(log.deriveMessages(), result.messages);
+  assert.equal(log.replay().at(-1)?.event.type, "turn_end");
+  assert.equal(log.replay().filter(({ event }) => event.type === "step_start").length, 2);
 });

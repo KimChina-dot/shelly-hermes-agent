@@ -14,6 +14,13 @@
       "properties": { "core": {"type":"string"}, "windows":{"type":"string"}, "androidBridge":{"type":"string"} }
     },
     "runtime": { "type":"object", "required":["node"], "properties":{"node":{"type":"string"}}, "additionalProperties":false },
+    "flutter": {
+      "type":"object", "additionalProperties":false,
+      "required":["sdk","dart","applicationId"],
+      "properties": {
+        "sdk":{"type":"string"}, "dart":{"type":"string"}, "applicationId":{"type":"string"}
+      }
+    },
     "android": {
       "type":"object", "additionalProperties":false,
       "required":["status","applicationId","versionCode","minSdk"],

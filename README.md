@@ -1,6 +1,14 @@
 # Shelly Hermes Agent
 
-面向 Android 与 Windows 的极简编程 Agent 核心。
+面向 Android 的 2.0 Agent 成品(Flutter + Dart):Shelly 执行、Hermes 记忆、DSH 能力三系统融合;附 Windows CLI 与 TypeScript 核心遗产。
+
+## Flutter 2.0 Android App(当前主线)
+
+- 位置:`flutter/`(org `dev.shelly`,applicationId `dev.shelly.shelly_hermes`)。
+- Dart 重写 Agent 核心:流式模型网关、工具策略引擎、逐 hunk 人工审批、checkpoint 恢复、统一任务运行时(排队/暂停/恢复/后台恢复)。
+- V2.0:DSH 插件系统(manifest 生命周期/信任策略/安装器)、Hermes 记忆(知识账本/反思/遗忘,纯文本无向量库)、Provider 预设与模型发现、Agent 档案人设。
+- 打包:**完全走 git 云端**——GitHub Actions `flutter.yml` 随 push/PR 构建 debug + release APK 并上传 artifact(release 无 key.properties 时回退 debug 签名);签名密钥不入库。
+- 状态:`version-manifest.json` 2.0.0 · android.status=releasable · 161/161 测试全绿。
 
 ## 设计约束
 
@@ -22,9 +30,9 @@ Copy-Item .env.example .env
 
 ## 交付与支持矩阵
 
-- 核心：Linux、Windows、macOS；Node.js 20/22。
-- Windows：Node CLI 专项 CI 与可校验目录产物。
-- Android：当前仅有 TypeScript bridge/契约测试，**尚不能视为 APK 或实机交付**。
+- 核心(TypeScript legacy):Linux、Windows、macOS;Node.js 20/22。
+- Windows:Node CLI 专项 CI 与可校验目录产物。
+- Android:**Flutter 1.0 已交付可安装 APK**(debug/release,自签名),CI `flutter.yml` 随每 push 构建并上传 debug 产物。
 
 交付文档：
 

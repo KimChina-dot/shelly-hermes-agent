@@ -11,6 +11,7 @@ export * from "./diff/index.js";
 export * from "./policy/index.js";
 export * from "./tools/index.js";
 export * from "./checkpoint/index.js";
+export * from "./session/index.js";
 export * from "./kernel/index.js";
 export * from "./adapters/node/index.js";
 

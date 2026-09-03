@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/surface_background"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/space_24"
+        android:paddingTop="@dimen/space_24"
+        android:paddingEnd="@dimen/space_24"
+        android:paddingBottom="@dimen/space_24">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="能力"
+            android:textAppearance="@style/TextAppearance.Luma.Title" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_8"
+            android:text="Luma 当前可使用的模型、工具和权限"
+            android:textAppearance="@style/TextAppearance.Luma.Caption" />
+
+        <LinearLayout
+            android:id="@+id/modelCapability"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_24"
+            android:background="@drawable/bg_surface_card"
+            android:orientation="vertical"
+            android:padding="@dimen/space_16">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="模型"
+                    android:textAppearance="@style/TextAppearance.Luma.SectionTitle" />
+
+                <TextView
+                    android:id="@+id/modelCapabilityStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_chip_warning"
+                    android:paddingStart="@dimen/space_8"
+                    android:paddingTop="@dimen/space_4"
+                    android:paddingEnd="@dimen/space_8"
+                    android:paddingBottom="@dimen/space_4"
+                    android:text="未配置"
+                    android:textSize="@dimen/type_micro"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/modelCapabilityBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_8"
+            android:lineSpacingExtra="@dimen/line_spacing_normal"
+                android:textAppearance="@style/TextAppearance.Luma.Body"
+                android:textColor="@color/text_secondary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/workspaceCapability"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_12"
+            android:background="@drawable/bg_surface_card"
+            android:orientation="vertical"
+            android:padding="@dimen/space_16">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="工作区"
+                    android:textAppearance="@style/TextAppearance.Luma.SectionTitle" />
+
+                <TextView
+                    android:id="@+id/workspaceCapabilityStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_chip_warning"
+                    android:paddingStart="@dimen/space_8"
+                    android:paddingTop="@dimen/space_4"
+                    android:paddingEnd="@dimen/space_8"
+                    android:paddingBottom="@dimen/space_4"
+                    android:text="未授权"
+                    android:textSize="@dimen/type_micro"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/workspaceCapabilityBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_8"
+            android:lineSpacingExtra="@dimen/line_spacing_normal"
+                android:textAppearance="@style/TextAppearance.Luma.Body"
+                android:textColor="@color/text_secondary" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_24"
+            android:text="已启用工具"
+            android:textAppearance="@style/TextAppearance.Luma.SectionTitle" />
+
+        <TextView
+            android:id="@+id/toolCapabilitySummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_4"
+            android:textAppearance="@style/TextAppearance.Luma.Caption" />
+
+        <LinearLayout
+            android:id="@+id/toolCapabilityList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_12"
+            android:orientation="vertical" />
+
+        <TextView
+            android:id="@+id/toolCapabilityEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_12"
+            android:background="@drawable/bg_surface_card"
+            android:gravity="center"
+            android:minHeight="@dimen/touch_target"
+            android:padding="@dimen/space_16"
+            android:text="当前角色没有启用工具"
+            android:textAppearance="@style/TextAppearance.Luma.Body"
+            android:textColor="@color/text_secondary" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_24"
+            android:text="安全边界"
+            android:textAppearance="@style/TextAppearance.Luma.SectionTitle" />
+
+        <TextView
+            android:id="@+id/securityCapability"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/space_8"
+            android:background="@drawable/bg_surface_card"
+            android:padding="@dimen/space_16"
+            android:textAppearance="@style/TextAppearance.Luma.Body" />
+    </LinearLayout>
+</ScrollView>

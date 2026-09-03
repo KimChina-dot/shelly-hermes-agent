@@ -7,3 +7,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "ShellyHermesAndroid"
 include(":app")
+include(":core")

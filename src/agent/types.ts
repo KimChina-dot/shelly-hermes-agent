@@ -64,6 +64,7 @@ export interface AgentRunOptions {
   readonly signal?: AbortSignal;
   readonly confirm?: (question: string) => Promise<boolean>;
   readonly onEvent?: (event: AgentEvent) => void;
+  readonly sessionLog?: import("../session/index.js").SessionEventLog;
 }
 
 export type AgentEvent =

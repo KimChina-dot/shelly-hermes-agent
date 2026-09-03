@@ -1,0 +1,170 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shelly_hermes/app.dart';
+import 'package:shelly_hermes/core/models.dart';
+import 'package:shelly_hermes/core/task_recovery.dart';
+import 'package:shelly_hermes/design/components/tool_card.dart';
+import 'package:shelly_hermes/design/theme.dart';
+import 'package:shelly_hermes/state/chat_session.dart';
+import 'package:shelly_hermes/state/settings_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  testWidgets('app shell renders chat tab and bottom navigation', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('你好,我是 Shelly'), findsOneWidget);
+    expect(find.text('对话'), findsOneWidget);
+    expect(find.text('任务'), findsOneWidget);
+    expect(find.text('历史'), findsOneWidget);
+    expect(find.text('能力'), findsOneWidget);
+    expect(find.text('我的'), findsOneWidget);
+    expect(find.text('给 Shelly 发送消息…'), findsOneWidget);
+  });
+
+  testWidgets('bottom navigation switches to capabilities tab', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('能力'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('工作区工具'), findsOneWidget);
+    expect(find.text('apply_patch'), findsOneWidget);
+  });
+
+  testWidgets('capabilities tab hosts the DSH plugin installer', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('能力'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('插件(DSH)'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('插件(DSH)'), findsOneWidget);
+    expect(find.text('安装插件'), findsOneWidget);
+  });
+
+  testWidgets('capabilities tab shows the plugin trust section', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('能力'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('插件工具信任'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    // No plugin is enabled in a fresh install: the fail-closed empty state.
+    expect(find.text('插件工具信任'), findsOneWidget);
+    expect(find.textContaining('尚未启用任何插件工具'), findsOneWidget);
+  });
+
+  testWidgets('tool card shows the plugin badge for DSH tools', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildShellyTheme(Brightness.dark),
+        home: Scaffold(
+          body: ListView(
+            children: [
+              ToolCard(
+                entry: ToolEntry(
+                  call: const ToolCall(
+                    id: 't1',
+                    name: 'vendor_build',
+                    argumentsJson: '{"target":"lib/main.dart"}',
+                  ),
+                  status: ToolRunStatus.succeeded,
+                )
+                  ..result = 'risk=medium\nok'
+                  ..durationMillis = 12,
+                isPlugin: true,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('vendor_build'), findsOneWidget);
+    expect(find.text('插件'), findsOneWidget);
+  });
+
+  testWidgets('history tab surfaces the interrupted task banner',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final store = await container.read(settingsStoreProvider.future);
+    const checkpoint = AgentCheckpoint(
+      messages: [AgentMessage(role: MessageRole.user, content: '修复登录页崩溃')],
+      round: 1,
+      consumedTokens: 0,
+      toolCalls: 0,
+    );
+    await store.saveCheckpoint('conv-recover', checkpoint);
+    await store.saveActiveTask(TaskRecoveryRecord(
+      conversationId: 'conv-recover',
+      taskId: 'task-1',
+      startedAt: DateTime(2026, 9, 3),
+    ));
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const ShellyApp()),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('历史'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('有一个任务在后台被中断'), findsOneWidget);
+    expect(find.text('恢复任务'), findsOneWidget);
+    expect(find.text('忽略'), findsOneWidget);
+
+    await tester.tap(find.text('忽略'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('有一个任务在后台被中断'), findsNothing);
+    expect(find.text('还没有历史对话'), findsOneWidget);
+  });
+
+  testWidgets('profile tab shows agent profiles and provider presets',
+      (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Agent 档案'), findsOneWidget);
+    expect(find.text('平衡助手'), findsOneWidget);
+    expect(find.text('获取模型列表'), findsOneWidget);
+    expect(find.text('DeepSeek'), findsOneWidget);
+    expect(find.text('Ollama(本机)'), findsOneWidget);
+  });
+
+  testWidgets('profile tab switches agent profile on tap', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('我的'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('谨慎工程师'));
+    await tester.pumpAndSettle();
+
+    // The tapped profile renders its meta line.
+    expect(find.textContaining('24 轮'), findsOneWidget);
+  });
+}
