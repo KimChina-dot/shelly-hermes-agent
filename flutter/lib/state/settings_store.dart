@@ -56,6 +56,7 @@ class ConversationSummary {
     required this.updatedAt,
     required this.messageCount,
     this.pinned = false,
+    this.modelId,
   });
 
   final String id;
@@ -64,12 +65,17 @@ class ConversationSummary {
   final int messageCount;
   final bool pinned;
 
+  /// Model the conversation last ran with (informational; the global
+  /// model config still decides what the next task uses).
+  final String? modelId;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
         'updatedAt': updatedAt.toIso8601String(),
         'messageCount': messageCount,
         'pinned': pinned,
+        if (modelId != null) 'modelId': modelId,
       };
 
   static ConversationSummary fromJson(Map<String, dynamic> json) =>
@@ -79,6 +85,7 @@ class ConversationSummary {
         updatedAt: DateTime.parse(json['updatedAt'] as String),
         messageCount: json['messageCount'] as int,
         pinned: json['pinned'] as bool? ?? false,
+        modelId: json['modelId'] as String?,
       );
 }
 
@@ -193,6 +200,7 @@ class SettingsStore implements TaskRecoveryStore {
           updatedAt: c.updatedAt,
           messageCount: c.messageCount,
           pinned: c.pinned,
+          modelId: c.modelId,
         ),
       );
 
@@ -203,7 +211,8 @@ class SettingsStore implements TaskRecoveryStore {
           title: c.title,
           updatedAt: c.updatedAt,
           messageCount: c.messageCount,
-          pinned: pinned,
+          pinned: c.pinned,
+          modelId: c.modelId,
         ),
       );
 

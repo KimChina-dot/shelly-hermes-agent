@@ -39,10 +39,29 @@ class HttpModelsTransport implements ModelsTransport {
 /// native shape (`{"models":[{"name":...}]}`) so local setups work with
 /// either their OpenAI-compatible or native endpoint.
 class ModelDiscovery {
-  ModelDiscovery({ModelsTransport? transport})
-      : _transport = transport ?? HttpModelsTransport();
+  ModelDiscovery({ModelsTransport? transport, ChatTransport? chatTransport})
+      : _transport = transport ?? HttpModelsTransport(),
+        _probeTransport = chatTransport;
 
   final ModelsTransport _transport;
+  final ChatTransport? _probeTransport;
+
+  /// 测试连接 using this discovery's chat transport (test-injectable).
+  Future<Duration> testConnection({
+    required String baseUrl,
+    required String model,
+    String apiKey = '',
+    Map<String, String> extraHeaders = const {},
+    Duration timeout = const Duration(seconds: 20),
+  }) =>
+      testConnectionWith(
+        _probeTransport ?? HttpChatTransport(),
+        baseUrl: baseUrl,
+        model: model,
+        apiKey: apiKey,
+        extraHeaders: extraHeaders,
+        timeout: timeout,
+      );
 
   Future<List<RemoteModel>> listModels({
     required String baseUrl,
@@ -72,6 +91,54 @@ class ModelDiscovery {
     }
     return parseModelsPayload(response.body);
   }
+}
+
+/// Round-trip latency of a minimal chat completion (`max_tokens: 1`).
+/// Used by the model picker's 测试连接: [GatewayException.statusCode]
+/// carries the endpoint's HTTP status so the UI can humanize 401/404/429.
+Future<Duration> testConnectionWith(
+  ChatTransport transport, {
+  required String baseUrl,
+  required String model,
+  String apiKey = '',
+  Map<String, String> extraHeaders = const {},
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  final normalized =
+      baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+  final request = ChatRequest(
+    url: '$normalized/chat/completions',
+    headers: {
+      'Content-Type': 'application/json',
+      if (apiKey.isNotEmpty) 'Authorization': 'Bearer $apiKey',
+      ...extraHeaders,
+    },
+    body: jsonEncode({
+      'model': model,
+      'messages': [
+        {'role': 'user', 'content': 'ping'}
+      ],
+      'max_tokens': 1,
+      'stream': false,
+    }),
+    timeout: timeout,
+  );
+  final watch = Stopwatch()..start();
+  ChatResponse response;
+  try {
+    response = await transport.post(request).timeout(timeout);
+  } on TimeoutException {
+    throw GatewayException('connection test timed out');
+  }
+  watch.stop();
+  if (!response.isSuccessful) {
+    throw GatewayException(
+      'connection test failed',
+      statusCode: response.statusCode,
+      body: response.body,
+    );
+  }
+  return watch.elapsed;
 }
 
 /// Parses the `{"data":[{"id":...}]}` (OpenAI) or

@@ -14,6 +14,7 @@ import '../../state/dsh_provider.dart';
 import '../../state/settings_store.dart';
 import '../approval/approval_sheet.dart';
 import 'conversation_actions.dart';
+import 'model_picker_sheet.dart';
 
 /// The conversation tab: streaming transcript, tool cards, token usage and
 /// the approval modal, all driven by [chatSessionProvider].
@@ -235,6 +236,7 @@ class _Header extends ConsumerWidget {
               ),
             ),
           ),
+          _ModelChip(),
           IconButton(
             tooltip: '会话列表',
             onPressed: onTitleTap,
@@ -248,6 +250,57 @@ class _Header extends ConsumerWidget {
                 size: 21, color: semantic.textSecondary),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Compact model indicator; tapping opens the model picker sheet. Shows
+/// the active model id, or 选择模型 while no endpoint is configured.
+class _ModelChip extends ConsumerWidget {
+  const _ModelChip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final config = ref.watch(settingsStoreProvider).maybeWhen(
+          data: (store) => store.modelConfig,
+          orElse: () => const ModelConfig(),
+        );
+    final label = config.isComplete ? config.model : '选择模型';
+    return GestureDetector(
+      onTap: () => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => const ModelPickerSheet(),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm, vertical: 5),
+        decoration: BoxDecoration(
+          color: AppColors.brandViolet.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.bolt_rounded,
+                size: 13, color: AppColors.brandViolet),
+            const SizedBox(width: 3),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 110),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.brandViolet),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -20,6 +20,29 @@ class _FakeModelsTransport implements ModelsTransport {
   }
 }
 
+
+class _FakeChatTransport implements ChatTransport {
+  _FakeChatTransport(this.status);
+
+  final int status;
+  ChatRequest? lastRequest;
+
+  @override
+  Future<ChatResponse> post(ChatRequest request) async {
+    lastRequest = request;
+    return ChatResponse(
+        statusCode: status,
+        body: status == 200
+            ? '{"choices":[{"message":{"content":"ok"}}]}'
+            : '{"error":{"message":"denied"}}');
+  }
+
+  @override
+  Future<ChatStreamResponse> postStreaming(ChatRequest request) async {
+    throw UnimplementedError();
+  }
+}
+
 void main() {
   test('parses the OpenAI /models payload, sorted and deduplicated',
       () async {
@@ -103,4 +126,38 @@ void main() {
     expect(presetById('nope'), isNull);
     expect(llmProviderPresets, everyElement(isA<LlmProviderPreset>()));
   });
+
+  test('testConnection returns latency for a successful ping', () async {
+    final transport = _FakeChatTransport(200);
+    final discovery = ModelDiscovery(chatTransport: transport);
+
+    final latency = await discovery.testConnection(
+      baseUrl: 'https://api.example.com/v1',
+      model: 'gpt-4o-mini',
+      apiKey: 'sk-test',
+    );
+
+    expect(latency, isNotNull);
+    expect(transport.lastRequest!.url, 'https://api.example.com/v1/chat/completions');
+    expect(transport.lastRequest!.body, contains('"max_tokens":1'));
+    expect(transport.lastRequest!.body, contains('"model":"gpt-4o-mini"'));
+    expect(transport.lastRequest!.headers['Authorization'], 'Bearer sk-test');
+  });
+
+  test('testConnection surfaces the HTTP status in GatewayException',
+      () async {
+    final discovery =
+        ModelDiscovery(chatTransport: _FakeChatTransport(401));
+
+    await expectLater(
+      discovery.testConnection(
+        baseUrl: 'https://api.example.com/v1',
+        model: 'gpt-4o-mini',
+        apiKey: 'bad',
+      ),
+      throwsA(isA<GatewayException>()
+          .having((e) => e.statusCode, 'statusCode', 401)),
+    );
+  });
+
 }
