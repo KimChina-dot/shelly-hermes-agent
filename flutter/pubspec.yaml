@@ -29,6 +29,9 @@ dependencies:
   # System file picker (SAF on Android) for text/code file attachments.
   file_selector: ^1.0.3
 
+  # Temp directory for the on-disk conversation image cache.
+  path_provider: ^2.1.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
