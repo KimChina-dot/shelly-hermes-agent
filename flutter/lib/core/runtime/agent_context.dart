@@ -1,4 +1,5 @@
 import '../agent_core.dart';
+import '../context/context_compactor.dart';
 import '../models.dart';
 import '../tools/workspace.dart';
 import '../workspace/project.dart';
@@ -28,6 +29,7 @@ class AgentContext {
     this.hermes,
     this.taskId,
     this.project,
+    this.contextCompactor,
     this.limits = const AgentLimits(maxRounds: 16, maxToolCalls: 32),
     this.approvalPolicy,
   });
@@ -55,4 +57,8 @@ class AgentContext {
   /// Null resolves to the standard policy (read-only allow, writes confirm).
   final ToolApprovalPolicy? approvalPolicy;
   final AgentLimits limits;
+
+  /// Null disables context compaction (small demos, tests). When set, the
+  /// core folds older exchanges into a summary before each model round.
+  final ContextCompactor? contextCompactor;
 }

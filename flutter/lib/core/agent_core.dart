@@ -2,6 +2,7 @@
 // formals do not apply here.
 // ignore_for_file: prefer_initializing_formals
 import 'approval_broker.dart';
+import 'context/context_compactor.dart';
 import 'diff_hunk_approval.dart';
 import 'models.dart';
 
@@ -104,6 +105,7 @@ class AgentCore {
     required CheckpointStore checkpoints,
     this.limits = const AgentLimits(),
     this.approvalPolicy = toolApprovalRequireAll,
+    this.contextCompactor,
     AgentObserver? observer,
   })  : _model = model,
         _streamingModel = model is StreamingModelGateway ? model : null,
@@ -119,6 +121,7 @@ class AgentCore {
   final CheckpointStore _checkpoints;
   final AgentLimits limits;
   final ToolApprovalPolicy approvalPolicy;
+  final ContextCompactor? contextCompactor;
   final AgentObserver? _observer;
 
   Future<AgentResult> run(
@@ -277,6 +280,29 @@ class AgentCore {
     while (round < limits.maxRounds) {
       if (cancellation.isCancelled) {
         return AgentStopped('cancelled', snapshot());
+      }
+      // Fold older exchanges into a summary before the model call when the
+      // transcript has grown past the model's usable context window.
+      final compactor = contextCompactor;
+      if (compactor != null && compactor.needsCompaction(messages)) {
+        try {
+          final result = await compactor.compact(messages);
+          if (result.droppedMessages > 0) {
+            messages
+              ..clear()
+              ..addAll(result.messages);
+            await _checkpoints.save(snapshot());
+            emit(ContextCompacted(
+              droppedMessages: result.droppedMessages,
+              tokensBefore: result.tokensBefore,
+              tokensAfter: result.tokensAfter,
+              usedModelSummary: result.usedModelSummary,
+            ));
+          }
+        } catch (_) {
+          // Compaction is best-effort; an overflowing request is preferable
+          // to a compactor failure killing the task.
+        }
       }
       final modelRound = round + 1;
       emit(ModelStarted(modelRound));
