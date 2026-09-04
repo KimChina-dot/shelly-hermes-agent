@@ -45,6 +45,23 @@ void main() {
       expect(restored.images, message.images);
     });
 
+    test('AgentMessage round-trips text-file attachments', () {
+      const message = AgentMessage(
+        role: MessageRole.user,
+        content: '看下这个配置',
+        textFiles: [TextFileAttachment(name: 'app.json', content: '{"a":1}')],
+      );
+
+      final restored = AgentMessage.fromJson(message.toJson());
+
+      expect(restored, message);
+      expect(restored.textFiles.single.name, 'app.json');
+      expect(
+        composeMessageContent('看下这个配置', message.textFiles),
+        contains('--- 附件:app.json ---'),
+      );
+    });
+
     test('AgentMessage decodes legacy JSON without images', () {
       final restored = AgentMessage.fromJson({
         'role': 'user',

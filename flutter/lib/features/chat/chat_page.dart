@@ -1,10 +1,12 @@
 import 'dart:convert';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/approval_broker.dart' show PendingApproval;
+import '../../core/models.dart' show TextFileAttachment;
 import '../../design/components/buttons.dart';
 import '../../design/components/gradient_avatar.dart';
 import '../../design/components/markdown_text.dart';
@@ -22,12 +24,33 @@ import 'model_picker_sheet.dart';
 /// Maximum attached images per message, so the request payload stays sane.
 const _maxImagesPerMessage = 4;
 
+/// Maximum attached text files per message and per-file byte cap.
+const _maxFilesPerMessage = 4;
+const _maxTextFileBytes = 200 * 1024;
+
 /// Injectable gallery-photo picker; widget tests swap this out because the
 /// real one needs the image_picker platform channel.
 Future<String?> Function() pickGalleryImage = _defaultPickGalleryImage;
 
-/// Restores the production picker after a test has overridden it.
+/// Injectable text-file picker; tests swap this out for the same reason.
+Future<TextFileAttachment> Function() pickTextFile = _defaultPickTextFile;
+
 void resetGalleryImagePicker() => pickGalleryImage = _defaultPickGalleryImage;
+
+void resetTextFilePicker() => pickTextFile = _defaultPickTextFile;
+
+const _textLikeExtensions = [
+  'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'yaml', 'yml', 'xml', 'html',
+  'css', 'js', 'ts', 'jsx', 'tsx', 'dart', 'java', 'kt', 'kts', 'gradle',
+  'py', 'rb', 'go', 'rs', 'c', 'h', 'cpp', 'hpp', 'cs', 'sh', 'bat', 'ps1',
+  'sql', 'toml', 'ini', 'cfg', 'properties', 'log', 'env', 'swift', 'php',
+];
+
+bool _isTextLikeFileName(String name) {
+  final dot = name.lastIndexOf('.');
+  if (dot < 0) return false;
+  return _textLikeExtensions.contains(name.substring(dot + 1).toLowerCase());
+}
 
 Future<String?> _defaultPickGalleryImage() async {
   final file = await ImagePicker().pickImage(
@@ -39,6 +62,32 @@ Future<String?> _defaultPickGalleryImage() async {
   if (file == null) return null;
   final bytes = await file.readAsBytes();
   return 'data:image/jpeg;base64,${base64Encode(bytes)}';
+}
+
+/// Thrown by the default text-file picker when the user dismisses the
+/// system dialog — distinct from a genuine read failure.
+class _FilePickCancelled implements Exception {}
+
+Future<TextFileAttachment> _defaultPickTextFile() async {
+  const typeGroup = XTypeGroup(
+    label: '文本与代码',
+    extensions: _textLikeExtensions,
+  );
+  final file = await openFile(acceptedTypeGroups: [typeGroup]);
+  if (file == null) {
+    throw _FilePickCancelled();
+  }
+  if (!_isTextLikeFileName(file.name)) {
+    throw StateError('暂只支持文本与代码文件(PDF 等后续版本支持)');
+  }
+  final bytes = await file.readAsBytes();
+  if (bytes.length > _maxTextFileBytes) {
+    throw StateError('文件过大:文本附件上限 200KB');
+  }
+  return TextFileAttachment(
+    name: file.name,
+    content: utf8.decode(bytes, allowMalformed: true),
+  );
 }
 
 /// The conversation tab: streaming transcript, tool cards, token usage and
@@ -54,6 +103,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final _composer = TextEditingController();
   final _scroll = ScrollController();
   final _pendingImages = <String>[];
+  final _pendingFiles = <TextFileAttachment>[];
   bool _approvalSheetOpen = false;
 
   @override
@@ -65,11 +115,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   void _send([String? preset]) {
     final text = (preset ?? _composer.text).trim();
-    if (text.isEmpty && _pendingImages.isEmpty) return;
+    if (text.isEmpty && _pendingImages.isEmpty && _pendingFiles.isEmpty) {
+      return;
+    }
     final images = [..._pendingImages];
+    final files = [..._pendingFiles];
     _composer.clear();
-    setState(() => _pendingImages.clear());
-    ref.read(chatSessionProvider.notifier).send(text, images: images);
+    setState(() {
+      _pendingImages.clear();
+      _pendingFiles.clear();
+    });
+    ref
+        .read(chatSessionProvider.notifier)
+        .send(text, images: images, files: files);
   }
 
   Future<void> _attachImage() async {
@@ -82,6 +140,62 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final dataUrl = await pickGalleryImage();
     if (dataUrl == null) return;
     setState(() => _pendingImages.add(dataUrl));
+  }
+
+  Future<void> _attachFile() async {
+    if (_pendingFiles.length >= _maxFilesPerMessage) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('一条消息最多带 4 个文件')),
+      );
+      return;
+    }
+    try {
+      final file = await pickTextFile();
+      setState(() => _pendingFiles.add(file));
+    } on _FilePickCancelled {
+      return;
+    } on StateError catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('无法读取该文件')),
+      );
+    }
+  }
+
+  void _showAttachSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: AppSpacing.sm),
+            ListTile(
+              leading: const Icon(Icons.add_photo_alternate_outlined),
+              title: const Text('添加图片(相册)'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _attachImage();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.description_outlined),
+              title: const Text('添加文件(文本/代码,≤200KB)'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _attachFile();
+              },
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+        ),
+      ),
+    );
   }
 
   void _scrollToBottom() {
@@ -217,12 +331,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               inputTokens: session.inputTokens,
               outputTokens: session.outputTokens,
               pendingImages: List.unmodifiable(_pendingImages),
+              pendingFiles: List.unmodifiable(_pendingFiles),
               onAttach: session.isBusy &&
                       session.phase != SessionPhase.waitingApproval
                   ? null
-                  : _attachImage,
+                  : _showAttachSheet,
               onRemoveImage: (index) =>
                   setState(() => _pendingImages.removeAt(index)),
+              onRemoveFile: (index) =>
+                  setState(() => _pendingFiles.removeAt(index)),
               onSend: _send,
               onStop: () => ref.read(chatSessionProvider.notifier).cancel(),
             ),
@@ -751,8 +868,11 @@ class _Transcript extends StatelessWidget {
       itemBuilder: (context, index) {
         final entry = entries[index];
         return switch (entry) {
-          UserEntry() =>
-              _UserBubble(text: entry.text, images: entry.images),
+          UserEntry() => _UserBubble(
+              text: entry.text,
+              images: entry.images,
+              fileNames: entry.fileNames,
+            ),
           AssistantEntry() => _AssistantMessage(entry: entry),
           ToolEntry() => ToolCard(
               entry: entry,
@@ -802,9 +922,14 @@ class _NoticePill extends StatelessWidget {
 }
 
 class _UserBubble extends StatelessWidget {
-  const _UserBubble({required this.text, this.images = const []});
+  const _UserBubble({
+    required this.text,
+    this.images = const [],
+    this.fileNames = const [],
+  });
   final String text;
   final List<String> images;
+  final List<String> fileNames;
 
   @override
   Widget build(BuildContext context) {
@@ -827,6 +952,39 @@ class _UserBubble extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
+          if (fileNames.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: AppSpacing.xs,
+                runSpacing: AppSpacing.xs,
+                children: [
+                  for (final name in fileNames)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.sm, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: semantic.card,
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                        border: Border.all(color: semantic.border),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.description_outlined,
+                              size: 13, color: semantic.textSecondary),
+                          const SizedBox(width: 4),
+                          Text(name,
+                              style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: semantic.textSecondary)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
           for (final url in images)
             Container(
               margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
@@ -975,8 +1133,10 @@ class _Composer extends StatelessWidget {
     required this.inputTokens,
     required this.outputTokens,
     required this.pendingImages,
+    required this.pendingFiles,
     required this.onAttach,
     required this.onRemoveImage,
+    required this.onRemoveFile,
     required this.onSend,
     required this.onStop,
   });
@@ -987,8 +1147,10 @@ class _Composer extends StatelessWidget {
   final int inputTokens;
   final int outputTokens;
   final List<String> pendingImages;
+  final List<TextFileAttachment> pendingFiles;
   final VoidCallback? onAttach;
   final void Function(int index) onRemoveImage;
+  final void Function(int index) onRemoveFile;
   final VoidCallback onSend;
   final VoidCallback onStop;
 
@@ -1005,6 +1167,23 @@ class _Composer extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (pendingFiles.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: Wrap(
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.xs,
+                children: [
+                  for (var i = 0; i < pendingFiles.length; i += 1)
+                    InputChip(
+                      avatar: const Icon(Icons.description_outlined, size: 16),
+                      label: Text(pendingFiles[i].name),
+                      onDeleted: () => onRemoveFile(i),
+                      labelStyle: const TextStyle(fontSize: 12),
+                    ),
+                ],
+              ),
+            ),
           if (pendingImages.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -1042,8 +1221,8 @@ class _Composer extends StatelessWidget {
             children: [
               IconButton(
                 onPressed: onAttach,
-                tooltip: '添加图片',
-                icon: Icon(Icons.add_photo_alternate_outlined,
+                tooltip: '添加图片或文件',
+                icon: Icon(Icons.add_circle_outline_rounded,
                     size: 24, color: semantic.textSecondary),
               ),
               Expanded(

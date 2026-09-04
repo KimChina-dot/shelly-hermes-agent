@@ -4,6 +4,48 @@ import 'dart:convert';
 /// `core` module (`AgentModels.kt`) so semantics stay identical.
 enum MessageRole { system, user, assistant, tool }
 
+/// A text-like file the user attached to a message (source code, markdown,
+/// CSV, …). The content rides along in checkpoints but is only spliced into
+/// the model request at wire-encoding time — the transcript shows the file
+/// name, not the raw body.
+class TextFileAttachment {
+  const TextFileAttachment({required this.name, required this.content});
+
+  final String name;
+  final String content;
+
+  Map<String, dynamic> toJson() => {'name': name, 'content': content};
+
+  static TextFileAttachment fromJson(Map<String, dynamic> json) =>
+      TextFileAttachment(
+        name: json['name'] as String? ?? '',
+        content: json['content'] as String? ?? '',
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is TextFileAttachment &&
+      other.name == name &&
+      other.content == content;
+
+  @override
+  int get hashCode => Object.hash(name, content);
+}
+
+/// Splices text attachments into the message body sent to the model.
+String composeMessageContent(String text, List<TextFileAttachment> files) {
+  if (files.isEmpty) return text;
+  final buffer = StringBuffer(text.trim());
+  for (final file in files) {
+    buffer
+      ..writeln()
+      ..writeln()
+      ..writeln('--- 附件:${file.name} ---')
+      ..writeln(file.content);
+  }
+  return buffer.toString();
+}
+
 class AgentMessage {
   const AgentMessage({
     required this.role,
@@ -11,6 +53,7 @@ class AgentMessage {
     this.toolCallId,
     this.toolCalls = const [],
     this.images = const [],
+    this.textFiles = const [],
   });
 
   final MessageRole role;
@@ -22,6 +65,10 @@ class AgentMessage {
   /// plain-text messages. Only meaningful on user messages today.
   final List<String> images;
 
+  /// Attached text-like files; spliced into the wire content for user
+  /// messages, shown as name chips in the transcript.
+  final List<TextFileAttachment> textFiles;
+
   Map<String, dynamic> toJson() => {
         'role': role.name,
         'content': content,
@@ -29,6 +76,8 @@ class AgentMessage {
         if (toolCalls.isNotEmpty)
           'toolCalls': toolCalls.map((c) => c.toJson()).toList(),
         if (images.isNotEmpty) 'images': images,
+        if (textFiles.isNotEmpty)
+          'textFiles': textFiles.map((f) => f.toJson()).toList(),
       };
 
   static AgentMessage fromJson(Map<String, dynamic> json) => AgentMessage(
@@ -41,6 +90,9 @@ class AgentMessage {
         images: (json['images'] as List<dynamic>? ?? const [])
             .map((e) => e as String)
             .toList(),
+        textFiles: (json['textFiles'] as List<dynamic>? ?? const [])
+            .map((e) => TextFileAttachment.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 
   @override
@@ -50,11 +102,18 @@ class AgentMessage {
       other.content == content &&
       other.toolCallId == toolCallId &&
       _listEquals(other.toolCalls, toolCalls) &&
-      _listEquals(other.images, images);
+      _listEquals(other.images, images) &&
+      _listEquals(other.textFiles, textFiles);
 
   @override
-  int get hashCode =>
-      Object.hash(role, content, toolCallId, Object.hashAll(toolCalls), Object.hashAll(images));
+  int get hashCode => Object.hash(
+        role,
+        content,
+        toolCallId,
+        Object.hashAll(toolCalls),
+        Object.hashAll(images),
+        Object.hashAll(textFiles),
+      );
 
   @override
   String toString() =>

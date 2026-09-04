@@ -40,11 +40,15 @@ sealed class ChatEntry {
 }
 
 class UserEntry extends ChatEntry {
-  UserEntry(this.text, {this.images = const []});
+  UserEntry(this.text, {this.images = const [], this.fileNames = const []});
   final String text;
 
   /// Attached image data URLs, shown as thumbnails above the text.
   final List<String> images;
+
+  /// Attached text-file names, shown as chips above the text (the file body
+  /// itself only reaches the model, not the transcript).
+  final List<String> fileNames;
 }
 
 class AssistantEntry extends ChatEntry {
@@ -196,11 +200,24 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     }
   }
 
-  Future<void> send(String text, {List<String> images = const []}) async {
+  Future<void> send(
+    String text, {
+    List<String> images = const [],
+    List<TextFileAttachment> files = const [],
+  }) async {
     final trimmed = text.trim();
-    if ((trimmed.isEmpty && images.isEmpty) || state.isBusy) return;
+    if ((trimmed.isEmpty && images.isEmpty && files.isEmpty) || state.isBusy) {
+      return;
+    }
 
-    final entries = [...state.entries, UserEntry(trimmed, images: images)];
+    final entries = [
+      ...state.entries,
+      UserEntry(
+        trimmed,
+        images: images,
+        fileNames: [for (final f in files) f.name],
+      ),
+    ];
     state = state.copyWith(
       entries: entries,
       phase: SessionPhase.working,
@@ -209,7 +226,12 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     );
     _startTask(
       initialMessages: [
-        AgentMessage(role: MessageRole.user, content: trimmed, images: images),
+        AgentMessage(
+          role: MessageRole.user,
+          content: trimmed,
+          images: images,
+          textFiles: files,
+        ),
       ],
     );
   }
@@ -386,7 +408,11 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
       }
       switch (message.role) {
         case MessageRole.user:
-          entries.add(UserEntry(message.content, images: message.images));
+          entries.add(UserEntry(
+            message.content,
+            images: message.images,
+            fileNames: [for (final f in message.textFiles) f.name],
+          ));
         case MessageRole.assistant:
           if (message.content.isNotEmpty) {
             entries.add(AssistantEntry(text: message.content));
