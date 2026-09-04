@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -5,6 +7,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/approval_broker.dart' show PendingApproval;
 import '../../core/models.dart' show TextFileAttachment;
@@ -17,6 +20,7 @@ import '../../design/tokens.dart';
 import '../../platform/platform_workspace.dart' show ResilientWorkspace;
 import '../../platform/speech.dart';
 import '../../state/chat_session.dart';
+import '../../state/conversation_export.dart';
 import '../../state/dsh_provider.dart';
 import '../../state/settings_store.dart';
 import '../approval/approval_sheet.dart';
@@ -48,6 +52,18 @@ SpeechTranscriber Function() createSpeechTranscriber =
 
 void resetSpeechTranscriber() =>
     createSpeechTranscriber = PlatformSpeechTranscriber.new;
+
+/// Injectable system share sheet; widget tests capture the payload instead
+/// of opening the platform dialog.
+Future<void> Function(String text, {String? title}) shareConversationText =
+    _defaultShareConversationText;
+
+void resetShareConversation() =>
+    shareConversationText = _defaultShareConversationText;
+
+Future<void> _defaultShareConversationText(String text, {String? title}) async {
+  await SharePlus.instance.share(ShareParams(text: text, title: title));
+}
 
 const _textLikeExtensions = [
   'txt',
@@ -206,6 +222,22 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (text.isEmpty) return;
     final current = _composer.text;
     _composer.text = current.isEmpty ? text : '$current $text';
+  }
+
+  Future<void> _shareConversation() async {
+    final session = ref.read(chatSessionProvider);
+    if (session.entries.isEmpty) return;
+    final title = session.conversationId == null
+        ? null
+        : _conversationTitle(
+            ref.read(settingsStoreProvider),
+            session.conversationId!,
+          );
+    final markdown = exportConversationMarkdown(
+      title: title,
+      entries: session.entries,
+    );
+    await shareConversationText(markdown, title: title);
   }
 
   @override
@@ -404,6 +436,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   : _conversationTitle(storeAsync, session.conversationId!),
               onTitleTap: () => _showSessionSheet(context),
               onNewConversation: () => _startNewConversation(context, ref),
+              onShare: session.entries.isEmpty
+                  ? null
+                  : () => unawaited(_shareConversation()),
             ),
             if (!workspaceReady)
               _WorkspaceBanner(onPick: pickWorkspaceDirectory),
@@ -457,12 +492,14 @@ class _Header extends ConsumerWidget {
     this.conversationTitle,
     this.onTitleTap,
     this.onNewConversation,
+    this.onShare,
   });
 
   final bool demoMode;
   final String? conversationTitle;
   final VoidCallback? onTitleTap;
   final VoidCallback? onNewConversation;
+  final VoidCallback? onShare;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -520,6 +557,16 @@ class _Header extends ConsumerWidget {
             ),
           ),
           _ModelChip(),
+          if (onShare != null)
+            IconButton(
+              tooltip: '分享对话',
+              onPressed: onShare,
+              icon: Icon(
+                Icons.ios_share_rounded,
+                size: 19,
+                color: semantic.textSecondary,
+              ),
+            ),
           IconButton(
             tooltip: '会话列表',
             onPressed: onTitleTap,

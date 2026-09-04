@@ -13,8 +13,10 @@ import 'package:shelly_hermes/features/chat/chat_page.dart'
         pickGalleryImage,
         pickTextFile,
         resetGalleryImagePicker,
+        resetShareConversation,
         resetSpeechTranscriber,
-        resetTextFilePicker;
+        resetTextFilePicker,
+        shareConversationText;
 import 'package:shelly_hermes/platform/speech.dart';
 import 'package:shelly_hermes/state/chat_session.dart';
 import 'package:shelly_hermes/state/settings_store.dart';
@@ -389,6 +391,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('语音输入不可用'), findsOneWidget);
+  });
+
+  testWidgets('share button exports the transcript via the share sheet',
+      (tester) async {
+    addTearDown(resetShareConversation);
+    final shared = <String>[];
+    shareConversationText = (text, {title}) async {
+      shared.add(text);
+    };
+
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    // Nothing to share before the first message.
+    expect(find.byTooltip('分享对话'), findsNothing);
+
+    await tester.enterText(find.byType(TextField).first, '修复登录页崩溃');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('分享对话'));
+    await tester.pumpAndSettle();
+
+    expect(shared, hasLength(1));
+    expect(shared.single, contains('修复登录页崩溃'));
   });
 
   testWidgets('memory page runs manual upkeep and opens memory settings', (
