@@ -18,6 +18,7 @@ import '../core/hermes/knowledge_store.dart';
 import '../core/hermes/forgetting.dart';
 import '../core/hermes/knowledge_tool.dart';
 import '../core/error_messages.dart';
+import '../core/mcp/mcp_tool_registry.dart';
 import '../core/models.dart';
 import '../core/runtime/agent_context.dart';
 import '../core/runtime/agent_runtime.dart';
@@ -659,6 +660,15 @@ class _TaskRunner implements AgentTaskRunner {
       maxRecallTokens: memorySettings.recallTokens,
     );
     final shellRunner = createProcessRunner();
+    // Registered MCP servers join the tool surface; discovery is
+    // best-effort so an unreachable server can never stall a task.
+    final mcpServers = _store.loadMcpServers();
+    final mcpRegistry = mcpServers.isEmpty
+        ? null
+        : await McpToolRegistry.connect(mcpServers).timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => McpToolRegistry(tools: const []),
+          );
     final registry = CompositeToolRegistry([
       workspaceTools,
       ShellToolRegistry(
@@ -666,6 +676,7 @@ class _TaskRunner implements AgentTaskRunner {
       ),
       KnowledgeToolRegistry(store: knowledgeStore),
       _dshTools,
+      ?mcpRegistry,
     ]);
     final ModelGateway model = config.isComplete
         ? OpenAiCompatibleGateway(

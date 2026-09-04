@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/dsh/installer.dart';
 import '../../core/dsh/plugin.dart';
 import '../../core/dsh/tool_registry.dart' show DshTrust;
+import '../../core/mcp/mcp_client.dart';
 import '../../core/tools/registry.dart';
 import '../../design/components/risk_chip.dart';
 import '../../design/tokens.dart';
 import '../../state/chat_session.dart';
 import '../../state/dsh_provider.dart';
+import '../../state/settings_store.dart';
 
 /// Live file count of the active workspace, shown on the capability page.
 final workspaceFileCountProvider = FutureProvider<int>((ref) async {
@@ -64,6 +66,8 @@ class CapabilitiesPage extends ConsumerWidget {
           }),
           const SizedBox(height: AppSpacing.lg),
           const _PluginSection(),
+          const SizedBox(height: AppSpacing.lg),
+          const _McpSection(),
           const SizedBox(height: AppSpacing.lg),
           const _TrustSection(),
           const SizedBox(height: AppSpacing.lg),
@@ -516,6 +520,238 @@ class _ToolTile extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: levelLabel.$2)),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// MCP connector management (PHASE 35): register Streamable-HTTP MCP
+/// servers, probe their tool list and remove them again. Registered servers
+/// expose their tools to every new task; each call needs approval.
+class _McpSection extends ConsumerStatefulWidget {
+  const _McpSection();
+
+  @override
+  ConsumerState<_McpSection> createState() => _McpSectionState();
+}
+
+class _McpSectionState extends ConsumerState<_McpSection> {
+  bool _probing = false;
+  String? _probeNote;
+
+  Future<SettingsStore?> _store() async {
+    final async = ref.read(settingsStoreProvider);
+    return async.valueOrNull ?? await ref.read(settingsStoreProvider.future);
+  }
+
+  Future<void> _addServer() async {
+    final name = TextEditingController();
+    final url = TextEditingController();
+    final token = TextEditingController();
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('添加 MCP 服务器'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: '名称(如 github)'),
+              ),
+              TextField(
+                controller: url,
+                decoration: const InputDecoration(
+                    labelText: '端点 URL', hintText: 'https://…/mcp'),
+              ),
+              TextField(
+                controller: token,
+                obscureText: true,
+                decoration: const InputDecoration(
+                    labelText: 'Bearer 令牌(可选)'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true) return;
+    final serverName = name.text.trim();
+    final serverUrl = url.text.trim();
+    if (serverName.isEmpty || serverUrl.isEmpty) return;
+    final store = await _store();
+    if (store == null) return;
+    final servers = [...store.loadMcpServers()];
+    servers.add(McpServerConfig(
+      id: 'mcp-${DateTime.now().millisecondsSinceEpoch}',
+      name: serverName,
+      url: serverUrl,
+      token: token.text.trim(),
+    ));
+    await store.saveMcpServers(servers);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _removeServer(McpServerConfig server) async {
+    final store = await _store();
+    if (store == null) return;
+    await store.saveMcpServers([
+      for (final entry in store.loadMcpServers())
+        if (entry.id != server.id) entry,
+    ]);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _probeServer(McpServerConfig server) async {
+    setState(() {
+      _probing = true;
+      _probeNote = null;
+    });
+    try {
+      final tools = await McpClient().listTools(server);
+      if (!mounted) return;
+      setState(() {
+        _probing = false;
+        _probeNote = '${server.name}:发现 ${tools.length} 个工具';
+      });
+    } on McpException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _probing = false;
+        _probeNote = '${server.name}:${error.message}';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final storeAsync = ref.watch(settingsStoreProvider);
+    final servers = storeAsync.maybeWhen(
+      data: (s) => s.loadMcpServers(),
+      orElse: () => const <McpServerConfig>[],
+    );
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: semantic.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: semantic.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.extension_rounded,
+                  size: 18, color: AppColors.brandBlue),
+              const SizedBox(width: AppSpacing.sm),
+              Text('MCP 连接器',
+                  style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: semantic.textPrimary)),
+              const Spacer(),
+              GestureDetector(
+                onTap: _addServer,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+                  decoration: BoxDecoration(
+                    color: AppColors.brandBlue.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.add,
+                          size: 13, color: AppColors.brandBlue),
+                      const SizedBox(width: 2),
+                      Text('添加服务器',
+                          style: TextStyle(
+                              fontSize: 11.5, color: AppColors.brandBlue)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text('仅支持 Streamable HTTP;工具调用前都会请求审批。',
+              style: TextStyle(fontSize: 11.5, color: semantic.textTertiary)),
+          if (servers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.sm),
+              child: Text('尚未连接服务器',
+                  style: TextStyle(
+                      fontSize: 12.5, color: semantic.textTertiary)),
+            )
+          else
+            for (final server in servers)
+              Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.sm),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(server.name,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: semantic.textPrimary)),
+                          Text(server.url,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: semantic.textTertiary)),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '测试连接',
+                      onPressed:
+                          _probing ? null : () => _probeServer(server),
+                      icon: _probing
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 1.6))
+                          : Icon(Icons.sync_alt,
+                              size: 17, color: semantic.textSecondary),
+                    ),
+                    IconButton(
+                      tooltip: '删除',
+                      onPressed: () => _removeServer(server),
+                      icon: Icon(Icons.delete_outline_rounded,
+                          size: 17, color: semantic.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+          if (_probeNote != null)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.xs),
+              child: Text(_probeNote!,
+                  style: TextStyle(
+                      fontSize: 11.5, color: semantic.textSecondary)),
+            ),
         ],
       ),
     );
