@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -921,6 +922,15 @@ class _NoticePill extends StatelessWidget {
   }
 }
 
+/// Conversation images arrive either as inline data URLs (fresh send) or
+/// on-disk file paths (restored from a checkpoint).
+ImageProvider _userImageProvider(String source) {
+  if (source.startsWith('data:')) {
+    return MemoryImage(base64Decode(source.split(',').last));
+  }
+  return FileImage(File(source));
+}
+
 class _UserBubble extends StatelessWidget {
   const _UserBubble({
     required this.text,
@@ -993,8 +1003,8 @@ class _UserBubble extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(AppRadius.lg),
-                child: Image.memory(
-                  base64Decode(url.split(',').last),
+                child: Image(
+                  image: _userImageProvider(url),
                   height: 180,
                   fit: BoxFit.cover,
                   gaplessPlayback: true,

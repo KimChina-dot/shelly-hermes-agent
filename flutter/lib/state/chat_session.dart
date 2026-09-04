@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 // Named constructor params are kept public-named for call-site readability;
 // the initializing-formal rewrite would force private names at call sites.
 // ignore_for_file: prefer_initializing_formals
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/agent_core.dart';
 import '../core/context/context_compactor.dart';
@@ -26,6 +28,7 @@ import '../core/tools/registry.dart';
 import '../core/tools/workspace.dart';
 import '../core/workspace/workspace_manager.dart';
 import '../platform/platform_workspace.dart';
+import '../platform/conversation_images.dart';
 import '../platform/process_runner.dart';
 import '../platform/task_service.dart';
 import 'dsh_provider.dart';
@@ -341,6 +344,12 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
         workspaceManager: manager,
         dshTools: _ref.read(dshToolsProvider),
         conversationId: conversationId,
+        imageStoreFuture: _ref
+            .read(conversationImageStoreProvider.future)
+            // The image cache is an optimization, never a gate: if the
+            // platform is slow/unavailable (tests, odd hosts) fall back to
+            // inline data URLs instead of stalling the task.
+            .timeout(const Duration(seconds: 2), onTimeout: () => null),
       ),
       listener: (status) {
         final history = _ref.read(taskHistoryProvider);
@@ -567,11 +576,13 @@ class _TaskRunner implements AgentTaskRunner {
     required WorkspaceManager workspaceManager,
     required DshToolRegistry dshTools,
     required String conversationId,
+    Future<ConversationImageStore?>? imageStoreFuture,
   })  : _session = session,
         _store = store,
         _workspaceManager = workspaceManager,
         _dshTools = dshTools,
-        _conversationId = conversationId;
+        _conversationId = conversationId,
+        _imageStoreFuture = imageStoreFuture;
 
   final ChatSessionController _session;
   final SettingsStore _store;
@@ -579,12 +590,61 @@ class _TaskRunner implements AgentTaskRunner {
   final DshToolRegistry _dshTools;
   final String _conversationId;
 
+  /// Persists attached images to disk so checkpoints keep short file paths
+  /// instead of inline base64; null keeps the old inline behavior.
+  final Future<ConversationImageStore?>? _imageStoreFuture;
+
+  /// Replaces inline data-URL images with on-disk file paths. Failures keep
+  /// the original data URL — an attachment must never break a send.
+  Future<List<AgentMessage>> _persistImages(List<AgentMessage> messages) async {
+    final ConversationImageStore? imageStore;
+    try {
+      imageStore = await (_imageStoreFuture ?? Future.value(null));
+    } catch (_) {
+      return messages;
+    }
+    if (imageStore == null) return messages;
+    var changed = false;
+    final persisted = <AgentMessage>[];
+    for (final message in messages) {
+      if (message.images.isEmpty) {
+        persisted.add(message);
+        continue;
+      }
+      final paths = <String>[];
+      for (final url in message.images) {
+        if (!url.startsWith('data:')) {
+          paths.add(url);
+          continue;
+        }
+        try {
+          paths.add(await imageStore.save(url));
+          changed = true;
+        } catch (_) {
+          paths.add(url);
+        }
+      }
+      persisted.add(AgentMessage(
+        role: message.role,
+        content: message.content,
+        toolCallId: message.toolCallId,
+        toolCalls: message.toolCalls,
+        textFiles: message.textFiles,
+        images: paths,
+      ));
+    }
+    return changed ? persisted : messages;
+  }
+
   @override
   Future<AgentResult> run(
     List<AgentMessage> messages,
     CancellationSignal cancellation, {
     AgentCheckpoint? resumeFrom,
   }) async {
+    // Fresh sends only: a resume's messages already hold file paths.
+    final preparedMessages =
+        resumeFrom == null ? await _persistImages(messages) : messages;
     final config = _store.loadModelConfig();
     final profile = _store.activeProfile();
     final memorySettings = _store.loadMemorySettings();
@@ -669,9 +729,9 @@ class _TaskRunner implements AgentTaskRunner {
     final effectiveMessages = resumeFrom == null && profile.systemPrompt.isNotEmpty
         ? [
             AgentMessage(role: MessageRole.system, content: profile.systemPrompt),
-            ...messages,
+            ...preparedMessages,
           ]
-        : messages;
+        : preparedMessages;
     return runtime.run(effectiveMessages, cancellation, resumeFrom: resumeFrom);
   }
 }
@@ -836,6 +896,21 @@ final approvalQueueProvider = StateProvider<List<PendingApproval>>(
 final taskHistoryProvider = StateProvider<List<TaskStatus>>(
   (ref) => const [],
 );
+
+/// On-disk cache for attached conversation images. Null when the platform
+/// cannot provide a temp directory (tests, degraded hosts) — the session
+/// then keeps data URLs inline instead of file paths.
+final conversationImageStoreProvider =
+    FutureProvider<ConversationImageStore?>((ref) async {
+  try {
+    final temp = await getTemporaryDirectory();
+    return ConversationImageStore(
+      Directory('${temp.path}${Platform.pathSeparator}shelly_images'),
+    );
+  } catch (_) {
+    return null;
+  }
+});
 
 final chatSessionProvider =
     StateNotifierProvider<ChatSessionController, ChatSessionState>(

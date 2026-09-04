@@ -1,3 +1,4 @@
+import '../../platform/conversation_images.dart';
 import '../models.dart';
 
 /// Wire-format mapping between the Hermes [AgentMessage] model and the
@@ -8,18 +9,18 @@ Map<String, dynamic> _encodeUser(AgentMessage message) {
   // message.content stays clean for memory, compaction and display.
   final text = composeMessageContent(message.content, message.textFiles);
   if (message.images.isEmpty) return {'role': 'user', 'content': text};
-  return {
-    // OpenAI vision schema: text + image parts in one content array.
-    'role': 'user',
-    'content': [
-      if (text.isNotEmpty) {'type': 'text', 'text': text},
-      for (final url in message.images)
+  final parts = <Map<String, dynamic>>[
+    if (text.isNotEmpty) {'type': 'text', 'text': text},
+    // File-path references (on-disk image cache) expand to data URLs here;
+    // unreadable files drop their image part instead of failing the request.
+    for (final reference in message.images)
+      if (imageWireUrl(reference) case final String url)
         {
           'type': 'image_url',
           'image_url': {'url': url},
         },
-    ],
-  };
+  ];
+  return {'role': 'user', 'content': parts};
 }
 
 List<Map<String, dynamic>> encodeMessages(List<AgentMessage> messages) {
