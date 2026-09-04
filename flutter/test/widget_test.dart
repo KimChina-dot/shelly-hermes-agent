@@ -71,6 +71,23 @@ void main() {
     expect(find.text('安装插件'), findsOneWidget);
   });
 
+  testWidgets('capabilities tab hosts the environment self-check section',
+      (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('能力'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('运行环境'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('运行环境'), findsOneWidget);
+    expect(find.text('一键自检'), findsOneWidget);
+  });
+
   testWidgets('capabilities tab shows the plugin trust section', (
     tester,
   ) async {

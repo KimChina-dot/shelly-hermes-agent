@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/diagnostics/environment_checker.dart';
 import '../../core/dsh/installer.dart';
 import '../../core/dsh/plugin.dart';
 import '../../core/dsh/tool_registry.dart' show DshTrust;
@@ -11,6 +12,7 @@ import '../../design/tokens.dart';
 import '../../state/chat_session.dart';
 import '../../state/dsh_provider.dart';
 import '../../state/settings_store.dart';
+import '../../platform/process_runner.dart';
 
 /// Live file count of the active workspace, shown on the capability page.
 final workspaceFileCountProvider = FutureProvider<int>((ref) async {
@@ -68,6 +70,8 @@ class CapabilitiesPage extends ConsumerWidget {
           const _PluginSection(),
           const SizedBox(height: AppSpacing.lg),
           const _McpSection(),
+          const SizedBox(height: AppSpacing.lg),
+          const _EnvironmentSection(),
           const SizedBox(height: AppSpacing.lg),
           const _TrustSection(),
           const SizedBox(height: AppSpacing.lg),
@@ -752,6 +756,146 @@ class _McpSectionState extends ConsumerState<_McpSection> {
                   style: TextStyle(
                       fontSize: 11.5, color: semantic.textSecondary)),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 运行环境 self-check (PHASE 36): one tap probes the workspace, shell,
+/// model gateway and plugin surfaces and reports pass/warn/fail per row.
+class _EnvironmentSection extends ConsumerStatefulWidget {
+  const _EnvironmentSection();
+
+  @override
+  ConsumerState<_EnvironmentSection> createState() =>
+      _EnvironmentSectionState();
+}
+
+class _EnvironmentSectionState extends ConsumerState<_EnvironmentSection> {
+  List<EnvironmentCheck>? _results;
+  bool _running = false;
+
+  Future<void> _runChecks() async {
+    setState(() {
+      _running = true;
+      _results = null;
+    });
+    final store = ref.read(settingsStoreProvider).valueOrNull;
+    final config = store?.loadModelConfig();
+    final checker = EnvironmentChecker(
+      workspace: ref.read(workspaceProvider),
+      processRunner: createProcessRunner(),
+      baseUrl: config?.baseUrl ?? '',
+      modelId: config?.model ?? '',
+      apiKey: config?.apiKey ?? '',
+      contextWindowTokens: config?.effectiveContextWindow ?? 0,
+      dshToolCount: ref.read(dshToolsProvider).specs.length,
+      mcpServerNames: [
+        for (final server in store?.loadMcpServers() ?? const <McpServerConfig>[])
+          server.name,
+      ],
+    );
+    final results = await checker.run();
+    if (!mounted) return;
+    setState(() {
+      _running = false;
+      _results = results;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: semantic.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: semantic.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.health_and_safety_outlined,
+                  size: 18, color: AppColors.brandBlue),
+              const SizedBox(width: AppSpacing.sm),
+              Text('运行环境',
+                  style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: semantic.textPrimary)),
+              const Spacer(),
+              GestureDetector(
+                onTap: _running ? null : _runChecks,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+                  decoration: BoxDecoration(
+                    color: AppColors.brandBlue.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                  child: _running
+                      ? const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child:
+                              CircularProgressIndicator(strokeWidth: 1.6))
+                      : Text('一键自检',
+                          style: TextStyle(
+                              fontSize: 11.5, color: AppColors.brandBlue)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          if (_results == null && !_running)
+            Text('检查工作区、Shell、模型网关与插件的可用状态。',
+                style: TextStyle(
+                    fontSize: 11.5, color: semantic.textTertiary)),
+          if (_results != null)
+            for (final check in _results!)
+              Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.sm),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.only(top: 5),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: switch (check.level) {
+                          CheckLevel.ok => Colors.green,
+                          CheckLevel.warn => Colors.orange,
+                          CheckLevel.fail => AppColors.danger,
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(check.label,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: semantic.textPrimary)),
+                          Text(check.detail,
+                              style: TextStyle(
+                                  fontSize: 11.5,
+                                  height: 1.4,
+                                  color: semantic.textTertiary)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
         ],
       ),
     );
