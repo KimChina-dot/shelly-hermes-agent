@@ -29,6 +29,37 @@ void main() {
       expect((encoded[2]['tool_calls'] as List).first['id'], 't1');
       expect(encoded[3], {'role': 'tool', 'tool_call_id': 't1', 'content': 'file body'});
     });
+
+    test('encodes user messages with images as vision content parts', () {
+      final encoded = encodeMessages([
+        AgentMessage(
+          role: MessageRole.user,
+          content: '这张图里是什么?',
+          images: const ['data:image/jpeg;base64,QUJD'],
+        ),
+      ]);
+
+      final content = encoded[0]['content'] as List<dynamic>;
+      expect(content[0], {'type': 'text', 'text': '这张图里是什么?'});
+      expect(content[1]['type'], 'image_url');
+      expect(
+        (content[1]['image_url'] as Map)['url'],
+        'data:image/jpeg;base64,QUJD',
+      );
+    });
+
+    test('image-only user message omits the empty text part', () {
+      final encoded = encodeMessages([
+        const AgentMessage(
+          role: MessageRole.user,
+          content: '',
+          images: ['data:image/png;base64,AAA'],
+        ),
+      ]);
+      final content = encoded[0]['content'] as List<dynamic>;
+      expect(content, hasLength(1));
+      expect(content[0]['type'], 'image_url');
+    });
   });
 
   group('response decoding', () {
@@ -127,6 +158,36 @@ void main() {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       expect(body['model'], 'test-model');
       expect(body['stream'], false);
+    });
+
+    test('image messages reach the wire as vision content parts', () async {
+      final transport = _FakeTransport(responseBody: jsonEncode({
+        'choices': [
+          {'message': {'content': '这是一只猫'}},
+        ],
+      }));
+      final gateway = OpenAiCompatibleGateway(
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'sk-test',
+        model: 'vision-model',
+        transport: transport,
+      );
+
+      await gateway.complete([
+        AgentMessage(
+          role: MessageRole.user,
+          content: '图里是什么?',
+          images: const ['data:image/jpeg;base64,QUJD'],
+        ),
+      ]);
+
+      final body = jsonDecode(transport.lastRequest!.body) as Map<String, dynamic>;
+      final content = (body['messages'] as List).first['content'] as List;
+      expect(content[0]['type'], 'text');
+      expect(
+        (content[1]['image_url'] as Map)['url'],
+        'data:image/jpeg;base64,QUJD',
+      );
     });
 
     test('retries on 5xx then succeeds', () async {

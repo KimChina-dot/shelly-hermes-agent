@@ -7,6 +7,8 @@ import 'package:shelly_hermes/features/memory/memory_settings_page.dart';
 import 'package:shelly_hermes/core/task_recovery.dart';
 import 'package:shelly_hermes/design/components/tool_card.dart';
 import 'package:shelly_hermes/design/theme.dart';
+import 'package:shelly_hermes/features/chat/chat_page.dart'
+    show pickGalleryImage, resetGalleryImagePicker;
 import 'package:shelly_hermes/state/chat_session.dart';
 import 'package:shelly_hermes/state/settings_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -391,5 +393,56 @@ void main() {
       store.loadProfiles().where((p) => p.id == 'careful').length,
       1,
     );
+  });
+
+  testWidgets('composer attaches a gallery image and sends it with the message',
+      (tester) async {
+    const pngDataUrl =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    pickGalleryImage = () async => pngDataUrl;
+    addTearDown(() {
+      resetGalleryImagePicker();
+    });
+
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('添加图片'));
+    await tester.pumpAndSettle();
+
+    // The pending image shows as a removable thumbnail above the input.
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '看看这张图');
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.pumpAndSettle();
+
+    // The message bubble renders the image; the pending strip is cleared.
+    // The user text shows twice: in the bubble and as the auto conversation
+    // title the demo run persists after finishing.
+    expect(find.text('看看这张图'), findsNWidgets(2));
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
+  });
+
+  testWidgets('attaching more than the image cap is rejected', (tester) async {
+    const pngDataUrl =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    pickGalleryImage = () async => pngDataUrl;
+    addTearDown(() {
+      resetGalleryImagePicker();
+    });
+
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    for (var i = 0; i < 5; i += 1) {
+      await tester.tap(find.byTooltip('添加图片'));
+      await tester.pumpAndSettle();
+    }
+
+    expect(find.text('一条消息最多带 4 张图片'), findsOneWidget);
+    expect(find.byType(Image), findsNWidgets(4));
   });
 }

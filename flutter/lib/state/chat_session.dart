@@ -39,8 +39,11 @@ sealed class ChatEntry {
 }
 
 class UserEntry extends ChatEntry {
-  UserEntry(this.text);
+  UserEntry(this.text, {this.images = const []});
   final String text;
+
+  /// Attached image data URLs, shown as thumbnails above the text.
+  final List<String> images;
 }
 
 class AssistantEntry extends ChatEntry {
@@ -185,18 +188,22 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     }
   }
 
-  Future<void> send(String text) async {
+  Future<void> send(String text, {List<String> images = const []}) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty || state.isBusy) return;
+    if ((trimmed.isEmpty && images.isEmpty) || state.isBusy) return;
 
-    final entries = [...state.entries, UserEntry(trimmed)];
+    final entries = [...state.entries, UserEntry(trimmed, images: images)];
     state = state.copyWith(
       entries: entries,
       phase: SessionPhase.working,
       conversationId: state.conversationId ?? 'conv-${DateTime.now().millisecondsSinceEpoch}',
       clearError: true,
     );
-    _startTask(initialMessages: [AgentMessage(role: MessageRole.user, content: trimmed)]);
+    _startTask(
+      initialMessages: [
+        AgentMessage(role: MessageRole.user, content: trimmed, images: images),
+      ],
+    );
   }
 
   Future<void> resume(String conversationId) async => switchTo(conversationId);
@@ -371,7 +378,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
       }
       switch (message.role) {
         case MessageRole.user:
-          entries.add(UserEntry(message.content));
+          entries.add(UserEntry(message.content, images: message.images));
         case MessageRole.assistant:
           if (message.content.isNotEmpty) {
             entries.add(AssistantEntry(text: message.content));
