@@ -26,6 +26,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
   bool _initialized = false;
   bool _discovering = false;
   bool _testing = false;
+  bool _webSearch = false;
   Duration? _latency;
   String? _error;
   List<RemoteModel> _remoteModels = const [];
@@ -41,6 +42,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
     _initialized = true;
     _baseUrl.text = config.baseUrl;
     _model.text = config.model;
+    _webSearch = config.webSearchEnabled;
   }
 
   String get _apiKey =>
@@ -100,23 +102,27 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
   Future<void> _apply() async {
     final store = ref.read(settingsStoreProvider).valueOrNull;
     if (store == null) return;
-    await store.saveModelConfig(ModelConfig(
-      baseUrl: _baseUrl.text.trim(),
-      apiKey: _apiKey,
-      model: _model.text.trim(),
-    ));
+    await store.saveModelConfig(
+      ModelConfig(
+        baseUrl: _baseUrl.text.trim(),
+        apiKey: _apiKey,
+        model: _model.text.trim(),
+        webSearchEnabled: _webSearch,
+      ),
+    );
     ref.invalidate(settingsStoreProvider);
     if (!mounted) return;
     Navigator.of(context).pop();
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('已切换模型,下一轮对话生效')),
-    );
+    ScaffoldMessenger.maybeOf(context)
+        ?.showSnackBar(const SnackBar(content: Text('已切换模型,下一轮对话生效')));
   }
 
   @override
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
-    final config = ref.watch(settingsStoreProvider).maybeWhen(
+    final config = ref
+        .watch(settingsStoreProvider)
+        .maybeWhen(
           data: (store) => store.modelConfig,
           orElse: () => const ModelConfig(),
         );
@@ -124,15 +130,18 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
     final hasKey = _apiKey.isNotEmpty;
     final canApply =
         _baseUrl.text.trim().isNotEmpty && _model.text.trim().isNotEmpty;
+    final webSearchSupport = webSearchSupportFor(_baseUrl.text.trim());
 
     return Padding(
       padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
         decoration: BoxDecoration(
           color: semantic.card,
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppRadius.xl),
+          ),
         ),
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.lg),
@@ -140,23 +149,27 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('切换模型',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: semantic.textPrimary)),
+              Text(
+                '切换模型',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: semantic.textPrimary,
+                ),
+              ),
               const SizedBox(height: AppSpacing.md),
-              Text('接口地址(Base URL)',
-                  style: TextStyle(
-                      fontSize: 12, color: semantic.textTertiary)),
+              Text(
+                '接口地址(Base URL)',
+                style: TextStyle(fontSize: 12, color: semantic.textTertiary),
+              ),
               const SizedBox(height: AppSpacing.xs),
               TextField(
                 controller: _baseUrl,
                 keyboardType: TextInputType.url,
-                style: TextStyle(
-                    fontSize: 13.5, color: semantic.textPrimary),
+                style: TextStyle(fontSize: 13.5, color: semantic.textPrimary),
                 decoration: const InputDecoration(
-                    hintText: 'https://api.deepseek.com/v1'),
+                  hintText: 'https://api.deepseek.com/v1',
+                ),
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -168,10 +181,12 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                     if (preset.defaultBaseUrl.isNotEmpty)
                       ActionChip(
                         visualDensity: VisualDensity.compact,
-                        label: Text(preset.label,
-                            style: const TextStyle(fontSize: 11.5)),
-                        backgroundColor: _baseUrl.text.trim() ==
-                                preset.defaultBaseUrl
+                        label: Text(
+                          preset.label,
+                          style: const TextStyle(fontSize: 11.5),
+                        ),
+                        backgroundColor:
+                            _baseUrl.text.trim() == preset.defaultBaseUrl
                             ? AppColors.brandBlue.withValues(alpha: 0.15)
                             : null,
                         onPressed: () {
@@ -182,9 +197,10 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                 ],
               ),
               const SizedBox(height: AppSpacing.md),
-              Text('模型名称',
-                  style: TextStyle(
-                      fontSize: 12, color: semantic.textTertiary)),
+              Text(
+                '模型名称',
+                style: TextStyle(fontSize: 12, color: semantic.textTertiary),
+              ),
               const SizedBox(height: AppSpacing.xs),
               Row(
                 children: [
@@ -192,9 +208,12 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                     child: TextField(
                       controller: _model,
                       style: TextStyle(
-                          fontSize: 13.5, color: semantic.textPrimary),
-                      decoration:
-                          const InputDecoration(hintText: '例如 deepseek-chat'),
+                        fontSize: 13.5,
+                        color: semantic.textPrimary,
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: '例如 deepseek-chat',
+                      ),
                       onChanged: (_) => setState(() {}),
                     ),
                   ),
@@ -221,10 +240,13 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                     itemBuilder: (context, index) => ListTile(
                       dense: true,
                       visualDensity: VisualDensity.compact,
-                      title: Text(_remoteModels[index].id,
-                          style: TextStyle(
-                              fontSize: 12.5,
-                              color: semantic.textPrimary)),
+                      title: Text(
+                        _remoteModels[index].id,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: semantic.textPrimary,
+                        ),
+                      ),
                       onTap: () {
                         _model.text = _remoteModels[index].id;
                         setState(() {});
@@ -248,18 +270,58 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                           ? '连接正常 · ${_latency!.inMilliseconds} ms'
                           : (_error ?? (hasKey ? '' : '密钥未配置,请到「我的」页填写')),
                       style: TextStyle(
-                          fontSize: 11.5,
-                          color: _latency != null
-                              ? Colors.green
-                              : (_error == null
+                        fontSize: 11.5,
+                        color: _latency != null
+                            ? Colors.green
+                            : (_error == null
                                   ? semantic.textTertiary
-                                  : AppColors.danger)),
+                                  : AppColors.danger),
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
               ),
+              if (webSearchSupport != WebSearchSupport.none) ...[
+                const SizedBox(height: AppSpacing.md),
+                Container(
+                  decoration: BoxDecoration(
+                    color: semantic.background,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                  ),
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: SwitchListTile(
+                      dense: true,
+                      value: _webSearch,
+                      onChanged: (value) => setState(() => _webSearch = value),
+                      activeThumbColor: AppColors.brandBlue,
+                      title: Text(
+                        '联网搜索',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: semantic.textPrimary,
+                        ),
+                      ),
+                      subtitle: Text(
+                        switch (webSearchSupport) {
+                          WebSearchSupport.pluginTool =>
+                            '由厂商服务端搜索插件提供,检索结果并入回复',
+                          WebSearchSupport.modelSuffix =>
+                            '请求经 :online 模型后缀路由到联网版本',
+                          WebSearchSupport.none => '',
+                        },
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: semantic.textTertiary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: AppSpacing.lg),
               FilledButton.icon(
                 onPressed: canApply ? _apply : null,
@@ -284,7 +346,9 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
       onTap: busy || !enabled ? null : onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
         decoration: BoxDecoration(
           color: AppColors.brandBlue.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(AppRadius.pill),
@@ -301,9 +365,10 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
             else
               Icon(Icons.sync_alt, size: 12, color: semantic.textSecondary),
             const SizedBox(width: AppSpacing.xs),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11.5, color: semantic.textSecondary)),
+            Text(
+              label,
+              style: TextStyle(fontSize: 11.5, color: semantic.textSecondary),
+            ),
           ],
         ),
       ),

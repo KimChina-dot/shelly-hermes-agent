@@ -19,6 +19,7 @@ class ModelConfig {
     this.apiKey = '',
     this.model = '',
     this.contextWindow = 0,
+    this.webSearchEnabled = false,
   });
 
   final String baseUrl;
@@ -28,6 +29,10 @@ class ModelConfig {
   /// Manual context-window override in tokens; 0 resolves via
   /// [contextWindowForModel] presets from the model id.
   final int contextWindow;
+
+  /// Turns on the provider's server-side web-search plugin when the
+  /// endpoint supports one (see [webSearchSupportFor]).
+  final bool webSearchEnabled;
 
   bool get isComplete => baseUrl.isNotEmpty && apiKey.isNotEmpty && model.isNotEmpty;
 
@@ -40,12 +45,14 @@ class ModelConfig {
     String? apiKey,
     String? model,
     int? contextWindow,
+    bool? webSearchEnabled,
   }) =>
       ModelConfig(
         baseUrl: baseUrl ?? this.baseUrl,
         apiKey: apiKey ?? this.apiKey,
         model: model ?? this.model,
         contextWindow: contextWindow ?? this.contextWindow,
+        webSearchEnabled: webSearchEnabled ?? this.webSearchEnabled,
       );
 
   Map<String, dynamic> toJson() => {
@@ -53,6 +60,7 @@ class ModelConfig {
         'apiKey': apiKey,
         'model': model,
         if (contextWindow > 0) 'contextWindow': contextWindow,
+        if (webSearchEnabled) 'webSearchEnabled': true,
       };
 
   static ModelConfig fromJson(Map<String, dynamic> json) => ModelConfig(
@@ -60,6 +68,7 @@ class ModelConfig {
         apiKey: json['apiKey'] as String? ?? '',
         model: json['model'] as String? ?? '',
         contextWindow: (json['contextWindow'] as num?)?.toInt() ?? 0,
+        webSearchEnabled: json['webSearchEnabled'] as bool? ?? false,
       );
 
   /// Masks the key for display: keeps a short prefix and suffix.
