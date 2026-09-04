@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/approval_broker.dart' show PendingApproval;
 import '../../design/components/buttons.dart';
@@ -16,6 +19,28 @@ import '../approval/approval_sheet.dart';
 import 'conversation_actions.dart';
 import 'model_picker_sheet.dart';
 
+/// Maximum attached images per message, so the request payload stays sane.
+const _maxImagesPerMessage = 4;
+
+/// Injectable gallery-photo picker; widget tests swap this out because the
+/// real one needs the image_picker platform channel.
+Future<String?> Function() pickGalleryImage = _defaultPickGalleryImage;
+
+/// Restores the production picker after a test has overridden it.
+void resetGalleryImagePicker() => pickGalleryImage = _defaultPickGalleryImage;
+
+Future<String?> _defaultPickGalleryImage() async {
+  final file = await ImagePicker().pickImage(
+    source: ImageSource.gallery,
+    maxWidth: 1600,
+    maxHeight: 1600,
+    imageQuality: 80,
+  );
+  if (file == null) return null;
+  final bytes = await file.readAsBytes();
+  return 'data:image/jpeg;base64,${base64Encode(bytes)}';
+}
+
 /// The conversation tab: streaming transcript, tool cards, token usage and
 /// the approval modal, all driven by [chatSessionProvider].
 class ChatPage extends ConsumerStatefulWidget {
@@ -28,6 +53,7 @@ class ChatPage extends ConsumerStatefulWidget {
 class _ChatPageState extends ConsumerState<ChatPage> {
   final _composer = TextEditingController();
   final _scroll = ScrollController();
+  final _pendingImages = <String>[];
   bool _approvalSheetOpen = false;
 
   @override
@@ -39,9 +65,23 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   void _send([String? preset]) {
     final text = (preset ?? _composer.text).trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && _pendingImages.isEmpty) return;
+    final images = [..._pendingImages];
     _composer.clear();
-    ref.read(chatSessionProvider.notifier).send(text);
+    setState(() => _pendingImages.clear());
+    ref.read(chatSessionProvider.notifier).send(text, images: images);
+  }
+
+  Future<void> _attachImage() async {
+    if (_pendingImages.length >= _maxImagesPerMessage) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('一条消息最多带 4 张图片')),
+      );
+      return;
+    }
+    final dataUrl = await pickGalleryImage();
+    if (dataUrl == null) return;
+    setState(() => _pendingImages.add(dataUrl));
   }
 
   void _scrollToBottom() {
@@ -57,8 +97,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   String? _conversationTitle(AsyncValue<SettingsStore> storeAsync, String id) {
     return storeAsync.maybeWhen(
-      data: (store) =>
-          store.loadConversations().firstWhere((c) => c.id == id).title,
+      data: (store) {
+        // The summary is written only after the task persists, so a running
+        // conversation may legitimately be absent from the list yet.
+        final summaries = store.loadConversations();
+        for (final summary in summaries) {
+          if (summary.id == id) return summary.title;
+        }
+        return null;
+      },
       orElse: () => null,
     );
   }
@@ -169,6 +216,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               waitingApproval: session.phase == SessionPhase.waitingApproval,
               inputTokens: session.inputTokens,
               outputTokens: session.outputTokens,
+              pendingImages: List.unmodifiable(_pendingImages),
+              onAttach: session.isBusy &&
+                      session.phase != SessionPhase.waitingApproval
+                  ? null
+                  : _attachImage,
+              onRemoveImage: (index) =>
+                  setState(() => _pendingImages.removeAt(index)),
               onSend: _send,
               onStop: () => ref.read(chatSessionProvider.notifier).cancel(),
             ),
@@ -697,7 +751,8 @@ class _Transcript extends StatelessWidget {
       itemBuilder: (context, index) {
         final entry = entries[index];
         return switch (entry) {
-          UserEntry() => _UserBubble(text: entry.text),
+          UserEntry() =>
+              _UserBubble(text: entry.text, images: entry.images),
           AssistantEntry() => _AssistantMessage(entry: entry),
           ToolEntry() => ToolCard(
               entry: entry,
@@ -711,30 +766,73 @@ class _Transcript extends StatelessWidget {
 }
 
 class _UserBubble extends StatelessWidget {
-  const _UserBubble({required this.text});
+  const _UserBubble({required this.text, this.images = const []});
 
   final String text;
+  final List<String> images;
 
   @override
   Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final bubble = Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: AppColors.brandGradient),
+        borderRadius: BorderRadius.circular(AppRadius.lg).copyWith(
+          bottomRight: const Radius.circular(AppRadius.sm),
+        ),
+      ),
+      child: Text(text,
+          style: const TextStyle(
+              fontSize: 14.5, height: 1.5, color: Colors.white)),
+    );
     return Align(
       alignment: Alignment.centerRight,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: AppColors.brandGradient),
-          borderRadius: BorderRadius.circular(AppRadius.lg).copyWith(
-            bottomRight: const Radius.circular(AppRadius.sm),
-          ),
-        ),
-        child: Text(text,
-            style: const TextStyle(
-                fontSize: 14.5, height: 1.5, color: Colors.white)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (final url in images)
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.78,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                child: Image.memory(
+                  base64Decode(url.split(',').last),
+                  height: 180,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  errorBuilder: (_, _, _) => Container(
+                    height: 120,
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: semantic.card,
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.broken_image_outlined,
+                          size: 18, color: semantic.textTertiary),
+                      const SizedBox(width: AppSpacing.xs),
+                      Text('图片无法显示',
+                          style: TextStyle(
+                              fontSize: 12, color: semantic.textTertiary)),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+          if (text.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.78,
+              ),
+              child: bubble,
+            ),
+        ],
       ),
     );
   }
@@ -841,6 +939,9 @@ class _Composer extends StatelessWidget {
     required this.waitingApproval,
     required this.inputTokens,
     required this.outputTokens,
+    required this.pendingImages,
+    required this.onAttach,
+    required this.onRemoveImage,
     required this.onSend,
     required this.onStop,
   });
@@ -850,6 +951,9 @@ class _Composer extends StatelessWidget {
   final bool waitingApproval;
   final int inputTokens;
   final int outputTokens;
+  final List<String> pendingImages;
+  final VoidCallback? onAttach;
+  final void Function(int index) onRemoveImage;
   final VoidCallback onSend;
   final VoidCallback onStop;
 
@@ -866,9 +970,47 @@ class _Composer extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (pendingImages.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: SizedBox(
+                height: 76,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: pendingImages.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(width: AppSpacing.sm),
+                  itemBuilder: (context, index) => Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                        child: Image.memory(
+                          base64Decode(pendingImages[index].split(',').last),
+                          width: 76,
+                          height: 76,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                        ),
+                      ),
+                      Positioned(
+                        top: 2,
+                        right: 2,
+                        child: _RemoveImageButton(onRemove: () => onRemoveImage(index)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              IconButton(
+                onPressed: onAttach,
+                tooltip: '添加图片',
+                icon: Icon(Icons.add_photo_alternate_outlined,
+                    size: 24, color: semantic.textSecondary),
+              ),
               Expanded(
                 child: TextField(
                   controller: controller,
@@ -927,12 +1069,32 @@ class _Composer extends StatelessWidget {
   }
 }
 
+class _RemoveImageButton extends StatelessWidget {
+  const _RemoveImageButton({required this.onRemove});
+
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onRemove,
+      child: Container(
+        width: 20,
+        height: 20,
+        decoration: const BoxDecoration(
+          color: Colors.black54,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.close_rounded, size: 14, color: Colors.white),
+      ),
+    );
+  }
+}
+
 class _StopButton extends StatelessWidget {
   const _StopButton({required this.onStop});
 
-  final VoidCallback onStop;
-
-  @override
+  final VoidCallback onStop;  @override
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     return GestureDetector(

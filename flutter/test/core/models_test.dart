@@ -31,6 +31,28 @@ void main() {
 
       expect(() => AgentCheckpoint.decode(raw), throwsFormatException);
     });
+
+    test('AgentMessage round-trips attached images through JSON', () {
+      const message = AgentMessage(
+        role: MessageRole.user,
+        content: '看这张图',
+        images: ['data:image/jpeg;base64,QUJD'],
+      );
+
+      final restored = AgentMessage.fromJson(message.toJson());
+
+      expect(restored, message);
+      expect(restored.images, message.images);
+    });
+
+    test('AgentMessage decodes legacy JSON without images', () {
+      final restored = AgentMessage.fromJson({
+        'role': 'user',
+        'content': '纯文本历史消息',
+      });
+
+      expect(restored.images, isEmpty);
+    });
   });
 
   test('DiffApprovalState tracks per-hunk decisions', () {

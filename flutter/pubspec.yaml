@@ -23,6 +23,9 @@ dependencies:
   highlight: ^0.7.0
   shared_preferences: ^2.5.5
 
+  # Gallery photo picking for vision (image) messages; Android 13+ Photo Picker.
+  image_picker: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

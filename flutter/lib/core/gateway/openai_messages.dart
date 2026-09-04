@@ -8,7 +8,18 @@ List<Map<String, dynamic>> encodeMessages(List<AgentMessage> messages) {
     for (final message in messages)
       switch (message.role) {
         MessageRole.system => {'role': 'system', 'content': message.content},
-        MessageRole.user => {'role': 'user', 'content': message.content},
+        MessageRole.user => message.images.isEmpty
+            ? {'role': 'user', 'content': message.content}
+            : {
+                // OpenAI vision schema: text + image parts in one content array.
+                'role': 'user',
+                'content': [
+                  if (message.content.isNotEmpty)
+                    {'type': 'text', 'text': message.content},
+                  for (final url in message.images)
+                    {'type': 'image_url', 'image_url': {'url': url}},
+                ],
+              },
         MessageRole.assistant => {
             'role': 'assistant',
             if (message.content.isNotEmpty) 'content': message.content,

@@ -10,6 +10,7 @@ class AgentMessage {
     required this.content,
     this.toolCallId,
     this.toolCalls = const [],
+    this.images = const [],
   });
 
   final MessageRole role;
@@ -17,12 +18,17 @@ class AgentMessage {
   final String? toolCallId;
   final List<ToolCall> toolCalls;
 
+  /// Attached images as `data:` URLs (vision-capable models only); empty for
+  /// plain-text messages. Only meaningful on user messages today.
+  final List<String> images;
+
   Map<String, dynamic> toJson() => {
         'role': role.name,
         'content': content,
         if (toolCallId != null) 'toolCallId': toolCallId,
         if (toolCalls.isNotEmpty)
           'toolCalls': toolCalls.map((c) => c.toJson()).toList(),
+        if (images.isNotEmpty) 'images': images,
       };
 
   static AgentMessage fromJson(Map<String, dynamic> json) => AgentMessage(
@@ -32,6 +38,9 @@ class AgentMessage {
         toolCalls: (json['toolCalls'] as List<dynamic>? ?? const [])
             .map((e) => ToolCall.fromJson(e as Map<String, dynamic>))
             .toList(),
+        images: (json['images'] as List<dynamic>? ?? const [])
+            .map((e) => e as String)
+            .toList(),
       );
 
   @override
@@ -40,11 +49,12 @@ class AgentMessage {
       other.role == role &&
       other.content == content &&
       other.toolCallId == toolCallId &&
-      _listEquals(other.toolCalls, toolCalls);
+      _listEquals(other.toolCalls, toolCalls) &&
+      _listEquals(other.images, images);
 
   @override
   int get hashCode =>
-      Object.hash(role, content, toolCallId, Object.hashAll(toolCalls));
+      Object.hash(role, content, toolCallId, Object.hashAll(toolCalls), Object.hashAll(images));
 
   @override
   String toString() =>
