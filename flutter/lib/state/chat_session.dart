@@ -19,6 +19,7 @@ import '../core/hermes/forgetting.dart';
 import '../core/hermes/knowledge_tool.dart';
 import '../core/error_messages.dart';
 import '../core/mcp/mcp_tool_registry.dart';
+import '../core/runtime/hardened_tool_executor.dart';
 import '../core/models.dart';
 import '../core/runtime/agent_context.dart';
 import '../core/runtime/agent_runtime.dart';
@@ -714,7 +715,7 @@ class _TaskRunner implements AgentTaskRunner {
         sessionId: _conversationId,
         workspace: workspace,
         model: model,
-        tools: registry,
+        tools: HardenedToolExecutor(registry: registry),
         checkpoints: _StoreCheckpoints(_store, _conversationId),
         project: project,
         contextCompactor: compactor,
