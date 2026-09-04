@@ -23,6 +23,29 @@ ConversationSummary _summary(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('ModelConfig persists the context-window override and resolves presets',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = SettingsStore(await SharedPreferences.getInstance());
+
+    // No override: the window comes from the model-id preset.
+    await store.saveModelConfig(const ModelConfig(
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: 'sk-test',
+      model: 'deepseek-chat',
+    ));
+    expect(store.loadModelConfig().effectiveContextWindow, 65536);
+
+    // Explicit override wins over the preset and round-trips.
+    await store.saveModelConfig(store.loadModelConfig().copyWith(
+      model: 'glm-4.6',
+      contextWindow: 96000,
+    ));
+    final reloaded = store.loadModelConfig();
+    expect(reloaded.contextWindow, 96000);
+    expect(reloaded.effectiveContextWindow, 96000);
+  });
+
   Future<SettingsStore> freshStore() async {
     SharedPreferences.setMockInitialValues({});
     return SettingsStore(await SharedPreferences.getInstance());

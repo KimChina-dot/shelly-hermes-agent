@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/agent_core.dart';
+import '../core/context/context_compactor.dart';
 import '../core/dsh/tool_registry.dart';
 import '../core/approval_broker.dart';
 import '../core/gateway/openai_gateway.dart';
@@ -71,6 +72,13 @@ class ToolEntry extends ChatEntry {
 
 class ErrorEntry extends ChatEntry {
   ErrorEntry(this.text);
+  final String text;
+}
+
+/// Transient system notices rendered as a centered pill (e.g. the context
+/// was auto-compacted to fit the model window).
+class NoticeEntry extends ChatEntry {
+  NoticeEntry(this.text);
   final String text;
 }
 
@@ -488,6 +496,19 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     );
   }
 
+  void notifyContextCompacted(ContextCompacted event) {
+    state = state.copyWith(
+      entries: [
+        ...state.entries,
+        NoticeEntry(
+          '上下文已自动压缩:${event.tokensBefore ~/ 1000}K → '
+          '${event.tokensAfter ~/ 1000}K tokens,折叠 ${event.droppedMessages} 条'
+          '${event.usedModelSummary ? '' : '(模型摘要失败,使用占位摘要)'}',
+        ),
+      ],
+    );
+  }
+
   static String _titleFrom(String text) {
     final flat = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     return flat.length <= 24 ? flat : '${flat.substring(0, 24)}…';
@@ -568,6 +589,24 @@ class _TaskRunner implements AgentTaskRunner {
           )
         : DemoModelGateway();
 
+    // Auto-compact long conversations against the model's context window;
+    // the same gateway produces the summary (failures degrade in-engine).
+    final ContextCompactor? compactor = config.isComplete
+        ? ContextCompactor(
+            windowTokens: config.effectiveContextWindow,
+            summarizer: (transcript) async => (await model.complete([
+                  const AgentMessage(
+                    role: MessageRole.system,
+                    content: '你是会话摘要器。把以下对话记录压缩为一段简明摘要,'
+                        '保留:任务目标、已完成的步骤、关键文件与结论、待办事项。'
+                        '只输出摘要正文,不要评论。',
+                  ),
+                  AgentMessage(role: MessageRole.user, content: transcript),
+                ]))
+                    .content,
+          )
+        : null;
+
     final runtime = AgentRuntime(
       context: AgentContext(
         sessionId: _conversationId,
@@ -576,6 +615,7 @@ class _TaskRunner implements AgentTaskRunner {
         tools: registry,
         checkpoints: _StoreCheckpoints(_store, _conversationId),
         project: project,
+        contextCompactor: compactor,
         hermes: HermesMemory(
           store: knowledgeStore,
           autoCapture: config.isComplete && profile.autoCapture,
@@ -635,6 +675,8 @@ class _SessionObserver implements AgentObserver {
           ToolStarted(event.toolCallId, event.toolName),
           finished: event,
         );
+      case ContextCompacted():
+        _session.notifyContextCompacted(event);
     }
   }
 }

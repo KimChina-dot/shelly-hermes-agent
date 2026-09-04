@@ -759,15 +759,50 @@ class _Transcript extends StatelessWidget {
               isPlugin: pluginToolNames.contains(entry.call.name),
             ),
           ErrorEntry() => _ErrorBubble(text: entry.text),
+          NoticeEntry() => _NoticePill(text: entry.text),
         };
       },
     );
   }
 }
 
+class _NoticePill extends StatelessWidget {
+  const _NoticePill({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md, vertical: 6),
+        decoration: BoxDecoration(
+          color: semantic.card,
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          border: Border.all(color: semantic.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.compress_rounded, size: 13, color: semantic.textTertiary),
+            const SizedBox(width: AppSpacing.xs),
+            Flexible(
+              child: Text(text,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11.5, color: semantic.textTertiary)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _UserBubble extends StatelessWidget {
   const _UserBubble({required this.text, this.images = const []});
-
   final String text;
   final List<String> images;
 

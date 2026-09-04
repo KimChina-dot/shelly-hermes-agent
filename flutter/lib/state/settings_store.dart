@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/agent_profile.dart';
+import '../core/gateway/context_window.dart';
 import '../core/hermes/memory_settings.dart';
 import '../core/models.dart';
 import '../core/task_recovery.dart';
@@ -17,28 +18,48 @@ class ModelConfig {
     this.baseUrl = '',
     this.apiKey = '',
     this.model = '',
+    this.contextWindow = 0,
   });
 
   final String baseUrl;
   final String apiKey;
   final String model;
 
+  /// Manual context-window override in tokens; 0 resolves via
+  /// [contextWindowForModel] presets from the model id.
+  final int contextWindow;
+
   bool get isComplete => baseUrl.isNotEmpty && apiKey.isNotEmpty && model.isNotEmpty;
 
-  ModelConfig copyWith({String? baseUrl, String? apiKey, String? model}) =>
+  /// The window the context compactor plans against.
+  int get effectiveContextWindow =>
+      contextWindow > 0 ? contextWindow : contextWindowForModel(model);
+
+  ModelConfig copyWith({
+    String? baseUrl,
+    String? apiKey,
+    String? model,
+    int? contextWindow,
+  }) =>
       ModelConfig(
         baseUrl: baseUrl ?? this.baseUrl,
         apiKey: apiKey ?? this.apiKey,
         model: model ?? this.model,
+        contextWindow: contextWindow ?? this.contextWindow,
       );
 
-  Map<String, dynamic> toJson() =>
-      {'baseUrl': baseUrl, 'apiKey': apiKey, 'model': model};
+  Map<String, dynamic> toJson() => {
+        'baseUrl': baseUrl,
+        'apiKey': apiKey,
+        'model': model,
+        if (contextWindow > 0) 'contextWindow': contextWindow,
+      };
 
   static ModelConfig fromJson(Map<String, dynamic> json) => ModelConfig(
         baseUrl: json['baseUrl'] as String? ?? '',
         apiKey: json['apiKey'] as String? ?? '',
         model: json['model'] as String? ?? '',
+        contextWindow: (json['contextWindow'] as num?)?.toInt() ?? 0,
       );
 
   /// Masks the key for display: keeps a short prefix and suffix.

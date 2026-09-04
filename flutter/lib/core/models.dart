@@ -262,6 +262,25 @@ class ToolStarted extends AgentEvent {
   final String argumentsJson;
 }
 
+/// Emitted when the context compactor folded older messages so the next
+/// model round fits the model's context window.
+class ContextCompacted extends AgentEvent {
+  const ContextCompacted({
+    required this.droppedMessages,
+    required this.tokensBefore,
+    required this.tokensAfter,
+    required this.usedModelSummary,
+  });
+
+  final int droppedMessages;
+  final int tokensBefore;
+  final int tokensAfter;
+
+  /// False when the model-based summarizer failed and a heuristic
+  /// placeholder was used instead.
+  final bool usedModelSummary;
+}
+
 class ToolFinished extends AgentEvent {
   const ToolFinished({
     required this.toolCallId,
