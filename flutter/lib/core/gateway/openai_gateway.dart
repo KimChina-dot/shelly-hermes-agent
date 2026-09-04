@@ -114,6 +114,7 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
     this.maxRetries = 2,
     this.retryDelay = const Duration(milliseconds: 600),
     Map<String, String> extraHeaders = const {},
+    this.bodyDecorator,
   })  : _endpoint =
             '${baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl}/chat/completions',
         _headers = {
@@ -136,6 +137,11 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
   /// OpenAI function-calling definitions advertised to the model; taken
   /// from the tool registry's [WorkspaceToolRegistry.openAiToolsJson].
   final List<Map<String, dynamic>>? tools;
+
+  /// Last-chance rewrite of the JSON body before it is encoded and sent
+  /// (e.g. provider web-search plugin injection); null leaves it untouched.
+  final Map<String, dynamic> Function(Map<String, dynamic> body)?
+      bodyDecorator;
 
   @override
   Future<ModelReply> complete(List<AgentMessage> messages) async {
@@ -241,7 +247,8 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
       if (temperature != null) 'temperature': temperature,
       if (maxTokens != null) 'max_tokens': maxTokens,
     };
-    return ChatRequest(url: _endpoint, headers: _headers, body: jsonEncode(body));
+    final payload = bodyDecorator?.call(body) ?? body;
+    return ChatRequest(url: _endpoint, headers: _headers, body: jsonEncode(payload));
   }
 
   ModelReply _decodePayload(String body) {

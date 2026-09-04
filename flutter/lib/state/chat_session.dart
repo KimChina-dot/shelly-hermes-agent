@@ -12,6 +12,7 @@ import '../core/context/context_compactor.dart';
 import '../core/dsh/tool_registry.dart';
 import '../core/approval_broker.dart';
 import '../core/gateway/openai_gateway.dart';
+import '../core/gateway/web_search.dart';
 import '../core/hermes/hermes_memory.dart';
 import '../core/hermes/knowledge_store.dart';
 import '../core/hermes/forgetting.dart';
@@ -672,6 +673,10 @@ class _TaskRunner implements AgentTaskRunner {
             apiKey: config.apiKey,
             model: config.model,
             tools: registry.openAiToolsJson(),
+            bodyDecorator: webSearchBodyDecorator(
+              enabled: config.webSearchEnabled,
+              baseUrl: config.baseUrl,
+            ),
           )
         : DemoModelGateway();
 

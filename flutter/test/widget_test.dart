@@ -281,6 +281,48 @@ void main() {
     expect(find.text('deepseek-chat'), findsOneWidget);
   });
 
+  testWidgets('web search toggle shows only for supporting providers',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final store = await container.read(settingsStoreProvider.future);
+    await store.saveModelConfig(const ModelConfig(apiKey: 'sk-test'));
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const ShellyApp()),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('选择模型'));
+    await tester.pumpAndSettle();
+
+    final baseUrlField = find.byWidgetPredicate((w) =>
+        w is TextField && (w.decoration?.hintText?.startsWith('https') ?? false));
+    final modelField = find.byWidgetPredicate((w) =>
+        w is TextField && (w.decoration?.hintText?.contains('deepseek-chat') ?? false));
+
+    // DeepSeek has no server-side search plugin — no toggle.
+    await tester.enterText(baseUrlField, 'https://api.deepseek.com/v1');
+    await tester.pump();
+    expect(find.text('联网搜索'), findsNothing);
+
+    // Zhipu exposes one; flipping it on persists with the config.
+    await tester.enterText(baseUrlField, 'https://open.bigmodel.cn/api/paas/v4');
+    await tester.pump();
+    expect(find.text('联网搜索'), findsOneWidget);
+    await tester.tap(find.text('联网搜索'));
+    await tester.pump();
+
+    await tester.enterText(modelField, 'glm-4.6');
+    await tester.pump();
+    await tester.tap(find.text('使用此模型'));
+    await tester.pumpAndSettle();
+
+    final applied = container.read(settingsStoreProvider).value!;
+    expect(applied.modelConfig.model, 'glm-4.6');
+    expect(applied.modelConfig.webSearchEnabled, isTrue);
+  });
+
   testWidgets('memory page runs manual upkeep and opens memory settings',
       (tester) async {
     await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
