@@ -7,6 +7,7 @@ import '../core/agent_profile.dart';
 import '../core/gateway/context_window.dart';
 import '../core/hermes/memory_settings.dart';
 import '../core/models.dart';
+import '../core/mcp/mcp_client.dart';
 import '../core/task_recovery.dart';
 import '../platform/secure_box.dart';
 
@@ -149,6 +150,7 @@ class SettingsStore implements TaskRecoveryStore {
   static const _activeProfileKey = 'shelly.agent.profile.active';
   static const _activeTaskKey = 'shelly.task.active';
   static const _memorySettingsKey = 'shelly.memory.settings';
+  static const _mcpServersKey = 'shelly.mcp.servers';
 
   /// Convenience accessor for reactive UI reads.
   ModelConfig get modelConfig => loadModelConfig();
@@ -311,6 +313,24 @@ class SettingsStore implements TaskRecoveryStore {
   Future<void> saveMemorySettings(MemorySettings settings) => _prefs.setString(
         _memorySettingsKey,
         jsonEncode(settings.toJson()),
+      );
+
+  List<McpServerConfig> loadMcpServers() {
+    final raw = _prefs.getString(_mcpServersKey);
+    if (raw == null) return const [];
+    try {
+      return [
+        for (final entry in jsonDecode(raw) as List<dynamic>)
+          if (entry is Map<String, dynamic>) McpServerConfig.fromJson(entry),
+      ];
+    } on FormatException {
+      return const [];
+    }
+  }
+
+  Future<void> saveMcpServers(List<McpServerConfig> servers) => _prefs.setString(
+        _mcpServersKey,
+        jsonEncode([for (final server in servers) server.toJson()]),
       );
 
   String? loadActiveProfileId() => _prefs.getString(_activeProfileKey);
