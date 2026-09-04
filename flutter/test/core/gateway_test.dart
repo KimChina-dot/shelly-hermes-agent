@@ -48,6 +48,40 @@ void main() {
       );
     });
 
+    test('splices text-file attachments into the user content', () {
+      final encoded = encodeMessages([
+        AgentMessage(
+          role: MessageRole.user,
+          content: '总结这个文件',
+          textFiles: const [
+            TextFileAttachment(name: 'notes.md', content: '第 1 行\n第 2 行'),
+          ],
+        ),
+      ]);
+
+      final content = encoded[0]['content'] as String;
+      expect(content, contains('总结这个文件'));
+      expect(content, contains('--- 附件:notes.md ---'));
+      expect(content, contains('第 2 行'));
+    });
+
+    test('attachment text joins the vision text part, not a new part', () {
+      final encoded = encodeMessages([
+        AgentMessage(
+          role: MessageRole.user,
+          content: '看图和数据',
+          images: const ['data:image/png;base64,AAA'],
+          textFiles: const [
+            TextFileAttachment(name: 'a.csv', content: 'x,y\n1,2'),
+          ],
+        ),
+      ]);
+
+      final content = encoded[0]['content'] as List<dynamic>;
+      expect(content, hasLength(2)); // one text part + one image part
+      expect((content[0]['text'] as String), contains('--- 附件:a.csv ---'));
+    });
+
     test('image-only user message omits the empty text part', () {
       final encoded = encodeMessages([
         const AgentMessage(

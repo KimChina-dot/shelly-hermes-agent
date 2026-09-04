@@ -26,6 +26,9 @@ dependencies:
   # Gallery photo picking for vision (image) messages; Android 13+ Photo Picker.
   image_picker: ^1.1.2
 
+  # System file picker (SAF on Android) for text/code file attachments.
+  file_selector: ^1.0.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

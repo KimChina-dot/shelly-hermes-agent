@@ -8,7 +8,8 @@ import 'package:shelly_hermes/core/task_recovery.dart';
 import 'package:shelly_hermes/design/components/tool_card.dart';
 import 'package:shelly_hermes/design/theme.dart';
 import 'package:shelly_hermes/features/chat/chat_page.dart'
-    show pickGalleryImage, resetGalleryImagePicker;
+    show pickGalleryImage, pickTextFile, resetGalleryImagePicker,
+    resetTextFilePicker;
 import 'package:shelly_hermes/state/chat_session.dart';
 import 'package:shelly_hermes/state/settings_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -407,7 +408,9 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('添加图片'));
+    await tester.tap(find.byTooltip('添加图片或文件'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('添加图片(相册)'));
     await tester.pumpAndSettle();
 
     // The pending image shows as a removable thumbnail above the input.
@@ -438,11 +441,45 @@ void main() {
     await tester.pumpAndSettle();
 
     for (var i = 0; i < 5; i += 1) {
-      await tester.tap(find.byTooltip('添加图片'));
+      await tester.tap(find.byTooltip('添加图片或文件'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('添加图片(相册)'));
       await tester.pumpAndSettle();
     }
 
     expect(find.text('一条消息最多带 4 张图片'), findsOneWidget);
     expect(find.byType(Image), findsNWidgets(4));
+  });
+
+  testWidgets('composer attaches a text file and sends it with the message',
+      (tester) async {
+    pickTextFile = () async =>
+        const TextFileAttachment(name: 'notes.md', content: '第 1 行\n第 2 行');
+    addTearDown(resetTextFilePicker);
+
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('添加图片或文件'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('添加文件(文本/代码,≤200KB)'));
+    await tester.pumpAndSettle();
+
+    // The pending file shows as a removable chip above the input.
+    expect(find.text('notes.md'), findsOneWidget);
+    expect(find.byType(InputChip), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '总结这个文件');
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.pumpAndSettle();
+
+    // The bubble shows the file-name chip and the raw text only — the file
+    // body rides along to the model, not the transcript.
+    expect(find.text('总结这个文件'), findsWidgets);
+    expect(find.text('第 1 行'), findsNothing);
+    expect(find.textContaining('--- 附件'), findsNothing);
+    expect(find.text('notes.md'), findsOneWidget);
+    // The composer chip was consumed by the send.
+    expect(find.byType(InputChip), findsNothing);
   });
 }

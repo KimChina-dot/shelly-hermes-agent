@@ -3,23 +3,31 @@ import '../models.dart';
 /// Wire-format mapping between the Hermes [AgentMessage] model and the
 /// OpenAI-compatible chat/completions schema.
 
+Map<String, dynamic> _encodeUser(AgentMessage message) {
+  // Attached text files are spliced into the text part; the transcript-only
+  // message.content stays clean for memory, compaction and display.
+  final text = composeMessageContent(message.content, message.textFiles);
+  if (message.images.isEmpty) return {'role': 'user', 'content': text};
+  return {
+    // OpenAI vision schema: text + image parts in one content array.
+    'role': 'user',
+    'content': [
+      if (text.isNotEmpty) {'type': 'text', 'text': text},
+      for (final url in message.images)
+        {
+          'type': 'image_url',
+          'image_url': {'url': url},
+        },
+    ],
+  };
+}
+
 List<Map<String, dynamic>> encodeMessages(List<AgentMessage> messages) {
   return [
     for (final message in messages)
       switch (message.role) {
         MessageRole.system => {'role': 'system', 'content': message.content},
-        MessageRole.user => message.images.isEmpty
-            ? {'role': 'user', 'content': message.content}
-            : {
-                // OpenAI vision schema: text + image parts in one content array.
-                'role': 'user',
-                'content': [
-                  if (message.content.isNotEmpty)
-                    {'type': 'text', 'text': message.content},
-                  for (final url in message.images)
-                    {'type': 'image_url', 'image_url': {'url': url}},
-                ],
-              },
+        MessageRole.user => _encodeUser(message),
         MessageRole.assistant => {
             'role': 'assistant',
             if (message.content.isNotEmpty) 'content': message.content,
