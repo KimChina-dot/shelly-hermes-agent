@@ -15,6 +15,7 @@ import '../../design/components/skeleton.dart';
 import '../../design/components/tool_card.dart';
 import '../../design/tokens.dart';
 import '../../platform/platform_workspace.dart' show ResilientWorkspace;
+import '../../platform/speech.dart';
 import '../../state/chat_session.dart';
 import '../../state/dsh_provider.dart';
 import '../../state/settings_store.dart';
@@ -40,11 +41,56 @@ void resetGalleryImagePicker() => pickGalleryImage = _defaultPickGalleryImage;
 
 void resetTextFilePicker() => pickTextFile = _defaultPickTextFile;
 
+/// Injectable speech transcriber; tests swap this out because real
+/// recognition needs the platform speech channel and mic permission.
+SpeechTranscriber Function() createSpeechTranscriber =
+    PlatformSpeechTranscriber.new;
+
+void resetSpeechTranscriber() =>
+    createSpeechTranscriber = PlatformSpeechTranscriber.new;
+
 const _textLikeExtensions = [
-  'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'yaml', 'yml', 'xml', 'html',
-  'css', 'js', 'ts', 'jsx', 'tsx', 'dart', 'java', 'kt', 'kts', 'gradle',
-  'py', 'rb', 'go', 'rs', 'c', 'h', 'cpp', 'hpp', 'cs', 'sh', 'bat', 'ps1',
-  'sql', 'toml', 'ini', 'cfg', 'properties', 'log', 'env', 'swift', 'php',
+  'txt',
+  'md',
+  'markdown',
+  'csv',
+  'tsv',
+  'json',
+  'yaml',
+  'yml',
+  'xml',
+  'html',
+  'css',
+  'js',
+  'ts',
+  'jsx',
+  'tsx',
+  'dart',
+  'java',
+  'kt',
+  'kts',
+  'gradle',
+  'py',
+  'rb',
+  'go',
+  'rs',
+  'c',
+  'h',
+  'cpp',
+  'hpp',
+  'cs',
+  'sh',
+  'bat',
+  'ps1',
+  'sql',
+  'toml',
+  'ini',
+  'cfg',
+  'properties',
+  'log',
+  'env',
+  'swift',
+  'php',
 ];
 
 bool _isTextLikeFileName(String name) {
@@ -70,10 +116,7 @@ Future<String?> _defaultPickGalleryImage() async {
 class _FilePickCancelled implements Exception {}
 
 Future<TextFileAttachment> _defaultPickTextFile() async {
-  const typeGroup = XTypeGroup(
-    label: '文本与代码',
-    extensions: _textLikeExtensions,
-  );
+  const typeGroup = XTypeGroup(label: '文本与代码', extensions: _textLikeExtensions);
   final file = await openFile(acceptedTypeGroups: [typeGroup]);
   if (file == null) {
     throw _FilePickCancelled();
@@ -106,6 +149,64 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final _pendingImages = <String>[];
   final _pendingFiles = <TextFileAttachment>[];
   bool _approvalSheetOpen = false;
+  SpeechTranscriber? _speech;
+  bool _dictating = false;
+  bool _dictateCancelled = false;
+  String _dictated = '';
+
+  /// Hold-to-talk: recognition starts on press-down and the settled
+  /// transcript is appended to the composer on release.
+  Future<void> _startDictation() async {
+    if (_dictating) return;
+    final transcriber = _speech ??= createSpeechTranscriber();
+    _dictateCancelled = false;
+    bool ready;
+    try {
+      ready = await transcriber.initialize().timeout(
+        const Duration(seconds: 3),
+      );
+    } catch (_) {
+      ready = false;
+    }
+    if (!mounted) return;
+    if (!ready) {
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(const SnackBar(content: Text('语音输入不可用(设备不支持或未授权麦克风)')));
+      return;
+    }
+    if (_dictateCancelled) return;
+    _dictated = '';
+    setState(() => _dictating = true);
+    try {
+      await transcriber.listen(
+        localeId: 'zh_CN',
+        onResult: (text, isFinal) {
+          if (isFinal) _dictated = text;
+        },
+      );
+    } catch (_) {
+      if (mounted) setState(() => _dictating = false);
+    }
+  }
+
+  Future<void> _stopDictation() async {
+    if (!_dictating) {
+      // Released before recognition finished initializing — skip listening.
+      _dictateCancelled = true;
+      return;
+    }
+    setState(() => _dictating = false);
+    try {
+      await _speech?.stop().timeout(const Duration(milliseconds: 800));
+    } catch (_) {
+      // Recognition cleanup is best-effort; the transcript we have is used.
+    }
+    final text = _dictated.trim();
+    if (text.isEmpty) return;
+    final current = _composer.text;
+    _composer.text = current.isEmpty ? text : '$current $text';
+  }
 
   @override
   void dispose() {
@@ -133,9 +234,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   Future<void> _attachImage() async {
     if (_pendingImages.length >= _maxImagesPerMessage) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(content: Text('一条消息最多带 4 张图片')),
-      );
+      ScaffoldMessenger.maybeOf(context)
+          ?.showSnackBar(const SnackBar(content: Text('一条消息最多带 4 张图片')));
       return;
     }
     final dataUrl = await pickGalleryImage();
@@ -145,9 +245,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   Future<void> _attachFile() async {
     if (_pendingFiles.length >= _maxFilesPerMessage) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(content: Text('一条消息最多带 4 个文件')),
-      );
+      ScaffoldMessenger.maybeOf(context)
+          ?.showSnackBar(const SnackBar(content: Text('一条消息最多带 4 个文件')));
       return;
     }
     try {
@@ -157,14 +256,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       return;
     } on StateError catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.maybeOf(context)
+          ?.showSnackBar(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(content: Text('无法读取该文件')),
-      );
+      ScaffoldMessenger.maybeOf(context)
+          ?.showSnackBar(const SnackBar(content: Text('无法读取该文件')));
     }
   }
 
@@ -227,10 +324,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
   void _startNewConversation(BuildContext context, WidgetRef ref) {
     final ok = ref.read(chatSessionProvider.notifier).newConversation();
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
-      duration: const Duration(seconds: 2),
-      content: Text(ok ? '已开启新对话' : '任务进行中,请先停止当前任务'),
-    ));
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 2),
+        content: Text(ok ? '已开启新对话' : '任务进行中,请先停止当前任务'),
+      ),
+    );
   }
 
   void _showSessionSheet(BuildContext context) {
@@ -257,11 +356,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       data: (store) => !store.modelConfig.isComplete,
       orElse: () => true,
     );
-    final workspaceReady = ref
-            .watch(workspaceAuthorizedProvider)
-            .asData
-            ?.value ??
-        true;
+    final workspaceReady =
+        ref.watch(workspaceAuthorizedProvider).asData?.value ?? true;
 
     Future<void> pickWorkspaceDirectory() async {
       final workspace = ref.read(workspaceProvider);
@@ -333,7 +429,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               outputTokens: session.outputTokens,
               pendingImages: List.unmodifiable(_pendingImages),
               pendingFiles: List.unmodifiable(_pendingFiles),
-              onAttach: session.isBusy &&
+              onAttach:
+                  session.isBusy &&
                       session.phase != SessionPhase.waitingApproval
                   ? null
                   : _showAttachSheet,
@@ -343,6 +440,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   setState(() => _pendingFiles.removeAt(index)),
               onSend: _send,
               onStop: () => ref.read(chatSessionProvider.notifier).cancel(),
+              dictating: _dictating,
+              onDictateStart: _startDictation,
+              onDictateStop: _stopDictation,
             ),
           ],
         ),
@@ -369,7 +469,11 @@ class _Header extends ConsumerWidget {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.sm),
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
       child: Row(
         children: [
           const GradientAvatar(size: AvatarSize.medium, glow: true),
@@ -383,24 +487,31 @@ class _Header extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Shelly',
-                        style: TextStyle(
-                            fontSize: 16.5, fontWeight: FontWeight.w700)),
+                    const Text(
+                      'Shelly',
+                      style: TextStyle(
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     Row(
                       children: [
                         Flexible(
                           child: Text(
-                            conversationTitle ??
-                                (demoMode ? '演示模式' : '新对话'),
+                            conversationTitle ?? (demoMode ? '演示模式' : '新对话'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                fontSize: 12,
-                                color: semantic.textTertiary),
+                              fontSize: 12,
+                              color: semantic.textTertiary,
+                            ),
                           ),
                         ),
-                        Icon(Icons.expand_more,
-                            size: 14, color: semantic.textTertiary),
+                        Icon(
+                          Icons.expand_more,
+                          size: 14,
+                          color: semantic.textTertiary,
+                        ),
                       ],
                     ),
                   ],
@@ -412,14 +523,20 @@ class _Header extends ConsumerWidget {
           IconButton(
             tooltip: '会话列表',
             onPressed: onTitleTap,
-            icon: Icon(Icons.toc_outlined,
-                size: 21, color: semantic.textSecondary),
+            icon: Icon(
+              Icons.toc_outlined,
+              size: 21,
+              color: semantic.textSecondary,
+            ),
           ),
           IconButton(
             tooltip: '开启新对话',
             onPressed: onNewConversation,
-            icon: Icon(Icons.add_comment_outlined,
-                size: 21, color: semantic.textSecondary),
+            icon: Icon(
+              Icons.add_comment_outlined,
+              size: 21,
+              color: semantic.textSecondary,
+            ),
           ),
         ],
       ),
@@ -434,7 +551,9 @@ class _ModelChip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final config = ref.watch(settingsStoreProvider).maybeWhen(
+    final config = ref
+        .watch(settingsStoreProvider)
+        .maybeWhen(
           data: (store) => store.modelConfig,
           orElse: () => const ModelConfig(),
         );
@@ -448,7 +567,9 @@ class _ModelChip extends ConsumerWidget {
       ),
       child: Container(
         padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm, vertical: 5),
+          horizontal: AppSpacing.sm,
+          vertical: 5,
+        ),
         decoration: BoxDecoration(
           color: AppColors.brandViolet.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(AppRadius.pill),
@@ -456,8 +577,11 @@ class _ModelChip extends ConsumerWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.bolt_rounded,
-                size: 13, color: AppColors.brandViolet),
+            const Icon(
+              Icons.bolt_rounded,
+              size: 13,
+              color: AppColors.brandViolet,
+            ),
             const SizedBox(width: 3),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 110),
@@ -466,9 +590,10 @@ class _ModelChip extends ConsumerWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.brandViolet),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.brandViolet,
+                ),
               ),
             ),
           ],
@@ -488,7 +613,8 @@ class _SessionSheet extends ConsumerWidget {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final storeAsync = ref.watch(settingsStoreProvider);
     final conversations = storeAsync.maybeWhen(
-      data: (store) => sortConversations(store.loadConversations()).take(20).toList(),
+      data: (store) =>
+          sortConversations(store.loadConversations()).take(20).toList(),
       orElse: () => const <ConversationSummary>[],
     );
     final currentId = ref.watch(chatSessionProvider).conversationId;
@@ -496,11 +622,13 @@ class _SessionSheet extends ConsumerWidget {
 
     return Container(
       constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.72),
+        maxHeight: MediaQuery.of(context).size.height * 0.72,
+      ),
       decoration: BoxDecoration(
         color: semantic.card,
-        borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppRadius.xl),
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -516,20 +644,29 @@ class _SessionSheet extends ConsumerWidget {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(
-                AppSpacing.lg, AppSpacing.sm, AppSpacing.sm, AppSpacing.xs),
+              AppSpacing.lg,
+              AppSpacing.sm,
+              AppSpacing.sm,
+              AppSpacing.xs,
+            ),
             child: Row(
               children: [
-                Text('会话',
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: semantic.textPrimary)),
+                Text(
+                  '会话',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: semantic.textPrimary,
+                  ),
+                ),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: busy
                       ? null
                       : () {
-                          ref.read(chatSessionProvider.notifier).newConversation();
+                          ref
+                              .read(chatSessionProvider.notifier)
+                              .newConversation();
                           Navigator.of(context).pop();
                         },
                   icon: const Icon(Icons.add, size: 16),
@@ -542,14 +679,22 @@ class _SessionSheet extends ConsumerWidget {
             child: conversations.isEmpty
                 ? Padding(
                     padding: const EdgeInsets.all(AppSpacing.xl),
-                    child: Text('发送第一条消息后会话会出现在这里',
-                        style: TextStyle(
-                            fontSize: 12.5, color: semantic.textTertiary)),
+                    child: Text(
+                      '发送第一条消息后会话会出现在这里',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: semantic.textTertiary,
+                      ),
+                    ),
                   )
                 : ListView.builder(
                     shrinkWrap: true,
                     padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.lg),
+                      AppSpacing.lg,
+                      0,
+                      AppSpacing.lg,
+                      AppSpacing.lg,
+                    ),
                     itemCount: conversations.length,
                     itemBuilder: (context, index) {
                       final conversation = conversations[index];
@@ -565,67 +710,84 @@ class _SessionSheet extends ConsumerWidget {
                         child: Material(
                           type: MaterialType.transparency,
                           child: ListTile(
-                          dense: true,
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.md),
-                          leading: isCurrent
-                              ? const Icon(Icons.check_circle_outline,
-                                  size: 18, color: AppColors.brandBlue)
-                              : Icon(Icons.forum_outlined,
-                                  size: 18, color: semantic.textTertiary),
-                          title: Text(
-                            (conversation.pinned ? '📌 ' : '') +
-                                conversation.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
+                            dense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.md,
+                            ),
+                            leading: isCurrent
+                                ? const Icon(
+                                    Icons.check_circle_outline,
+                                    size: 18,
+                                    color: AppColors.brandBlue,
+                                  )
+                                : Icon(
+                                    Icons.forum_outlined,
+                                    size: 18,
+                                    color: semantic.textTertiary,
+                                  ),
+                            title: Text(
+                              (conversation.pinned ? '📌 ' : '') +
+                                  conversation.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
                                 fontSize: 13.5,
                                 fontWeight: isCurrent
                                     ? FontWeight.w700
                                     : FontWeight.w500,
-                                color: semantic.textPrimary),
-                          ),
-                          subtitle: Text(
-                            '${conversation.messageCount} 条消息 · ${_relativeTime(conversation.updatedAt)}',
-                            style: TextStyle(
-                                fontSize: 11, color: semantic.textTertiary),
-                          ),
-                          trailing: PopupMenuButton<String>(
-                            itemBuilder: (menuContext) => [
-                              const PopupMenuItem(
-                                  value: 'rename', child: Text('重命名')),
-                              PopupMenuItem(
-                                  value: 'pin',
-                                  child: Text(conversation.pinned
-                                      ? '取消置顶'
-                                      : '置顶')),
-                              const PopupMenuItem(
-                                  value: 'delete', child: Text('删除')),
-                            ],
-                            onSelected: (action) => _handleAction(
-                              context,
-                              ref,
-                              action,
-                              conversation,
+                                color: semantic.textPrimary,
+                              ),
                             ),
-                          ),
-                          onTap: () {
-                            if (busy) {
+                            subtitle: Text(
+                              '${conversation.messageCount} 条消息 · ${_relativeTime(conversation.updatedAt)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: semantic.textTertiary,
+                              ),
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              itemBuilder: (menuContext) => [
+                                const PopupMenuItem(
+                                  value: 'rename',
+                                  child: Text('重命名'),
+                                ),
+                                PopupMenuItem(
+                                  value: 'pin',
+                                  child: Text(
+                                    conversation.pinned ? '取消置顶' : '置顶',
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('删除'),
+                                ),
+                              ],
+                              onSelected: (action) => _handleAction(
+                                context,
+                                ref,
+                                action,
+                                conversation,
+                              ),
+                            ),
+                            onTap: () {
+                              if (busy) {
+                                Navigator.of(context).pop();
+                                ScaffoldMessenger.maybeOf(context)
+                                    ?.showSnackBar(
+                                      const SnackBar(
+                                        content: Text('任务进行中,请先停止当前任务'),
+                                      ),
+                                    );
+                                return;
+                              }
+                              if (!isCurrent) {
+                                ref
+                                    .read(chatSessionProvider.notifier)
+                                    .switchTo(conversation.id);
+                              }
                               Navigator.of(context).pop();
-                              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                                const SnackBar(
-                                    content: Text('任务进行中,请先停止当前任务')),
-                              );
-                              return;
-                            }
-                            if (!isCurrent) {
-                              ref
-                                  .read(chatSessionProvider.notifier)
-                                  .switchTo(conversation.id);
-                            }
-                            Navigator.of(context).pop();
-                          },
-                        ),
+                            },
+                          ),
                         ),
                       );
                     },
@@ -677,24 +839,32 @@ class _WorkspaceBanner extends StatelessWidget {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, AppSpacing.xs, AppSpacing.lg, 0),
+        AppSpacing.lg,
+        AppSpacing.xs,
+        AppSpacing.lg,
+        0,
+      ),
       child: Container(
         padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
+        ),
         decoration: BoxDecoration(
           color: AppColors.warning.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: Row(
           children: [
-            const Icon(Icons.folder_off_outlined,
-                size: 15, color: AppColors.warning),
+            const Icon(
+              Icons.folder_off_outlined,
+              size: 15,
+              color: AppColors.warning,
+            ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
                 '演示沙箱:文件改动不会落盘,选择目录后即可真实读写',
-                style:
-                    TextStyle(fontSize: 12, color: semantic.textSecondary),
+                style: TextStyle(fontSize: 12, color: semantic.textSecondary),
               ),
             ),
             const SizedBox(width: AppSpacing.sm),
@@ -703,9 +873,10 @@ class _WorkspaceBanner extends StatelessWidget {
               child: Text(
                 '选择目录',
                 style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.warning),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.warning,
+                ),
               ),
             ),
           ],
@@ -733,20 +904,31 @@ class _DemoBanner extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadius.md),
           child: Padding(
             padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm,
+            ),
             child: Row(
               children: [
-                const Icon(Icons.science_outlined,
-                    size: 15, color: AppColors.brandBlue),
+                const Icon(
+                  Icons.science_outlined,
+                  size: 15,
+                  color: AppColors.brandBlue,
+                ),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
                     '演示模式:未配置模型接口,点击体验工具审批流程',
-                    style:
-                        TextStyle(fontSize: 12, color: semantic.textSecondary),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: semantic.textSecondary,
+                    ),
                   ),
                 ),
-                Icon(Icons.chevron_right, size: 15, color: semantic.textTertiary),
+                Icon(
+                  Icons.chevron_right,
+                  size: 15,
+                  color: semantic.textTertiary,
+                ),
               ],
             ),
           ),
@@ -777,68 +959,83 @@ class _Greeting extends StatelessWidget {
           const SizedBox(height: AppSpacing.xxl),
           const GradientAvatar(size: AvatarSize.large, glow: true),
           const SizedBox(height: AppSpacing.lg),
-          Text('你好,我是 Shelly',
-              style: Theme.of(context)
-                  .textTheme
-                  .headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            '你好,我是 Shelly',
+            style: Theme.of(context).textTheme.headlineSmall
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: AppSpacing.sm),
           Text(
             '把任务交给我,我会拆解步骤、调用工具,\n并在关键操作前征求你的同意。',
             textAlign: TextAlign.center,
             style: TextStyle(
-                fontSize: 14, height: 1.6, color: semantic.textSecondary),
+              fontSize: 14,
+              height: 1.6,
+              color: semantic.textSecondary,
+            ),
           ),
           const SizedBox(height: AppSpacing.xl),
-          ..._suggestions.map((s) => Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                child: Material(
-                  color: semantic.card,
+          ..._suggestions.map(
+            (s) => Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: Material(
+                color: semantic.card,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                child: InkWell(
+                  onTap: () => onSuggestion(s.$2),
                   borderRadius: BorderRadius.circular(AppRadius.lg),
-                  child: InkWell(
-                    onTap: () => onSuggestion(s.$2),
-                    borderRadius: BorderRadius.circular(AppRadius.lg),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(color: semantic.border),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: AppColors.brandBlue.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(AppRadius.sm),
-                            ),
-                            child: Icon(s.$1, size: 17, color: AppColors.brandBlue),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      border: Border.all(color: semantic.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: AppColors.brandBlue.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
                           ),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(s.$2,
-                                    style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600)),
-                                const SizedBox(height: 2),
-                                Text(s.$3,
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: semantic.textTertiary)),
-                              ],
-                            ),
+                          child: Icon(
+                            s.$1,
+                            size: 17,
+                            color: AppColors.brandBlue,
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                s.$2,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                s.$3,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: semantic.textTertiary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              )),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -864,21 +1061,25 @@ class _Transcript extends StatelessWidget {
     return ListView.builder(
       controller: controller,
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.sm),
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
       itemCount: entries.length,
       itemBuilder: (context, index) {
         final entry = entries[index];
         return switch (entry) {
           UserEntry() => _UserBubble(
-              text: entry.text,
-              images: entry.images,
-              fileNames: entry.fileNames,
-            ),
+            text: entry.text,
+            images: entry.images,
+            fileNames: entry.fileNames,
+          ),
           AssistantEntry() => _AssistantMessage(entry: entry),
           ToolEntry() => ToolCard(
-              entry: entry,
-              isPlugin: pluginToolNames.contains(entry.call.name),
-            ),
+            entry: entry,
+            isPlugin: pluginToolNames.contains(entry.call.name),
+          ),
           ErrorEntry() => _ErrorBubble(text: entry.text),
           NoticeEntry() => _NoticePill(text: entry.text),
         };
@@ -899,7 +1100,9 @@ class _NoticePill extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
         padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md, vertical: 6),
+          horizontal: AppSpacing.md,
+          vertical: 6,
+        ),
         decoration: BoxDecoration(
           color: semantic.card,
           borderRadius: BorderRadius.circular(AppRadius.xl),
@@ -908,12 +1111,18 @@ class _NoticePill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.compress_rounded, size: 13, color: semantic.textTertiary),
+            Icon(
+              Icons.compress_rounded,
+              size: 13,
+              color: semantic.textTertiary,
+            ),
             const SizedBox(width: AppSpacing.xs),
             Flexible(
-              child: Text(text,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11.5, color: semantic.textTertiary)),
+              child: Text(
+                text,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11.5, color: semantic.textTertiary),
+              ),
             ),
           ],
         ),
@@ -946,16 +1155,22 @@ class _UserBubble extends StatelessWidget {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final bubble = Container(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md, vertical: AppSpacing.sm + 2),
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm + 2,
+      ),
       decoration: BoxDecoration(
         gradient: const LinearGradient(colors: AppColors.brandGradient),
-        borderRadius: BorderRadius.circular(AppRadius.lg).copyWith(
-          bottomRight: const Radius.circular(AppRadius.sm),
+        borderRadius: BorderRadius.circular(AppRadius.lg)
+            .copyWith(bottomRight: const Radius.circular(AppRadius.sm)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 14.5,
+          height: 1.5,
+          color: Colors.white,
         ),
       ),
-      child: Text(text,
-          style: const TextStyle(
-              fontSize: 14.5, height: 1.5, color: Colors.white)),
     );
     return Align(
       alignment: Alignment.centerRight,
@@ -973,7 +1188,9 @@ class _UserBubble extends StatelessWidget {
                   for (final name in fileNames)
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.sm, vertical: 4),
+                        horizontal: AppSpacing.sm,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: semantic.card,
                         borderRadius: BorderRadius.circular(AppRadius.md),
@@ -982,13 +1199,19 @@ class _UserBubble extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.description_outlined,
-                              size: 13, color: semantic.textSecondary),
+                          Icon(
+                            Icons.description_outlined,
+                            size: 13,
+                            color: semantic.textSecondary,
+                          ),
                           const SizedBox(width: 4),
-                          Text(name,
-                              style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: semantic.textSecondary)),
+                          Text(
+                            name,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: semantic.textSecondary,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1015,14 +1238,24 @@ class _UserBubble extends StatelessWidget {
                       color: semantic.card,
                       borderRadius: BorderRadius.circular(AppRadius.lg),
                     ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.broken_image_outlined,
-                          size: 18, color: semantic.textTertiary),
-                      const SizedBox(width: AppSpacing.xs),
-                      Text('图片无法显示',
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.broken_image_outlined,
+                          size: 18,
+                          color: semantic.textTertiary,
+                        ),
+                        const SizedBox(width: AppSpacing.xs),
+                        Text(
+                          '图片无法显示',
                           style: TextStyle(
-                              fontSize: 12, color: semantic.textTertiary)),
-                    ]),
+                            fontSize: 12,
+                            color: semantic.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1125,9 +1358,14 @@ class _ErrorBubble extends StatelessWidget {
           const Icon(Icons.error_outline, size: 16, color: AppColors.danger),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
-            child: Text(text,
-                style: TextStyle(
-                    fontSize: 13, height: 1.5, color: semantic.textPrimary)),
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.5,
+                color: semantic.textPrimary,
+              ),
+            ),
           ),
         ],
       ),
@@ -1149,6 +1387,9 @@ class _Composer extends StatelessWidget {
     required this.onRemoveFile,
     required this.onSend,
     required this.onStop,
+    required this.dictating,
+    required this.onDictateStart,
+    required this.onDictateStop,
   });
 
   final TextEditingController controller;
@@ -1163,13 +1404,20 @@ class _Composer extends StatelessWidget {
   final void Function(int index) onRemoveFile;
   final VoidCallback onSend;
   final VoidCallback onStop;
+  final bool dictating;
+  final VoidCallback onDictateStart;
+  final VoidCallback onDictateStop;
 
   @override
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     return Container(
       padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, AppSpacing.sm, AppSpacing.lg, AppSpacing.md),
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
       decoration: BoxDecoration(
         color: semantic.background,
         border: Border(top: BorderSide(color: semantic.border)),
@@ -1219,7 +1467,9 @@ class _Composer extends StatelessWidget {
                       Positioned(
                         top: 2,
                         right: 2,
-                        child: _RemoveImageButton(onRemove: () => onRemoveImage(index)),
+                        child: _RemoveImageButton(
+                          onRemove: () => onRemoveImage(index),
+                        ),
                       ),
                     ],
                   ),
@@ -1229,11 +1479,19 @@ class _Composer extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              _DictateButton(
+                dictating: dictating,
+                onStart: onDictateStart,
+                onStop: onDictateStop,
+              ),
               IconButton(
                 onPressed: onAttach,
                 tooltip: '添加图片或文件',
-                icon: Icon(Icons.add_circle_outline_rounded,
-                    size: 24, color: semantic.textSecondary),
+                icon: Icon(
+                  Icons.add_circle_outline_rounded,
+                  size: 24,
+                  color: semantic.textSecondary,
+                ),
               ),
               Expanded(
                 child: TextField(
@@ -1245,13 +1503,19 @@ class _Composer extends StatelessWidget {
                   enabled: !busy || waitingApproval,
                   style: const TextStyle(fontSize: 14.5, height: 1.4),
                   decoration: InputDecoration(
-                    hintText: waitingApproval ? '请在上方做出审批决定…' : '给 Shelly 发送消息…',
-                    hintStyle:
-                        TextStyle(fontSize: 13.5, color: semantic.textTertiary),
+                    hintText: waitingApproval
+                        ? '请在上方做出审批决定…'
+                        : '给 Shelly 发送消息…',
+                    hintStyle: TextStyle(
+                      fontSize: 13.5,
+                      color: semantic.textTertiary,
+                    ),
                     filled: true,
                     fillColor: semantic.card,
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md, vertical: AppSpacing.sm + 4),
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.sm + 4,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppRadius.xl),
                       borderSide: BorderSide(color: semantic.border),
@@ -1283,8 +1547,7 @@ class _Composer extends StatelessWidget {
               padding: const EdgeInsets.only(top: AppSpacing.xs),
               child: Text(
                 '输入 $inputTokens · 输出 $outputTokens tokens',
-                style:
-                    TextStyle(fontSize: 10.5, color: semantic.textTertiary),
+                style: TextStyle(fontSize: 10.5, color: semantic.textTertiary),
               ),
             ),
         ],
@@ -1315,10 +1578,45 @@ class _RemoveImageButton extends StatelessWidget {
   }
 }
 
+/// Hold-to-talk microphone: press-and-hold records, release inserts the
+/// settled transcript into the composer. Raw pointer events so even a quick
+/// tap produces a matched start/stop pair.
+class _DictateButton extends StatelessWidget {
+  const _DictateButton({
+    required this.dictating,
+    required this.onStart,
+    required this.onStop,
+  });
+
+  final bool dictating;
+  final VoidCallback onStart;
+  final VoidCallback onStop;
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    return Listener(
+      onPointerDown: (_) => onStart(),
+      onPointerUp: (_) => onStop(),
+      onPointerCancel: (_) => onStop(),
+      child: IconButton(
+        onPressed: null,
+        tooltip: '按住说话',
+        icon: Icon(
+          dictating ? Icons.mic_rounded : Icons.mic_none_rounded,
+          size: 24,
+          color: dictating ? AppColors.brandBlue : semantic.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
 class _StopButton extends StatelessWidget {
   const _StopButton({required this.onStop});
 
-  final VoidCallback onStop;  @override
+  final VoidCallback onStop;
+  @override
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     return GestureDetector(
