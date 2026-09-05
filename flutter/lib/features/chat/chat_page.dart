@@ -19,6 +19,7 @@ import '../../design/components/tool_card.dart';
 import '../../design/tokens.dart';
 import '../../platform/platform_workspace.dart' show ResilientWorkspace;
 import '../../platform/speech.dart';
+import '../../platform/shared_intent.dart';
 import '../../state/chat_session.dart';
 import '../../state/conversation_export.dart';
 import '../../state/dsh_provider.dart';
@@ -240,8 +241,32 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     await shareConversationText(markdown, title: title);
   }
 
+  StreamSubscription<String>? _sharedTextSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Text shared from other apps lands in the composer, ready to send.
+    _sharedTextSub = sharedTextStream().listen(
+      _takeSharedText,
+      onError: (_) {},
+    );
+    initialSharedText().then(_takeSharedText);
+  }
+
+  void _takeSharedText(String? text) {
+    final trimmed = text?.trim() ?? '';
+    if (trimmed.isEmpty || !mounted) return;
+    final current = _composer.text;
+    _composer.text = current.isEmpty ? trimmed : '$current\n$trimmed';
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('已把分享内容填入输入框,确认后发送')),
+    );
+  }
+
   @override
   void dispose() {
+    _sharedTextSub?.cancel();
     _composer.dispose();
     _scroll.dispose();
     super.dispose();

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,6 +20,7 @@ import 'package:shelly_hermes/features/chat/chat_page.dart'
         resetTextFilePicker,
         shareConversationText;
 import 'package:shelly_hermes/platform/speech.dart';
+import 'package:shelly_hermes/platform/shared_intent.dart';
 import 'package:shelly_hermes/state/chat_session.dart';
 import 'package:shelly_hermes/state/settings_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -86,6 +89,35 @@ void main() {
 
     expect(find.text('运行环境'), findsOneWidget);
     expect(find.text('一键自检'), findsOneWidget);
+  });
+
+  testWidgets('text shared from other apps lands in the composer',
+      (tester) async {
+    addTearDown(resetSharedIntent);
+    final controller = StreamController<String>.broadcast();
+    addTearDown(controller.close);
+    sharedTextStream = () => controller.stream;
+    initialSharedText = () async => null;
+
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    controller.add('分享过来的链接 https://example.com');
+    await tester.pumpAndSettle();
+
+    expect(find.text('分享过来的链接 https://example.com'), findsOneWidget);
+    expect(find.textContaining('已把分享内容填入输入框'), findsOneWidget);
+  });
+
+  testWidgets('cold-start share intent prefills the composer', (tester) async {
+    addTearDown(resetSharedIntent);
+    sharedTextStream = () => const Stream.empty();
+    initialSharedText = () async => '冷启动分享的文本';
+
+    await tester.pumpWidget(const ProviderScope(child: ShellyApp()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('冷启动分享的文本'), findsOneWidget);
   });
 
   testWidgets('capabilities tab shows the plugin trust section', (
