@@ -32,6 +32,9 @@ dependencies:
   # Temp directory for the on-disk conversation image cache.
   path_provider: ^2.1.5
   speech_to_text: ^7.4.0
+
+  # Text-to-speech readout of assistant replies (zh-CN with en-US fallback).
+  flutter_tts: ^4.2.3
   share_plus: ^13.3.0
   receive_sharing_intent: ^1.9.0
 

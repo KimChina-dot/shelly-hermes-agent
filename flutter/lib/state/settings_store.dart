@@ -153,6 +153,7 @@ class SettingsStore implements TaskRecoveryStore {
   static const _activeTaskKey = 'shelly.task.active';
   static const _memorySettingsKey = 'shelly.memory.settings';
   static const _mcpServersKey = 'shelly.mcp.servers';
+  static const _ttsEnabledKey = 'shelly.tts.enabled';
 
   /// Convenience accessor for reactive UI reads.
   ModelConfig get modelConfig => loadModelConfig();
@@ -226,6 +227,13 @@ class SettingsStore implements TaskRecoveryStore {
 
   Future<void> setAuxEnabled(bool enabled) =>
       _prefs.setBool(_auxEnabledKey, enabled);
+
+  /// Reads assistant replies aloud (PHASE 40). Off by default; when on,
+  /// assistant message rows in the chat page grow a speaker button.
+  bool get ttsEnabled => _prefs.getBool(_ttsEnabledKey) ?? false;
+
+  Future<void> setTtsEnabled(bool enabled) =>
+      _prefs.setBool(_ttsEnabledKey, enabled);
 
   List<ConversationSummary> loadConversations() {
     final raw = _prefs.getString(_conversationsKey);

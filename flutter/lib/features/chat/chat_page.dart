@@ -24,6 +24,7 @@ import '../../state/chat_session.dart';
 import '../../state/conversation_export.dart';
 import '../../state/dsh_provider.dart';
 import '../../state/settings_store.dart';
+import '../../core/tts/tts_service.dart';
 import '../approval/approval_sheet.dart';
 import 'conversation_actions.dart';
 import 'model_picker_sheet.dart';
@@ -61,6 +62,12 @@ Future<void> Function(String text, {String? title}) shareConversationText =
 
 void resetShareConversation() =>
     shareConversationText = _defaultShareConversationText;
+
+/// Injectable TTS engine; widget tests swap this out because real
+/// synthesis needs the platform TTS channel.
+TtsService Function() createTtsService = FlutterTtsService.new;
+
+void resetTtsService() => createTtsService = FlutterTtsService.new;
 
 Future<void> _defaultShareConversationText(String text, {String? title}) async {
   await SharePlus.instance.share(ShareParams(text: text, title: title));
@@ -170,6 +177,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   bool _dictating = false;
   bool _dictateCancelled = false;
   String _dictated = '';
+  TtsService? _tts;
+  String? _speakingEntryId;
 
   /// Hold-to-talk: recognition starts on press-down and the settled
   /// transcript is appended to the composer on release.
@@ -267,9 +276,35 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   @override
   void dispose() {
     _sharedTextSub?.cancel();
+    unawaited(_tts?.stop());
     _composer.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  /// Toggles the voice readout of one assistant reply: tapping the speaker
+  /// starts speaking (or, on the speaking row, stops early). Only rendered
+  /// while the settings TTS toggle is on.
+  Future<void> _toggleSpeak(AssistantEntry entry) async {
+    final tts = _tts ??= createTtsService();
+    if (_speakingEntryId == entry.id) {
+      setState(() => _speakingEntryId = null);
+      try {
+        await tts.stop();
+      } catch (_) {
+        // Stopping is best-effort; the icon already flipped back.
+      }
+      return;
+    }
+    setState(() => _speakingEntryId = entry.id);
+    try {
+      await tts.speak(ttsPlainText(entry.text));
+    } catch (_) {
+      // A missing platform channel must never break the transcript.
+    }
+    if (mounted && _speakingEntryId == entry.id) {
+      setState(() => _speakingEntryId = null);
+    }
   }
 
   void _send([String? preset]) {
@@ -474,6 +509,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   : _Transcript(
                       entries: session.entries,
                       controller: _scroll,
+                      ttsEnabled: storeAsync.maybeWhen(
+                        data: (store) => store.ttsEnabled,
+                        orElse: () => false,
+                      ),
+                      speakingEntryId: _speakingEntryId,
+                      onToggleSpeak: _toggleSpeak,
                       pluginToolNames: ref
                           .watch(dshToolsProvider)
                           .specs
@@ -1118,11 +1159,20 @@ class _Transcript extends StatelessWidget {
   const _Transcript({
     required this.entries,
     required this.controller,
+    this.ttsEnabled = false,
+    this.speakingEntryId,
+    this.onToggleSpeak,
     this.pluginToolNames = const {},
   });
 
   final List<ChatEntry> entries;
   final ScrollController controller;
+
+  /// When the settings TTS toggle is on, finished assistant replies grow a
+  /// speaker button that reads the message's plain text aloud.
+  final bool ttsEnabled;
+  final String? speakingEntryId;
+  final Future<void> Function(AssistantEntry entry)? onToggleSpeak;
 
   /// DSH tool names currently registered; entries hitting these render with
   /// the 插件 badge so users can tell plugin calls from core tool calls.
@@ -1147,7 +1197,14 @@ class _Transcript extends StatelessWidget {
             images: entry.images,
             fileNames: entry.fileNames,
           ),
-          AssistantEntry() => _AssistantMessage(entry: entry),
+          AssistantEntry() => _AssistantMessage(
+            entry: entry,
+            ttsEnabled: ttsEnabled,
+            speaking: speakingEntryId == entry.id,
+            onToggleSpeak: onToggleSpeak == null
+                ? null
+                : () => onToggleSpeak!(entry),
+          ),
           ToolEntry() => ToolCard(
             entry: entry,
             isPlugin: pluginToolNames.contains(entry.call.name),
@@ -1347,13 +1404,27 @@ class _UserBubble extends StatelessWidget {
 }
 
 class _AssistantMessage extends StatelessWidget {
-  const _AssistantMessage({required this.entry});
+  const _AssistantMessage({
+    required this.entry,
+    this.ttsEnabled = false,
+    this.speaking = false,
+    this.onToggleSpeak,
+  });
 
   final AssistantEntry entry;
 
+  /// Whether the speaker button is rendered at all (settings toggle on).
+  final bool ttsEnabled;
+
+  /// Whether this row's readout is currently playing (stop icon shown).
+  final bool speaking;
+  final VoidCallback? onToggleSpeak;
+
   @override
   Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final empty = entry.text.isEmpty && entry.streaming;
+    final canSpeak = ttsEnabled && !entry.streaming && entry.text.trim().isNotEmpty;
     return Container(
       margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       child: Column(
@@ -1364,6 +1435,26 @@ class _AssistantMessage extends StatelessWidget {
           else ...[
             MarkdownText(data: entry.text),
             if (entry.streaming) const _StreamingCursor(),
+            if (canSpeak)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                  tooltip: speaking ? '停止朗读' : '朗读回复',
+                  onPressed: onToggleSpeak,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: Icon(
+                    speaking
+                        ? Icons.stop_circle_outlined
+                        : Icons.volume_up_outlined,
+                    size: 18,
+                    color: speaking
+                        ? AppColors.brandBlue
+                        : semantic.textTertiary,
+                  ),
+                ),
+              ),
           ],
         ],
       ),
