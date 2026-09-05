@@ -9,12 +9,14 @@ import '../../core/gateway/providers.dart';
 import '../../design/components/buttons.dart';
 import '../../design/tokens.dart';
 import '../../features/memory/memory_page.dart';
+import '../../features/shell/home_shell.dart' show tabIndexProvider;
 import 'profile_editor_sheet.dart';
 import '../../platform/platform_workspace.dart';
 import '../../state/chat_session.dart'
     show workspaceAuthorizedProvider, workspaceProvider;
 
 import '../../state/settings_store.dart';
+import '../../state/usage_stats.dart';
 
 /// Profile / settings page: model endpoint config with a masked API key,
 /// provider presets, model discovery, agent profiles, theme switch and
@@ -214,6 +216,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final storeAsync = ref.watch(settingsStoreProvider);
     final config = storeAsync.valueOrNull?.modelConfig ?? const ModelConfig();
+    // Usage stats are written by the chat session outside this page's
+    // build cycle; re-read them every time this tab becomes active.
+    ref.listen<int>(tabIndexProvider, (previous, next) {
+      if (next == 4) ref.invalidate(usageStatsProvider);
+    });
     if (!_initialized) {
       _hydrate(config);
       if (isAndroidHost) _checkWorkspace();
@@ -507,6 +514,38 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
+          _SectionHeader('语音', semantic),
+          Container(
+            decoration: BoxDecoration(
+              color: semantic.card,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(color: semantic.border),
+            ),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+              leading: const Icon(Icons.volume_up_outlined,
+                  size: 20, color: AppColors.brandViolet),
+              title: Text('朗读助手回复',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: semantic.textPrimary)),
+              subtitle: Text('开启后助手消息下方出现朗读按钮',
+                  style:
+                      TextStyle(fontSize: 12, color: semantic.textTertiary)),
+              trailing: Switch(
+                value: store?.ttsEnabled ?? false,
+                onChanged: store == null
+                    ? null
+                    : (value) async {
+                        await store.setTtsEnabled(value);
+                        ref.invalidate(settingsStoreProvider);
+                      },
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
           _SectionHeader('记忆', semantic),
           Container(
             decoration: BoxDecoration(
@@ -538,6 +577,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               ),
             ),
           ),
+          const SizedBox(height: AppSpacing.xl),
+          _SectionHeader('用量统计', semantic),
+          _UsageCard(usage: ref.watch(usageStatsProvider).valueOrNull, semantic: semantic),
           const SizedBox(height: AppSpacing.xl),
           _SectionHeader('关于', semantic),
           Container(
@@ -609,6 +651,85 @@ class _SectionHeader extends StatelessWidget {
               fontSize: 13,
               fontWeight: FontWeight.w600,
               color: semantic.textTertiary)),
+    );
+  }
+}
+
+/// Local token usage overview (PHASE 40): totals over the retained 30-day
+/// window plus a per-model breakdown with the prompt/completion split.
+class _UsageCard extends StatelessWidget {
+  const _UsageCard({required this.usage, required this.semantic});
+
+  final UsageStatsStore? usage;
+  final AppSemanticColors semantic;
+
+  @override
+  Widget build(BuildContext context) {
+    final totals = usage?.totals() ?? const UsageTotals();
+    final byModel = usage?.totalsByModel() ?? const <String, UsageTotals>{};
+    final modelIds = byModel.keys.toList()..sort();
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: semantic.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: semantic.border),
+      ),
+      child: totals.rounds == 0
+          ? Text('暂无用量记录,对话后自动统计(保留 30 天)',
+              style: TextStyle(fontSize: 12, color: semantic.textTertiary))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.data_usage_outlined,
+                        size: 18, color: AppColors.brandBlue),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text('${totals.totalTokens} tokens',
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: semantic.textPrimary)),
+                    const Spacer(),
+                    Text(
+                        '输入 ${totals.promptTokens} · 输出 ${totals.completionTokens} · ${totals.rounds} 轮',
+                        style: TextStyle(
+                            fontSize: 11.5, color: semantic.textTertiary)),
+                  ],
+                ),
+                if (modelIds.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  for (final modelId in modelIds)
+                    Padding(
+                      padding: const EdgeInsets.only(top: AppSpacing.xs),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.memory_outlined,
+                              size: 15, color: AppColors.brandViolet),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(modelId,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: semantic.textSecondary)),
+                          ),
+                          Text(
+                              '${byModel[modelId]!.totalTokens} tokens · '
+                              '输入 ${byModel[modelId]!.promptTokens} · '
+                              '输出 ${byModel[modelId]!.completionTokens}',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: semantic.textTertiary)),
+                        ],
+                      ),
+                    ),
+                ],
+              ],
+            ),
     );
   }
 }
