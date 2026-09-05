@@ -22,11 +22,14 @@ class ModelPickerSheet extends ConsumerStatefulWidget {
 class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
   final _baseUrl = TextEditingController();
   final _model = TextEditingController();
+  final _auxBaseUrl = TextEditingController();
+  final _auxModel = TextEditingController();
   final _discovery = ModelDiscovery();
   bool _initialized = false;
   bool _discovering = false;
   bool _testing = false;
   bool _webSearch = false;
+  bool _auxEnabled = false;
   Duration? _latency;
   String? _error;
   List<RemoteModel> _remoteModels = const [];
@@ -35,14 +38,22 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
   void dispose() {
     _baseUrl.dispose();
     _model.dispose();
+    _auxBaseUrl.dispose();
+    _auxModel.dispose();
     super.dispose();
   }
 
-  void _hydrate(ModelConfig config) {
+  void _hydrate(ModelConfig config, SettingsStore? store) {
     _initialized = true;
     _baseUrl.text = config.baseUrl;
     _model.text = config.model;
     _webSearch = config.webSearchEnabled;
+    final aux = store?.loadAuxModelConfig();
+    if (aux != null) {
+      _auxBaseUrl.text = aux.baseUrl;
+      _auxModel.text = aux.model;
+      _auxEnabled = store!.auxEnabled;
+    }
   }
 
   String get _apiKey =>
@@ -110,6 +121,13 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
         webSearchEnabled: _webSearch,
       ),
     );
+    // Auxiliary model for summaries/titles: no key field — those jobs reuse
+    // the main model's API key at usage time.
+    await store.saveAuxModelConfig(ModelConfig(
+      baseUrl: _auxBaseUrl.text.trim(),
+      model: _auxModel.text.trim(),
+    ));
+    await store.setAuxEnabled(_auxEnabled);
     ref.invalidate(settingsStoreProvider);
     if (!mounted) return;
     Navigator.of(context).pop();
@@ -120,13 +138,11 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
-    final config = ref
-        .watch(settingsStoreProvider)
-        .maybeWhen(
-          data: (store) => store.modelConfig,
-          orElse: () => const ModelConfig(),
-        );
-    if (!_initialized) _hydrate(config);
+    final store = ref.watch(settingsStoreProvider).valueOrNull;
+    final config = store?.modelConfig ?? const ModelConfig();
+    // Hydrate only once the store is live so a slow load doesn't pin the
+    // fields (main and aux) to empty values.
+    if (!_initialized && store != null) _hydrate(config, store);
     final hasKey = _apiKey.isNotEmpty;
     final canApply =
         _baseUrl.text.trim().isNotEmpty && _model.text.trim().isNotEmpty;
@@ -320,6 +336,70 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                       ),
                     ),
                   ),
+                ),
+              ],
+              const SizedBox(height: AppSpacing.md),
+              Container(
+                decoration: BoxDecoration(
+                  color: semantic.background,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: SwitchListTile(
+                    dense: true,
+                    value: _auxEnabled,
+                    onChanged: (value) => setState(() => _auxEnabled = value),
+                    activeThumbColor: AppColors.brandBlue,
+                    title: Text(
+                      '辅助模型(摘要/标题)',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: semantic.textPrimary,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '上下文压缩摘要、超长工具输出等轻量任务改用该模型;密钥沿用主模型',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: semantic.textTertiary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (_auxEnabled) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  '辅助模型接口地址(Base URL)',
+                  style: TextStyle(fontSize: 12, color: semantic.textTertiary),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                TextField(
+                  controller: _auxBaseUrl,
+                  keyboardType: TextInputType.url,
+                  style:
+                      TextStyle(fontSize: 13.5, color: semantic.textPrimary),
+                  decoration: const InputDecoration(
+                    hintText: 'https://api.siliconflow.cn/v1',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  '辅助模型名称',
+                  style: TextStyle(fontSize: 12, color: semantic.textTertiary),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                TextField(
+                  controller: _auxModel,
+                  style:
+                      TextStyle(fontSize: 13.5, color: semantic.textPrimary),
+                  decoration: const InputDecoration(
+                    hintText: '例如 Qwen/Qwen2.5-7B-Instruct',
+                  ),
+                  onChanged: (_) => setState(() {}),
                 ),
               ],
               const SizedBox(height: AppSpacing.lg),
