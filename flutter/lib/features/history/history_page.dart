@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,63 +7,159 @@ import '../../core/task_recovery.dart';
 import '../../design/components/empty_state.dart';
 import '../../design/tokens.dart';
 import '../../state/chat_session.dart';
+import '../../state/conversation_search.dart';
 import '../../state/settings_store.dart';
 import '../chat/conversation_actions.dart';
 import '../shell/home_shell.dart';
 
 /// Conversation history backed by persisted checkpoints. Tapping a
-/// conversation restores its transcript into the chat page.
-class HistoryPage extends ConsumerWidget {
+/// conversation restores its transcript into the chat page. A collapsible
+/// search entry (magnifier icon) filters conversations by title or first
+/// user message with a 300ms debounce.
+class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HistoryPage> createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends ConsumerState<HistoryPage> {
+  static const _debounceDuration = Duration(milliseconds: 300);
+
+  final _searchController = TextEditingController();
+  Timer? _debounce;
+
+  /// Whether the search entry is expanded (default collapsed).
+  bool _searchActive = false;
+
+  /// The query actually applied to the list, updated on debounce expiry.
+  String _appliedQuery = '';
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(_debounceDuration, () {
+      if (mounted) setState(() => _appliedQuery = value);
+    });
+  }
+
+  void _toggleSearch() {
+    _debounce?.cancel();
+    setState(() {
+      _searchActive = !_searchActive;
+      _appliedQuery = '';
+      _searchController.clear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final storeAsync = ref.watch(settingsStoreProvider);
 
-    final conversations = storeAsync.maybeWhen(
+    final allConversations = storeAsync.maybeWhen(
       data: (store) => sortConversations(store.loadConversations()),
       orElse: () => const <ConversationSummary>[],
     );
 
+    final searching = _appliedQuery.trim().isNotEmpty;
+    final conversations = searching
+        ? storeAsync.maybeWhen(
+            data: (store) => searchConversations(store, _appliedQuery),
+            orElse: () => const <ConversationSummary>[],
+          )
+        : allConversations;
+
     // A task that was running when the previous process died; surfaced as a
     // dedicated banner so it can be re-run from its checkpoint or dropped.
-    final interrupted = storeAsync.maybeWhen(
-      data: (store) => const TaskRecovery().scan(store).firstOrNull,
-      orElse: () => null,
-    );
+    // Hidden while searching so results stay focused.
+    final interrupted = searching
+        ? null
+        : storeAsync.maybeWhen(
+            data: (store) => const TaskRecovery().scan(store).firstOrNull,
+            orElse: () => null,
+          );
 
     return Scaffold(
       backgroundColor: semantic.background,
       appBar: AppBar(
         titleSpacing: AppSpacing.lg,
-        title: Text('历史',
-            style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w700,
-                color: semantic.textPrimary)),
+        title: _searchActive
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                onChanged: _onSearchChanged,
+                style: TextStyle(fontSize: 16, color: semantic.textPrimary),
+                decoration: InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  hintText: '搜索标题或首条消息',
+                  hintStyle: TextStyle(
+                    fontSize: 16,
+                    color: semantic.textTertiary,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    size: 20,
+                    color: semantic.textTertiary,
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              )
+            : Text(
+                '历史',
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
+                  color: semantic.textPrimary,
+                ),
+              ),
         actions: [
-          if (conversations.isNotEmpty)
+          if (_searchActive)
             IconButton(
-              tooltip: '清空历史列表',
-              onPressed: () => _confirmClear(context, ref),
-              icon: const Icon(Icons.delete_sweep_outlined, size: 22),
-            ),
+              tooltip: '关闭搜索',
+              onPressed: _toggleSearch,
+              icon: const Icon(Icons.close_rounded, size: 22),
+            )
+          else ...[
+            if (allConversations.isNotEmpty)
+              IconButton(
+                tooltip: '搜索对话',
+                onPressed: () => setState(() => _searchActive = true),
+                icon: const Icon(Icons.search, size: 22),
+              ),
+            if (allConversations.isNotEmpty)
+              IconButton(
+                tooltip: '清空历史列表',
+                onPressed: () => _confirmClear(context, ref),
+                icon: const Icon(Icons.delete_sweep_outlined, size: 22),
+              ),
+          ],
         ],
       ),
-      body: conversations.isEmpty && interrupted == null
+      body: searching && conversations.isEmpty
+          ? const EmptyState(
+              icon: Icons.search_off_rounded,
+              title: '未找到匹配对话',
+              body: '换个关键词试试,支持匹配标题和首条消息内容。',
+            )
+          : !searching && conversations.isEmpty && interrupted == null
           ? const EmptyState(
               icon: Icons.history_rounded,
               title: '还没有历史对话',
               body: '完成一次对话后,可以在这里回到当时的进度继续。',
             )
           : RefreshIndicator(
-              onRefresh: () async =>
-                  ref.invalidate(settingsStoreProvider),
+              onRefresh: () async => ref.invalidate(settingsStoreProvider),
               child: ListView.builder(
                 padding: const EdgeInsets.all(AppSpacing.lg),
-                itemCount:
-                    conversations.length + (interrupted == null ? 0 : 1),
+                itemCount: conversations.length + (interrupted == null ? 0 : 1),
                 itemBuilder: (context, index) {
                   if (interrupted != null && index == 0) {
                     return _InterruptedBanner(candidate: interrupted);
@@ -95,8 +193,7 @@ class HistoryPage extends ConsumerWidget {
                 ref.invalidate(settingsStoreProvider);
               });
             },
-            child: const Text('清空',
-                style: TextStyle(color: AppColors.danger)),
+            child: const Text('清空', style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -127,15 +224,21 @@ class _InterruptedBanner extends ConsumerWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.restore_outlined,
-                  size: 18, color: AppColors.warning),
+              const Icon(
+                Icons.restore_outlined,
+                size: 18,
+                color: AppColors.warning,
+              ),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
-                child: Text('有一个任务在后台被中断',
-                    style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: semantic.textPrimary)),
+                child: Text(
+                  '有一个任务在后台被中断',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: semantic.textPrimary,
+                  ),
+                ),
               ),
             ],
           ),
@@ -162,8 +265,7 @@ class _InterruptedBanner extends ConsumerWidget {
                   }
                 },
                 icon: const Icon(Icons.play_arrow_rounded, size: 16),
-                label: const Text('恢复任务',
-                    style: TextStyle(fontSize: 12.5)),
+                label: const Text('恢复任务', style: TextStyle(fontSize: 12.5)),
                 style: FilledButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   backgroundColor: AppColors.warning,
@@ -178,9 +280,13 @@ class _InterruptedBanner extends ConsumerWidget {
                       .dismissInterruptedTask();
                   ref.invalidate(settingsStoreProvider);
                 },
-                child: Text('忽略',
-                    style: TextStyle(
-                        fontSize: 12.5, color: semantic.textTertiary)),
+                child: Text(
+                  '忽略',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: semantic.textTertiary,
+                  ),
+                ),
               ),
             ],
           ),
@@ -209,8 +315,10 @@ class _ConversationTile extends ConsumerWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.lg),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.xs,
+        ),
         leading: Container(
           width: 38,
           height: 38,
@@ -218,17 +326,21 @@ class _ConversationTile extends ConsumerWidget {
             color: AppColors.brandViolet.withValues(alpha: 0.13),
             borderRadius: BorderRadius.circular(AppRadius.md),
           ),
-          child: const Icon(Icons.forum_outlined,
-              size: 18, color: AppColors.brandViolet),
+          child: const Icon(
+            Icons.forum_outlined,
+            size: 18,
+            color: AppColors.brandViolet,
+          ),
         ),
         title: Text(
           (conversation.pinned ? '📌 ' : '') + conversation.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-              fontSize: 14.5,
-              fontWeight: FontWeight.w600,
-              color: semantic.textPrimary),
+            fontSize: 14.5,
+            fontWeight: FontWeight.w600,
+            color: semantic.textPrimary,
+          ),
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 2),
@@ -237,8 +349,10 @@ class _ConversationTile extends ConsumerWidget {
             style: TextStyle(fontSize: 12, color: semantic.textTertiary),
           ),
         ),
-        trailing: Text('恢复',
-            style: TextStyle(fontSize: 12.5, color: AppColors.brandBlue)),
+        trailing: Text(
+          '恢复',
+          style: TextStyle(fontSize: 12.5, color: AppColors.brandBlue),
+        ),
         onTap: () {
           final session = ref.read(chatSessionProvider);
           if (session.isBusy) return;
@@ -257,11 +371,9 @@ class _ConversationTile extends ConsumerWidget {
                   title: const Text('重命名'),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
-                    final store =
-                        ref.read(settingsStoreProvider).valueOrNull;
+                    final store = ref.read(settingsStoreProvider).valueOrNull;
                     if (store == null) return;
-                    renameConversationDialog(
-                        context, ref, store, conversation);
+                    renameConversationDialog(context, ref, store, conversation);
                   },
                 ),
                 ListTile(
@@ -269,8 +381,7 @@ class _ConversationTile extends ConsumerWidget {
                   title: Text(conversation.pinned ? '取消置顶' : '置顶'),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
-                    final store =
-                        ref.read(settingsStoreProvider).valueOrNull;
+                    final store = ref.read(settingsStoreProvider).valueOrNull;
                     if (store == null) return;
                     toggleConversationPin(ref, store, conversation);
                   },
@@ -280,11 +391,9 @@ class _ConversationTile extends ConsumerWidget {
                   title: const Text('删除'),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
-                    final store =
-                        ref.read(settingsStoreProvider).valueOrNull;
+                    final store = ref.read(settingsStoreProvider).valueOrNull;
                     if (store == null) return;
-                    deleteConversationDialog(
-                        context, ref, store, conversation);
+                    deleteConversationDialog(context, ref, store, conversation);
                   },
                 ),
               ],
