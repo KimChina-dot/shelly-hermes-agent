@@ -143,6 +143,8 @@ class SettingsStore implements TaskRecoveryStore {
   String _apiKeyCache = '';
 
   static const _modelConfigKey = 'shelly.model.config';
+  static const _auxModelConfigKey = 'shelly.model.aux';
+  static const _auxEnabledKey = 'shelly.model.aux.enabled';
   static const _apiKeySecureKey = 'model.apiKey';
   static const _conversationsKey = 'shelly.conversations';
   static const _checkpointPrefix = 'shelly.checkpoint.';
@@ -199,6 +201,31 @@ class SettingsStore implements TaskRecoveryStore {
     }
     _apiKeyCache = key ?? '';
   }
+
+  /// The auxiliary ("cheap") model that serves lightweight jobs — context
+  /// compaction summaries, oversized tool-output digests, session titles.
+  /// Reuses the [ModelConfig] structure; its API key is optional and those
+  /// jobs fall back to the main model's key when empty (same vendor in
+  /// practice), so the picker sheet stores none.
+  ModelConfig loadAuxModelConfig() {
+    final raw = _prefs.getString(_auxModelConfigKey);
+    if (raw == null) return const ModelConfig();
+    try {
+      return ModelConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } on FormatException {
+      return const ModelConfig();
+    }
+  }
+
+  Future<void> saveAuxModelConfig(ModelConfig config) =>
+      _prefs.setString(_auxModelConfigKey, jsonEncode(config.toJson()));
+
+  /// Lightweight jobs only switch to the auxiliary model when this switch
+  /// is on and [loadAuxModelConfig] names a usable endpoint.
+  bool get auxEnabled => _prefs.getBool(_auxEnabledKey) ?? false;
+
+  Future<void> setAuxEnabled(bool enabled) =>
+      _prefs.setBool(_auxEnabledKey, enabled);
 
   List<ConversationSummary> loadConversations() {
     final raw = _prefs.getString(_conversationsKey);

@@ -4,6 +4,7 @@ import 'dart:io';
 // Named constructor params are kept public-named for call-site readability;
 // the initializing-formal rewrite would force private names at call sites.
 // ignore_for_file: prefer_initializing_formals
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -572,6 +573,96 @@ class _ApprovalRouter {
   }
 }
 
+/// Picks the gateway that produces lightweight summaries (context
+/// compaction, oversized tool digests): the auxiliary gateway when the aux
+/// switch is on and the aux record is usable, otherwise the main gateway —
+/// the pre-aux behavior. The aux record inherits the main model's API key
+/// when it carries none of its own.
+ModelGateway _summaryGateway({
+  required ModelConfig mainConfig,
+  required ModelConfig auxConfig,
+  required bool auxEnabled,
+  required ModelGateway mainGateway,
+  ModelGateway? auxGateway,
+}) {
+  final effective = auxConfig.apiKey.isEmpty
+      ? auxConfig.copyWith(apiKey: mainConfig.apiKey)
+      : auxConfig;
+  if (auxEnabled && effective.isComplete && auxGateway != null) {
+    return auxGateway;
+  }
+  return mainGateway;
+}
+
+/// Builds the task's context compactor; null when the main model is not
+/// configured (demo mode compacts nothing, as before). The summary digest
+/// runs on the auxiliary model when it is enabled and complete.
+@visibleForTesting
+ContextCompactor? contextCompactorFor({
+  required ModelConfig config,
+  required ModelConfig auxConfig,
+  required bool auxEnabled,
+  required ModelGateway mainGateway,
+  ModelGateway? auxGateway,
+}) {
+  if (!config.isComplete) return null;
+  final summaryModel = _summaryGateway(
+    mainConfig: config,
+    auxConfig: auxConfig,
+    auxEnabled: auxEnabled,
+    mainGateway: mainGateway,
+    auxGateway: auxGateway,
+  );
+  return ContextCompactor(
+    windowTokens: config.effectiveContextWindow,
+    summarizer: (transcript) async => (await summaryModel.complete([
+          const AgentMessage(
+            role: MessageRole.system,
+            content: '你是会话摘要器。把以下对话记录压缩为一段简明摘要,'
+                '保留:任务目标、已完成的步骤、关键文件与结论、待办事项。'
+                '只输出摘要正文,不要评论。',
+          ),
+          AgentMessage(role: MessageRole.user, content: transcript),
+        ]))
+            .content,
+  );
+}
+
+/// Digest closure for oversized tool results; null when the main model is
+/// not configured (head+tail truncation only, as before). Same
+/// auxiliary-or-main gateway choice as [contextCompactorFor].
+@visibleForTesting
+Future<String> Function(String)? toolDigestSummarizerFor({
+  required ModelConfig config,
+  required ModelConfig auxConfig,
+  required bool auxEnabled,
+  required ModelGateway mainGateway,
+  ModelGateway? auxGateway,
+}) {
+  if (!config.isComplete) return null;
+  final summaryModel = _summaryGateway(
+    mainConfig: config,
+    auxConfig: auxConfig,
+    auxEnabled: auxEnabled,
+    mainGateway: mainGateway,
+    auxGateway: auxGateway,
+  );
+  return (oversized) async => (await summaryModel.complete([
+        const AgentMessage(
+          role: MessageRole.system,
+          content: '你是工具输出摘要器。把以下超长工具输出压缩为不超过 300 字的要点,'
+              '保留:关键数值、文件路径、命令结果与错误信息。只输出摘要正文。',
+        ),
+        AgentMessage(
+          role: MessageRole.user,
+          content: oversized.length > 30000
+              ? oversized.substring(0, 30000)
+              : oversized,
+        ),
+      ]))
+          .content;
+}
+
 class _TaskRunner implements AgentTaskRunner {
   _TaskRunner({
     required ChatSessionController session,
@@ -692,42 +783,44 @@ class _TaskRunner implements AgentTaskRunner {
           )
         : DemoModelGateway();
 
-    // Auto-compact long conversations against the model's context window;
-    // the same gateway produces the summary (failures degrade in-engine).
-    final ContextCompactor? compactor = config.isComplete
-        ? ContextCompactor(
-            windowTokens: config.effectiveContextWindow,
-            summarizer: (transcript) async => (await model.complete([
-                  const AgentMessage(
-                    role: MessageRole.system,
-                    content: '你是会话摘要器。把以下对话记录压缩为一段简明摘要,'
-                        '保留:任务目标、已完成的步骤、关键文件与结论、待办事项。'
-                        '只输出摘要正文,不要评论。',
-                  ),
-                  AgentMessage(role: MessageRole.user, content: transcript),
-                ]))
-                    .content,
+    // Lightweight summary jobs (context-compaction digest, oversized
+    // tool-output digests) run on the cheap auxiliary model when it is
+    // enabled; the aux record reuses the main model's API key when it
+    // carries none of its own.
+    final auxStored = _store.loadAuxModelConfig();
+    final auxConfig = auxStored.apiKey.isEmpty
+        ? auxStored.copyWith(apiKey: config.apiKey)
+        : auxStored;
+    // Built whenever the aux record is usable — the constructor is
+    // side-effect-free; the enable switch is applied by the summary
+    // factories below.
+    final ModelGateway? auxGateway = auxConfig.isComplete
+        ? OpenAiCompatibleGateway(
+            baseUrl: auxConfig.baseUrl,
+            apiKey: auxConfig.apiKey,
+            model: auxConfig.model,
           )
         : null;
 
+    // Auto-compact long conversations against the model's context window;
+    // the summary digest runs on the auxiliary model when enabled.
+    final ContextCompactor? compactor = contextCompactorFor(
+      config: config,
+      auxConfig: auxStored,
+      auxEnabled: _store.auxEnabled,
+      mainGateway: model,
+      auxGateway: auxGateway,
+    );
+
     // Oversized tool results get a model digest of the full text on top of
-    // head+tail truncation; the same gateway produces it (bounded slice).
-    final summarizer = config.isComplete
-        ? (String oversized) async => (await model.complete([
-              const AgentMessage(
-                role: MessageRole.system,
-                content: '你是工具输出摘要器。把以下超长工具输出压缩为不超过 300 字的要点,'
-                    '保留:关键数值、文件路径、命令结果与错误信息。只输出摘要正文。',
-              ),
-              AgentMessage(
-                role: MessageRole.user,
-                content: oversized.length > 30000
-                    ? oversized.substring(0, 30000)
-                    : oversized,
-              ),
-            ]))
-                .content
-        : null;
+    // head+tail truncation; same auxiliary-or-main gateway choice.
+    final summarizer = toolDigestSummarizerFor(
+      config: config,
+      auxConfig: auxStored,
+      auxEnabled: _store.auxEnabled,
+      mainGateway: model,
+      auxGateway: auxGateway,
+    );
 
     final runtime = AgentRuntime(
       context: AgentContext(
