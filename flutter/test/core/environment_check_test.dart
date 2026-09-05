@@ -125,6 +125,39 @@ void main() {
       expect(result, contains('已截断'));
     });
 
+    test('oversized results gain a model digest when summarizer succeeds',
+        () async {
+      String? received;
+      final executor = HardenedToolExecutor(
+        registry: _EchoRegistry(),
+        summarizer: (oversized) async {
+          received = oversized;
+          return '关键路径 /data/ok,共 3 条记录';
+        },
+      );
+      final result = await executor.execute(
+          ToolCall(id: 't3', name: 'x', argumentsJson: ''));
+
+      expect(received, hasLength(30000));
+      expect(result, contains('模型摘要如下'));
+      expect(result, contains('关键路径 /data/ok'));
+      expect(result, contains('原文首尾'));
+      expect(result, contains('中间 14000 字符已省略'));
+      // Summary + head + tail stays inside the context budget.
+      expect(result.length, lessThan(21000));
+    });
+
+    test('summarizer failure falls back to plain truncation', () async {
+      final executor = HardenedToolExecutor(
+        registry: _EchoRegistry(),
+        summarizer: (oversized) async => throw Exception('gateway down'),
+      );
+      final result = await executor.execute(
+          ToolCall(id: 't4', name: 'x', argumentsJson: ''));
+      expect(result, contains('已截断'));
+      expect(result, isNot(contains('模型摘要')));
+    });
+
     test('hanging tools are aborted by the wall-clock timeout', () async {
       final executor = HardenedToolExecutor(
         registry: _HangingRegistry(),
