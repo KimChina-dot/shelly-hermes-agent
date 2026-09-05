@@ -272,7 +272,7 @@ class SettingsStore implements TaskRecoveryStore {
           title: c.title,
           updatedAt: c.updatedAt,
           messageCount: c.messageCount,
-          pinned: c.pinned,
+          pinned: pinned,
           modelId: c.modelId,
         ),
       );

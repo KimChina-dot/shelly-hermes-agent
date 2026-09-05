@@ -84,21 +84,6 @@ Future<void> toggleConversationPin(
   SettingsStore store,
   ConversationSummary conversation,
 ) async {
-  // setPinned currently writes the previous flag back, ignoring the
-  // requested state, so the toggle applies the new flag itself and
-  // persists through saveConversations to guarantee the pin lands.
-  final summaries = store.loadConversations();
-  final index = summaries.indexWhere((c) => c.id == conversation.id);
-  if (index < 0) return;
-  final current = summaries[index];
-  summaries[index] = ConversationSummary(
-    id: current.id,
-    title: current.title,
-    updatedAt: current.updatedAt,
-    messageCount: current.messageCount,
-    pinned: !current.pinned,
-    modelId: current.modelId,
-  );
-  await store.saveConversations(summaries);
+  await store.setPinned(conversation.id, !conversation.pinned);
   ref.invalidate(settingsStoreProvider);
 }
