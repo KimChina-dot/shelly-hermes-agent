@@ -16,7 +16,7 @@ val keystoreProperties = Properties().apply {
 
 android {
     namespace = "dev.shelly.shelly_hermes"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37 // receive_sharing_intent 1.9 requires its consumers to compile against 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
