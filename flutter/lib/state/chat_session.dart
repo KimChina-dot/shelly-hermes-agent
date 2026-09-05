@@ -37,6 +37,7 @@ import '../platform/process_runner.dart';
 import '../platform/task_service.dart';
 import 'dsh_provider.dart';
 import 'settings_store.dart';
+import 'usage_stats.dart';
 
 /// One row in the chat transcript.
 sealed class ChatEntry {
@@ -535,6 +536,27 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     );
   }
 
+  /// Persists one completed model round into the local usage statistics
+  /// (PHASE 40). Best-effort: any failure is swallowed so chat never breaks.
+  void recordUsage(int promptTokens, int completionTokens) {
+    final store = _store;
+    final modelId =
+        store == null ? null : _modelIdFrom(store) ?? 'demo';
+    unawaited(() async {
+      try {
+        final stats = await _ref.read(usageStatsProvider.future);
+        await stats.recordUsage(
+          modelId: modelId ?? 'demo',
+          promptTokens: promptTokens,
+          completionTokens: completionTokens,
+        );
+      } catch (_) {
+        // Usage stats are a nice-to-have; a broken store must never
+        // surface as a chat error.
+      }
+    }());
+  }
+
   void notifyContextCompacted(ContextCompacted event) {
     state = state.copyWith(
       entries: [
@@ -882,6 +904,9 @@ class _SessionObserver implements AgentObserver {
         _session.appendDelta(event.text);
       case ModelFinished():
         _session.recordTokens(event.inputTokens, event.outputTokens);
+        if (event.succeeded) {
+          _session.recordUsage(event.inputTokens, event.outputTokens);
+        }
       case ApprovalWaiting():
         break;
       case ApprovalFinished():
