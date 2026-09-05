@@ -710,12 +710,34 @@ class _TaskRunner implements AgentTaskRunner {
           )
         : null;
 
+    // Oversized tool results get a model digest of the full text on top of
+    // head+tail truncation; the same gateway produces it (bounded slice).
+    final summarizer = config.isComplete
+        ? (String oversized) async => (await model.complete([
+              const AgentMessage(
+                role: MessageRole.system,
+                content: '你是工具输出摘要器。把以下超长工具输出压缩为不超过 300 字的要点,'
+                    '保留:关键数值、文件路径、命令结果与错误信息。只输出摘要正文。',
+              ),
+              AgentMessage(
+                role: MessageRole.user,
+                content: oversized.length > 30000
+                    ? oversized.substring(0, 30000)
+                    : oversized,
+              ),
+            ]))
+                .content
+        : null;
+
     final runtime = AgentRuntime(
       context: AgentContext(
         sessionId: _conversationId,
         workspace: workspace,
         model: model,
-        tools: HardenedToolExecutor(registry: registry),
+        tools: HardenedToolExecutor(
+          registry: registry,
+          summarizer: summarizer,
+        ),
         checkpoints: _StoreCheckpoints(_store, _conversationId),
         project: project,
         contextCompactor: compactor,
