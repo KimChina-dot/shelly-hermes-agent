@@ -514,6 +514,38 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
+          _SectionHeader('语音', semantic),
+          Container(
+            decoration: BoxDecoration(
+              color: semantic.card,
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              border: Border.all(color: semantic.border),
+            ),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md, vertical: AppSpacing.xs),
+              leading: const Icon(Icons.volume_up_outlined,
+                  size: 20, color: AppColors.brandViolet),
+              title: Text('朗读助手回复',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: semantic.textPrimary)),
+              subtitle: Text('开启后助手消息下方出现朗读按钮',
+                  style:
+                      TextStyle(fontSize: 12, color: semantic.textTertiary)),
+              trailing: Switch(
+                value: store?.ttsEnabled ?? false,
+                onChanged: store == null
+                    ? null
+                    : (value) async {
+                        await store.setTtsEnabled(value);
+                        ref.invalidate(settingsStoreProvider);
+                      },
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
           _SectionHeader('记忆', semantic),
           Container(
             decoration: BoxDecoration(
