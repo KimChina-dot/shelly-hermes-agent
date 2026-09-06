@@ -130,6 +130,54 @@ List<ConversationSummary> sortConversations(List<ConversationSummary> list) {
   return sorted;
 }
 
+/// A locally launched (stdio) MCP server entry in the connector config
+/// (PHASE 42). HTTP connectors use [McpServerConfig]; servers registered
+/// by the plugin preset catalog land here so their command line survives
+/// the JSON round-trip.
+class McpStdioServerConfig {
+  const McpStdioServerConfig({
+    required this.id,
+    required this.name,
+    required this.command,
+    this.args = const [],
+    this.env = const {},
+  });
+
+  final String id;
+  final String name;
+  final String command;
+  final List<String> args;
+  final Map<String, String> env;
+
+  /// `command args…` one-liner, for hints and diagnostics.
+  String get launchLine => [command, ...args].join(' ');
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'command': command,
+        'args': args,
+        'env': env,
+      };
+
+  static McpStdioServerConfig fromJson(Map<String, dynamic> json) =>
+      McpStdioServerConfig(
+        id: json['id'] as String,
+        name: json['name'] as String? ?? '',
+        command: json['command'] as String? ?? '',
+        args: [
+          for (final arg in json['args'] as List<dynamic>? ?? const [])
+            if (arg is String) arg,
+        ],
+        env: {
+          for (final entry
+              in (json['env'] as Map<dynamic, dynamic>? ?? const {}).entries)
+            if (entry.key is String && entry.value is String)
+              entry.key as String: entry.value as String,
+        },
+      );
+}
+
 /// Key-value settings and checkpoint persistence backed by
 /// SharedPreferences (works on Android and the web dev harness).
 class SettingsStore implements TaskRecoveryStore {
@@ -153,6 +201,7 @@ class SettingsStore implements TaskRecoveryStore {
   static const _activeTaskKey = 'shelly.task.active';
   static const _memorySettingsKey = 'shelly.memory.settings';
   static const _mcpServersKey = 'shelly.mcp.servers';
+  static const _mcpStdioServersKey = 'shelly.mcp.stdio';
   static const _ttsEnabledKey = 'shelly.tts.enabled';
 
   /// Convenience accessor for reactive UI reads.
@@ -365,6 +414,27 @@ class SettingsStore implements TaskRecoveryStore {
 
   Future<void> saveMcpServers(List<McpServerConfig> servers) => _prefs.setString(
         _mcpServersKey,
+        jsonEncode([for (final server in servers) server.toJson()]),
+      );
+
+  /// Stdio MCP servers registered by the plugin preset catalog (PHASE 42);
+  /// corrupt records fall back to an empty list like every other store.
+  List<McpStdioServerConfig> loadMcpStdioServers() {
+    final raw = _prefs.getString(_mcpStdioServersKey);
+    if (raw == null) return const [];
+    try {
+      return [
+        for (final entry in jsonDecode(raw) as List<dynamic>)
+          if (entry is Map<String, dynamic>) McpStdioServerConfig.fromJson(entry),
+      ];
+    } on FormatException {
+      return const [];
+    }
+  }
+
+  Future<void> saveMcpStdioServers(List<McpStdioServerConfig> servers) =>
+      _prefs.setString(
+        _mcpStdioServersKey,
         jsonEncode([for (final server in servers) server.toJson()]),
       );
 
