@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/task_recovery.dart';
 import '../../design/components/empty_state.dart';
+import '../../design/components/motion.dart';
 import '../../design/tokens.dart';
 import '../../state/chat_session.dart';
 import '../../state/conversation_search.dart';
@@ -166,7 +167,10 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   }
                   final conversation =
                       conversations[interrupted == null ? index : index - 1];
-                  return _ConversationTile(conversation: conversation);
+                  return StaggerIn(
+                    index: index,
+                    child: _ConversationTile(conversation: conversation),
+                  );
                 },
               ),
             ),
@@ -193,7 +197,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                 ref.invalidate(settingsStoreProvider);
               });
             },
-            child: const Text('清空', style: TextStyle(color: AppColors.danger)),
+            child: Text('清空', style: TextStyle(color: Theme.of(dialogContext).extension<AppSemanticColors>()!.danger)),
           ),
         ],
       ),

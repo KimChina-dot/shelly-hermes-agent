@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/platform/home_widget_bridge.dart';
 import '../../state/scheduled_tasks.dart';
 import '../../state/settings_store.dart';
+import '../../design/tokens.dart';
 import '../chat/chat_page.dart';
 import '../capabilities/capabilities_page.dart';
 import '../history/history_page.dart';
@@ -126,7 +127,21 @@ class _HomeShellState extends ConsumerState<HomeShell>
     });
     final index = ref.watch(tabIndexProvider);
     return Scaffold(
-      body: IndexedStack(index: index, children: HomeShell._pages),
+      // Tab switches fade the stack in briefly — spatial feedback without
+      // a heavy page transition (motion discipline: fast + ease-out).
+      body: AnimatedSwitcher(
+        duration: AppMotion.fast,
+        switchInCurve: AppMotion.easeOut,
+        switchOutCurve: AppMotion.easeIn,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: child,
+        ),
+        child: KeyedSubtree(
+          key: ValueKey(index),
+          child: IndexedStack(index: index, children: HomeShell._pages),
+        ),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (value) =>

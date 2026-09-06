@@ -288,10 +288,10 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                       style: TextStyle(
                         fontSize: 11.5,
                         color: _latency != null
-                            ? Colors.green
+                            ? semantic.success
                             : (_error == null
                                   ? semantic.textTertiary
-                                  : AppColors.danger),
+                                  : semantic.danger),
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,

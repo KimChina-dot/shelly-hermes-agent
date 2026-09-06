@@ -189,8 +189,8 @@ class _PluginSectionState extends ConsumerState<_PluginSection> {
             padding: const EdgeInsets.only(top: AppSpacing.xs),
             child: Row(
               children: [
-                const Icon(Icons.folder_off_outlined,
-                    size: 13, color: AppColors.warning),
+                Icon(Icons.folder_off_outlined,
+                    size: 13, color: semantic.warning),
                 const SizedBox(width: AppSpacing.xs),
                 Expanded(
                   child: Text(
@@ -417,10 +417,11 @@ class _TrustBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final (color, label) = switch (trust) {
-      DshTrust.allowed => (AppColors.success, '已信任'),
-      DshTrust.ask => (AppColors.warning, '首次询问'),
-      DshTrust.blocked => (AppColors.danger, '已封锁'),
+      DshTrust.allowed => (semantic.success, '已信任'),
+      DshTrust.ask => (semantic.warning, '首次询问'),
+      DshTrust.blocked => (semantic.danger, '已封锁'),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -444,12 +445,12 @@ class _LifecycleBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final (color, label) = switch (lifecycle) {
-      DshLifecycle.enabled => (AppColors.success, '启用中'),
+      DshLifecycle.enabled => (semantic.success, '启用中'),
       DshLifecycle.loaded ||
       DshLifecycle.registered ||
       DshLifecycle.disabled =>
-        (AppColors.warning, lifecycle.name),
-      DshLifecycle.failed => (AppColors.danger, '失败'),
+        (semantic.warning, lifecycle.name),
+      DshLifecycle.failed => (semantic.danger, '失败'),
       DshLifecycle.unloaded => (semantic.textTertiary, '未加载'),
     };
     return Container(
@@ -475,9 +476,9 @@ class _ToolTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final levelLabel = switch (level) {
-      ToolPolicyLevel.allow => ('自动放行', AppColors.success),
-      ToolPolicyLevel.confirm => ('需要确认', AppColors.warning),
-      ToolPolicyLevel.deny => ('已禁用', AppColors.danger),
+      ToolPolicyLevel.allow => ('自动放行', semantic.success),
+      ToolPolicyLevel.confirm => ('需要确认', semantic.warning),
+      ToolPolicyLevel.deny => ('已禁用', semantic.danger),
     };
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -939,7 +940,9 @@ class _PresetPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = installed ? AppColors.success : AppColors.brandBlue;
+    final color = installed
+        ? Theme.of(context).extension<AppSemanticColors>()!.success
+        : Theme.of(context).extension<AppSemanticColors>()!.textSecondary;
     return GestureDetector(
       onTap: busy ? null : onTap,
       child: Container(
@@ -1079,9 +1082,9 @@ class _EnvironmentSectionState extends ConsumerState<_EnvironmentSection> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: switch (check.level) {
-                          CheckLevel.ok => Colors.green,
-                          CheckLevel.warn => Colors.orange,
-                          CheckLevel.fail => AppColors.danger,
+                          CheckLevel.ok => semantic.success,
+                          CheckLevel.warn => semantic.warning,
+                          CheckLevel.fail => semantic.danger,
                         },
                       ),
                     ),

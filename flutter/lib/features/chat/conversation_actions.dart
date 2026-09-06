@@ -63,7 +63,14 @@ Future<void> deleteConversationDialog(
         ),
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
-          child: const Text('删除', style: TextStyle(color: AppColors.danger)),
+          child: Text(
+            '删除',
+            style: TextStyle(
+              color: Theme.of(dialogContext)
+                  .extension<AppSemanticColors>()!
+                  .danger,
+            ),
+          ),
         ),
       ],
     ),

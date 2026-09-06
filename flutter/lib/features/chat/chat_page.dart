@@ -14,6 +14,7 @@ import '../../core/models.dart' show TextFileAttachment;
 import '../../design/components/buttons.dart';
 import '../../design/components/gradient_avatar.dart';
 import '../../design/components/markdown_text.dart';
+import '../../design/components/motion.dart';
 import '../../design/components/skeleton.dart';
 import '../../design/components/tool_card.dart';
 import '../../design/tokens.dart';
@@ -1282,22 +1283,27 @@ class _UserBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    // PHASE 44: quiet white card with soft ambient shadow instead of the
+    // saturated brand gradient — the canvas stays calm, user turns read as
+    // "cards on gray".
     final bubble = Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
         vertical: AppSpacing.sm + 2,
       ),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: AppColors.brandGradient),
+        color: semantic.card,
         borderRadius: BorderRadius.circular(AppRadius.lg)
             .copyWith(bottomRight: const Radius.circular(AppRadius.sm)),
+        border: Border.all(color: semantic.border),
+        boxShadow: semantic.cardShadow,
       ),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 14.5,
           height: 1.5,
-          color: Colors.white,
+          color: semantic.textPrimary,
         ),
       ),
     );
@@ -1425,38 +1431,59 @@ class _AssistantMessage extends StatelessWidget {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final empty = entry.text.isEmpty && entry.streaming;
     final canSpeak = ttsEnabled && !entry.streaming && entry.text.trim().isNotEmpty;
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (empty)
-            const SkeletonMessageRow()
-          else ...[
-            MarkdownText(data: entry.text),
-            if (entry.streaming) const _StreamingCursor(),
-            if (canSpeak)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: IconButton(
-                  tooltip: speaking ? '停止朗读' : '朗读回复',
-                  onPressed: onToggleSpeak,
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  icon: Icon(
-                    speaking
-                        ? Icons.stop_circle_outlined
-                        : Icons.volume_up_outlined,
-                    size: 18,
-                    color: speaking
-                        ? AppColors.brandBlue
-                        : semantic.textTertiary,
+    // Motion discipline: message rows announce themselves with a soft
+    // fade + rise; no stagger inside the transcript (it grows live).
+    return FadeSlideIn(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (empty) ...[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const TypingIndicator(),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    '正在思考…',
+                    style: TextStyle(
+                        fontSize: 12.5, color: semantic.textTertiary),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              const SkeletonMessageRow(),
+            ] else if (entry.text.isEmpty)
+              const TypingIndicator()
+            else ...[
+              MarkdownText(data: entry.text),
+              if (entry.streaming) const _StreamingCursor(),
+              if (canSpeak)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    tooltip: speaking ? '停止朗读' : '朗读回复',
+                    onPressed: onToggleSpeak,
+                    visualDensity: VisualDensity.compact,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                    constraints:
+                        const BoxConstraints(minWidth: 32, minHeight: 32),
+                    icon: Icon(
+                      speaking
+                          ? Icons.stop_circle_outlined
+                          : Icons.volume_up_outlined,
+                      size: 18,
+                      color: speaking
+                          ? AppColors.brandBlue
+                          : semantic.textTertiary,
+                    ),
                   ),
                 ),
-              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1574,6 +1601,7 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    // PHASE 44: floating capsule composer on the gray canvas.
     return Container(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
@@ -1583,7 +1611,7 @@ class _Composer extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: semantic.background,
-        border: Border(top: BorderSide(color: semantic.border)),
+        border: Border(top: BorderSide(color: semantic.border.withValues(alpha: 0.6))),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1689,7 +1717,10 @@ class _Composer extends StatelessWidget {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(AppRadius.xl),
-                      borderSide: const BorderSide(color: AppColors.brandBlue),
+                      borderSide: BorderSide(
+                        color: semantic.textSecondary,
+                        width: 1.2,
+                      ),
                     ),
                   ),
                 ),
