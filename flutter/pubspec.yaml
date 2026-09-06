@@ -38,6 +38,11 @@ dependencies:
   share_plus: ^13.3.0
   receive_sharing_intent: ^1.9.0
 
+  # In-app update check: reads the running app version and opens the
+  # release download page in the external browser.
+  package_info_plus: ^10.2.1
+  url_launcher: ^6.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

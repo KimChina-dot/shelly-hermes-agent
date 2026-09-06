@@ -11,6 +11,7 @@ import '../../design/components/risk_chip.dart';
 import '../../design/tokens.dart';
 import '../../state/chat_session.dart';
 import '../../state/dsh_provider.dart';
+import '../../state/plugin_repo.dart';
 import '../../state/settings_store.dart';
 import '../../platform/process_runner.dart';
 
@@ -70,6 +71,8 @@ class CapabilitiesPage extends ConsumerWidget {
           const _PluginSection(),
           const SizedBox(height: AppSpacing.lg),
           const _McpSection(),
+          const SizedBox(height: AppSpacing.lg),
+          const _PluginRepoSection(),
           const SizedBox(height: AppSpacing.lg),
           const _EnvironmentSection(),
           const SizedBox(height: AppSpacing.lg),
@@ -757,6 +760,213 @@ class _McpSectionState extends ConsumerState<_McpSection> {
                       fontSize: 11.5, color: semantic.textSecondary)),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// 插件仓库 (PHASE 42): curated catalog of well-known MCP server presets.
+/// One tap writes the preset's launch line into the MCP connector config
+/// and remembers the id; the card flips to an 已安装 state that uninstalls
+/// (removing both the id and the connector entry) when tapped again.
+class _PluginRepoSection extends ConsumerStatefulWidget {
+  const _PluginRepoSection();
+
+  @override
+  ConsumerState<_PluginRepoSection> createState() =>
+      _PluginRepoSectionState();
+}
+
+class _PluginRepoSectionState extends ConsumerState<_PluginRepoSection> {
+  String? _busyId;
+  String? _note;
+
+  Future<PluginRepoStore?> _repo() async {
+    final async = ref.read(pluginRepoProvider);
+    return async.valueOrNull ?? await ref.read(pluginRepoProvider.future);
+  }
+
+  Future<void> _toggle(PluginPreset preset, bool installed) async {
+    setState(() {
+      _busyId = preset.id;
+      _note = null;
+    });
+    try {
+      final repo = await _repo();
+      if (repo == null) {
+        if (!mounted) return;
+        setState(() {
+          _busyId = null;
+          _note = '插件仓库暂不可用';
+        });
+        return;
+      }
+      final ok =
+          installed ? await repo.uninstall(preset.id) : await repo.install(preset);
+      if (!mounted) return;
+      setState(() {
+        _busyId = null;
+        if (ok) {
+          _note = installed
+              ? '已卸载 ${preset.name},并从 MCP 连接器移除'
+              : '已安装 ${preset.name}:已加入 MCP 连接器';
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busyId = null;
+        _note = installed ? '卸载失败:$error' : '安装失败:$error';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final repoAsync = ref.watch(pluginRepoProvider);
+    final installedIds = repoAsync.maybeWhen(
+      data: (repo) => repo.loadInstalledIds().toSet(),
+      orElse: () => const <String>{},
+    );
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: semantic.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: semantic.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.widgets_outlined,
+                  size: 18, color: AppColors.brandViolet),
+              const SizedBox(width: AppSpacing.sm),
+              Text('插件仓库',
+                  style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      color: semantic.textPrimary)),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text('精选的本地 MCP 服务器预设,一键写入 MCP 连接器。',
+              style: TextStyle(fontSize: 11.5, color: semantic.textTertiary)),
+          for (final preset in pluginPresets)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.sm),
+              child: Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: semantic.background,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: Border.all(color: semantic.border),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(preset.name,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: semantic.textPrimary)),
+                          const SizedBox(height: 2),
+                          Text(preset.description,
+                              style: TextStyle(
+                                  fontSize: 11.5,
+                                  height: 1.4,
+                                  color: semantic.textSecondary)),
+                          const SizedBox(height: 2),
+                          Text(preset.launchLine,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontFamily: 'monospace',
+                                  color: semantic.textTertiary)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    _PresetPill(
+                      presetId: preset.id,
+                      installed: installedIds.contains(preset.id),
+                      busy: _busyId == preset.id,
+                      onTap: () => _toggle(preset, installedIds.contains(preset.id)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (_note != null)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.xs),
+              child: Text(_note!,
+                  style: TextStyle(
+                      fontSize: 11.5, color: semantic.textSecondary)),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xs),
+            child: Text('点「已安装」可卸载,并同步移除 MCP 连接器里的条目。',
+                style: TextStyle(fontSize: 11.5, color: semantic.textTertiary)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 添加 / 已安装 button state of one preset card; busy swaps the label
+/// for a spinner while the store write settles.
+class _PresetPill extends StatelessWidget {
+  const _PresetPill({
+    required this.presetId,
+    required this.installed,
+    required this.busy,
+    required this.onTap,
+  });
+
+  final String presetId;
+  final bool installed;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = installed ? AppColors.success : AppColors.brandBlue;
+    return GestureDetector(
+      onTap: busy ? null : onTap,
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+        child: busy
+            ? const SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(strokeWidth: 1.6))
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(installed ? Icons.check : Icons.add,
+                      size: 12, color: color),
+                  const SizedBox(width: 2),
+                  Text(installed ? '已安装' : '添加',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: color)),
+                ],
+              ),
       ),
     );
   }

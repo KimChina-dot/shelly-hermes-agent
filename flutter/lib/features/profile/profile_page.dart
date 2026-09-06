@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app.dart' show themeModeProvider;
 import '../../core/agent_profile.dart';
@@ -18,6 +19,7 @@ import '../../state/chat_session.dart'
     show workspaceAuthorizedProvider, workspaceProvider;
 
 import '../../state/settings_store.dart';
+import '../../state/update_check.dart';
 import '../../state/usage_stats.dart';
 
 /// Profile / settings page: model endpoint config with a masked API key,
@@ -43,6 +45,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   String? _testNote;
   String _providerId = 'custom';
   String? _activeProfileId;
+  bool _checkingUpdate = false;
+  UpdateCheckResult? _updateResult;
 
   @override
   void dispose() {
@@ -145,6 +149,53 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     });
   }
 
+  /// Queries the GitHub release feed (PHASE 42). The button always forces a
+  /// fresh network check; a newer release renders the inline card, anything
+  /// else reports 已是最新. The service itself never throws.
+  Future<void> _checkForUpdate() async {
+    if (_checkingUpdate) return;
+    setState(() {
+      _checkingUpdate = true;
+      _updateResult = null;
+    });
+    try {
+      final service = await ref.read(updateCheckProvider.future);
+      final result = await service.checkForUpdate(force: true);
+      if (!mounted) return;
+      if (result == null || !result.isNewer) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已是最新')),
+        );
+      } else {
+        setState(() => _updateResult = result);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('检查更新失败,请稍后重试')),
+      );
+    } finally {
+      if (mounted) setState(() => _checkingUpdate = false);
+    }
+  }
+
+  /// Opens the release page in the external browser.
+  Future<void> _openDownloadPage(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null ||
+        !(uri.isScheme('https') || uri.isScheme('http'))) {
+      return;
+    }
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法打开下载页')),
+      );
+    }
+  }
+
   void _applyPreset(LlmProviderPreset preset) {
     setState(() {
       _providerId = preset.id;
@@ -232,6 +283,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     }
 
     final themeMode = ref.watch(themeModeProvider);
+    final update = ref.watch(updateCheckProvider).valueOrNull;
     final store = storeAsync.valueOrNull;
     final profiles = store?.loadProfiles() ?? agentProfilePresets;
     _activeProfileId ??=
@@ -631,13 +683,32 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: semantic.textPrimary)),
-                  subtitle: Text('Shelly Hermes 2.0.0 (1)',
+                  subtitle: Text(_versionLabel(update),
                       style: TextStyle(
                           fontSize: 12, color: semantic.textTertiary)),
+                  trailing: _checkingUpdate
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : TextButton(
+                          onPressed: _checkForUpdate,
+                          child: const Text('检查更新',
+                              style: TextStyle(fontSize: 12.5)),
+                        ),
                 ),
               ],
             ),
           ),
+          if (_updateResult != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _UpdateCard(
+              result: _updateResult!,
+              semantic: semantic,
+              onOpenDownload: () =>
+                  _openDownloadPage(_updateResult!.downloadUrl),
+            ),
+          ],
         ],
       ),
     );
@@ -923,9 +994,86 @@ String _formatCrashTime(DateTime at) =>
     '${at.minute.toString().padLeft(2, '0')}:'
     '${at.second.toString().padLeft(2, '0')}';
 
+/// Version line for the 关于 row; falls back gracefully while the package
+/// info provider is still loading (or on hosts without the plugin).
+String _versionLabel(UpdateCheckService? update) {
+  final version = update?.currentVersion ?? '';
+  if (version.isEmpty) return 'Shelly Hermes';
+  final build = update?.currentBuild ?? '';
+  return build.isEmpty ? 'Shelly Hermes $version' : 'Shelly Hermes $version ($build)';
+}
+
 /// Keeps the tile body compact even when a full 2000-char stack was stored.
 String _truncateCrashStack(String stack, [int max = 800]) =>
     stack.length <= max ? stack : '${stack.substring(0, max)}…';
+
+/// New-release card (PHASE 42): version headline, a release-notes excerpt
+/// and the jump to the GitHub download page in the external browser.
+class _UpdateCard extends StatelessWidget {
+  const _UpdateCard({
+    required this.result,
+    required this.semantic,
+    required this.onOpenDownload,
+  });
+
+  final UpdateCheckResult result;
+  final AppSemanticColors semantic;
+  final VoidCallback onOpenDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: semantic.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.brandBlue),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.system_update_alt_rounded,
+                  size: 18, color: AppColors.brandBlue),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text('发现新版本 v${result.latestVersion}',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: semantic.textPrimary)),
+              ),
+            ],
+          ),
+          if (result.notes.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(result.notes,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: semantic.textSecondary)),
+          ],
+          const SizedBox(height: AppSpacing.sm),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onOpenDownload,
+              icon: const Icon(Icons.open_in_new, size: 14),
+              label: const Text('打开下载页', style: TextStyle(fontSize: 12.5)),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                foregroundColor: AppColors.brandBlue,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _Field extends StatelessWidget {
   const _Field({
