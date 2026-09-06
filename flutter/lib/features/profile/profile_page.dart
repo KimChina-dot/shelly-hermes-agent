@@ -335,7 +335,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           borderRadius: BorderRadius.circular(AppRadius.md),
                           border: Border.all(
                               color: profile.id == _activeProfileId
-                                  ? AppColors.brandBlue
+                                  ? semantic.accent
                                   : semantic.border),
                         ),
                         child: Row(
@@ -346,7 +346,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                                   : Icons.radio_button_unchecked,
                               size: 16,
                               color: profile.id == _activeProfileId
-                                  ? AppColors.brandBlue
+                                  ? semantic.accent
                                   : semantic.textTertiary,
                             ),
                             const SizedBox(width: AppSpacing.sm),
@@ -425,11 +425,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         selected: preset.id == _providerId,
                         showCheckmark: false,
                         visualDensity: VisualDensity.compact,
-                        selectedColor: AppColors.brandBlue,
+                        selectedColor: semantic.accent,
                         backgroundColor: semantic.background,
                         side: BorderSide(
                             color: preset.id == _providerId
-                                ? AppColors.brandBlue
+                                ? semantic.accent
                                 : semantic.border),
                         onSelected: (_) => _applyPreset(preset),
                       ),
@@ -657,8 +657,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: AppSpacing.md, vertical: AppSpacing.xs),
-                  leading: const Icon(Icons.folder_outlined,
-                      size: 20, color: AppColors.brandBlue),
+                  leading: Icon(Icons.folder_outlined,
+                      size: 20, color: semantic.accent),
                   title: Text('工作区',
                       style: TextStyle(
                           fontSize: 14,
@@ -680,8 +680,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: AppSpacing.md, vertical: AppSpacing.xs),
-                  leading: const Icon(Icons.info_outline,
-                      size: 20, color: AppColors.brandBlue),
+                  leading: Icon(Icons.info_outline,
+                      size: 20, color: semantic.accent),
                   title: Text('版本',
                       style: TextStyle(
                           fontSize: 14,
@@ -767,7 +767,7 @@ class _UsageCard extends StatelessWidget {
                 Row(
                   children: [
                     Icon(Icons.data_usage_outlined,
-                        size: 18, color: AppColors.brandBlue),
+                        size: 18, color: semantic.accent),
                     const SizedBox(width: AppSpacing.sm),
                     Text('${totals.totalTokens} tokens',
                         style: TextStyle(
@@ -976,7 +976,7 @@ class _DiagnosticsCardState extends ConsumerState<_DiagnosticsCard> {
                                   style: TextStyle(fontSize: 12)),
                               style: TextButton.styleFrom(
                                 visualDensity: VisualDensity.compact,
-                                foregroundColor: AppColors.brandBlue,
+                                foregroundColor: semantic.accent,
                               ),
                             ),
                           ),
@@ -1031,15 +1031,15 @@ class _UpdateCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: semantic.card,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.brandBlue),
+        border: Border.all(color: semantic.accent),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.system_update_alt_rounded,
-                  size: 18, color: AppColors.brandBlue),
+              Icon(Icons.system_update_alt_rounded,
+                  size: 18, color: semantic.accent),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text('发现新版本 v${result.latestVersion}',
@@ -1069,7 +1069,7 @@ class _UpdateCard extends StatelessWidget {
               label: const Text('打开下载页', style: TextStyle(fontSize: 12.5)),
               style: TextButton.styleFrom(
                 visualDensity: VisualDensity.compact,
-                foregroundColor: AppColors.brandBlue,
+                foregroundColor: semantic.accent,
               ),
             ),
           ),
@@ -1134,8 +1134,8 @@ class _LanCompanionCardState extends ConsumerState<_LanCompanionCard> {
         children: [
           Row(
             children: [
-              const Icon(Icons.lan_outlined,
-                  size: 20, color: AppColors.brandBlue),
+              Icon(Icons.lan_outlined,
+                  size: 20, color: semantic.accent),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text('局域网只读访问',
@@ -1244,7 +1244,7 @@ class _LanCompanionCardState extends ConsumerState<_LanCompanionCard> {
                           style: TextStyle(fontSize: 12)),
                       style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
-                        foregroundColor: AppColors.brandBlue,
+                        foregroundColor: semantic.accent,
                       ),
                     ),
                   ],
@@ -1314,7 +1314,7 @@ class _Field extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppRadius.md),
-              borderSide: const BorderSide(color: AppColors.brandBlue),
+              borderSide: BorderSide(color: semantic.accent),
             ),
           ),
         ),

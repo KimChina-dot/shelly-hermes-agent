@@ -128,13 +128,18 @@ class WorkspaceSnapshotDiff {
 
 /// FNV-1a over UTF-8 bytes, masked to 63 bits so the value stays a positive
 /// signed 64-bit int — dependency-free and deterministic across runs and
-/// isolates (unlike [Object.hash]).
+/// isolates (unlike [Object.hash]). The mask keeps intermediates within
+/// JS's exact integer range so the web dev harness compiles the same
+/// logic (compilers reject 0x7FFFFFFFFFFFFFFF as inexact in JS).
 String _fnv1a64Hex(String content) {
-  const prime = 0x100000001b3;
-  var hash = 0xcbf29ce484222325;
+  // 1099511628211 = FNV-1a 64-bit prime; 9007199254740991 = 2^53-1 (the
+  // FNV offset basis folded into the JS-exact range). Decimal literals
+  // stay exact in JS where the hex forms do not.
+  const prime = 1099511628211;
+  const mask = 9007199254740991;
+  var hash = 14695981039346656 % mask;
   for (final byte in utf8.encode(content)) {
-    hash ^= byte;
-    hash = (hash * prime) & 0x7FFFFFFFFFFFFFFF;
+    hash = ((hash ^ byte) * prime) & mask;
   }
   return hash.toRadixString(16).padLeft(16, '0');
 }

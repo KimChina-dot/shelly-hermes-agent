@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -54,6 +55,16 @@ class _HomeShellState extends ConsumerState<HomeShell>
     WidgetsBinding.instance.addObserver(this);
     _armScheduler();
     _widgetBridge.register(_onWidgetAction);
+    // Web dev harness: ?tab=N deep-links straight to a tab so browser-based
+    // verification tooling can reach every page without driving the nav.
+    if (kIsWeb) {
+      final tab = Uri.base.queryParameters['tab'];
+      final parsed = tab == null ? null : int.tryParse(tab);
+      if (parsed != null && parsed >= 0 && parsed < HomeShell._pages.length) {
+        Future<void>.microtask(() =>
+            ref.read(tabIndexProvider.notifier).state = parsed);
+      }
+    }
   }
 
   /// Widget tap: open the app on the chat tab (对话).

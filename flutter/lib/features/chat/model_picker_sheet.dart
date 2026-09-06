@@ -203,7 +203,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                         ),
                         backgroundColor:
                             _baseUrl.text.trim() == preset.defaultBaseUrl
-                            ? AppColors.brandBlue.withValues(alpha: 0.15)
+                            ? semantic.accent.withValues(alpha: 0.15)
                             : null,
                         onPressed: () {
                           _baseUrl.text = preset.defaultBaseUrl;
@@ -312,7 +312,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                       dense: true,
                       value: _webSearch,
                       onChanged: (value) => setState(() => _webSearch = value),
-                      activeThumbColor: AppColors.brandBlue,
+                      activeThumbColor: semantic.accent,
                       title: Text(
                         '联网搜索',
                         style: TextStyle(
@@ -350,7 +350,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                     dense: true,
                     value: _auxEnabled,
                     onChanged: (value) => setState(() => _auxEnabled = value),
-                    activeThumbColor: AppColors.brandBlue,
+                    activeThumbColor: semantic.accent,
                     title: Text(
                       '辅助模型(摘要/标题)',
                       style: TextStyle(
@@ -430,7 +430,7 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
           vertical: AppSpacing.xs,
         ),
         decoration: BoxDecoration(
-          color: AppColors.brandBlue.withValues(alpha: 0.12),
+          color: semantic.accent.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(AppRadius.pill),
         ),
         child: Row(

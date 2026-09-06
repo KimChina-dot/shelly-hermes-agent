@@ -637,6 +637,7 @@ class _Header extends ConsumerWidget {
           IconButton(
             tooltip: '会话列表',
             onPressed: onTitleTap,
+            visualDensity: VisualDensity.comfortable,
             icon: Icon(
               Icons.toc_outlined,
               size: 21,
@@ -646,6 +647,7 @@ class _Header extends ConsumerWidget {
           IconButton(
             tooltip: '开启新对话',
             onPressed: onNewConversation,
+            visualDensity: VisualDensity.comfortable,
             icon: Icon(
               Icons.add_comment_outlined,
               size: 21,
@@ -665,6 +667,7 @@ class _ModelChip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final config = ref
         .watch(settingsStoreProvider)
         .maybeWhen(
@@ -680,21 +683,24 @@ class _ModelChip extends ConsumerWidget {
         builder: (_) => const ModelPickerSheet(),
       ),
       child: Container(
+        // 36px tall: compact chip look but an acceptable touch target.
+        constraints: const BoxConstraints(minHeight: 36),
+        alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: 5,
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.sm,
         ),
         decoration: BoxDecoration(
-          color: AppColors.brandViolet.withValues(alpha: 0.12),
+          color: semantic.floating,
           borderRadius: BorderRadius.circular(AppRadius.pill),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.bolt_rounded,
               size: 13,
-              color: AppColors.brandViolet,
+              color: semantic.textSecondary,
             ),
             const SizedBox(width: 3),
             ConstrainedBox(
@@ -703,10 +709,10 @@ class _ModelChip extends ConsumerWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 11,
+                style: TextStyle(
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.brandViolet,
+                  color: semantic.textSecondary,
                 ),
               ),
             ),
