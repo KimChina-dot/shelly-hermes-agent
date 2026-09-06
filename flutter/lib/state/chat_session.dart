@@ -32,6 +32,7 @@ import '../core/shell/shell_executor.dart';
 import '../core/task_queue.dart';
 import '../core/task_recovery.dart';
 import '../core/tools/registry.dart';
+import '../core/tools/terminal_tools.dart';
 import '../core/tools/workspace.dart';
 import '../core/workspace/workspace_manager.dart';
 import '../platform/platform_workspace.dart';
@@ -764,6 +765,22 @@ MemoryExtractor? memoryExtractorFor({
 /// How many stored facts at most join the system prompt; the newest win.
 const int memoryPromptCap = 20;
 
+/// 「工具使用守则」 appended to every fresh persona (PHASE 43). Kept terse —
+/// it rides along on every round.
+const String toolUsageRules = '「工具使用守则」\n'
+    '- 优先调用工具获取事实,不要凭记忆猜测文件内容或项目结构。\n'
+    '- 搜索工具(fast_find/smart_grep)返回 JSON 且已限量截断,不要重复发起全量搜索。\n'
+    '- 工具失败时先检查参数(路径必须是工作区内的相对路径),再调整重试。\n'
+    '- 严禁通过 run_command 绕过搜索工具执行查找/过滤类命令。\n'
+    '- 需要历史对话或过往错误上下文时,调用 search_memory 检索,而不是要求用户复述。';
+
+/// Persona prompt with the 「工具使用守则」 prepended/appended.
+@visibleForTesting
+String personaWithToolRules(String persona) {
+  if (persona.trim().isEmpty) return toolUsageRules;
+  return '$persona\n\n$toolUsageRules';
+}
+
 /// Persona prompt with the 「长期记忆」 block appended (PHASE 41). Returns
 /// null when there is nothing to prepend, so bare sessions and resumes keep
 /// their original message list exactly as before.
@@ -903,6 +920,8 @@ class _TaskRunner implements AgentTaskRunner {
       ShellToolRegistry(
         executor: ShellExecutor(runner: shellRunner),
       ),
+      // Structured fd/rg search with find/grep fallback (PHASE 43).
+      TerminalSearchTools(runner: shellRunner),
       KnowledgeToolRegistry(store: knowledgeStore),
       _dshTools,
       ?mcpRegistry,
@@ -1019,7 +1038,7 @@ class _TaskRunner implements AgentTaskRunner {
     // Persona prompt (plus any stored long-term memories) opens every fresh
     // task; a resume keeps its checkpoint.
     final systemPrompt = systemPromptWithMemory(
-      persona: profile.systemPrompt,
+      persona: personaWithToolRules(profile.systemPrompt),
       memories: memories,
     );
     final effectiveMessages = resumeFrom == null && systemPrompt != null
