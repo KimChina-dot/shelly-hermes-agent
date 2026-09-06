@@ -18,6 +18,7 @@ import '../../platform/platform_workspace.dart';
 import '../../state/chat_session.dart'
     show workspaceAuthorizedProvider, workspaceProvider;
 
+import '../../state/lan_companion.dart';
 import '../../state/settings_store.dart';
 import '../../state/update_check.dart';
 import '../../state/usage_stats.dart';
@@ -603,6 +604,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             ),
           ),
           const SizedBox(height: AppSpacing.xl),
+          _SectionHeader('局域网伴侣', semantic),
+          const _LanCompanionCard(),
+          const SizedBox(height: AppSpacing.xl),
           _SectionHeader('记忆', semantic),
           Container(
             decoration: BoxDecoration(
@@ -1069,6 +1073,192 @@ class _UpdateCard extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// LAN companion pairing card (PHASE 42): the read-only server toggle plus
+/// the LAN addresses, port and pairing token a desktop client needs. The
+/// companion server lifecycle lives in the provider; this card only renders
+/// its state.
+class _LanCompanionCard extends ConsumerStatefulWidget {
+  const _LanCompanionCard();
+
+  @override
+  ConsumerState<_LanCompanionCard> createState() => _LanCompanionCardState();
+}
+
+class _LanCompanionCardState extends ConsumerState<_LanCompanionCard> {
+  List<String> _addresses = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshAddresses();
+  }
+
+  Future<void> _refreshAddresses() async {
+    final addresses = await lanIPv4Addresses();
+    if (!mounted) return;
+    setState(() => _addresses = addresses);
+  }
+
+  Future<void> _toggle(bool value) async {
+    await ref.read(lanCompanionProvider.notifier).setEnabled(value);
+    if (value) await _refreshAddresses();
+  }
+
+  Future<void> _copyToken(String token) async {
+    await Clipboard.setData(ClipboardData(text: token));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已复制配对令牌')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final state = ref.watch(lanCompanionProvider);
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: semantic.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: semantic.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.lan_outlined,
+                  size: 20, color: AppColors.brandBlue),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text('局域网只读访问',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: semantic.textPrimary)),
+              ),
+              Switch(value: state.enabled, onChanged: _toggle),
+            ],
+          ),
+          Text(
+            '开启后,同一局域网内的桌面客户端可凭配对令牌只读获取状态与对话记录',
+            style: TextStyle(fontSize: 12, color: semantic.textTertiary),
+          ),
+          if (state.enabled) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Icon(
+                  state.running
+                      ? Icons.check_circle
+                      : state.error == null
+                          ? Icons.autorenew
+                          : Icons.error_outline,
+                  size: 15,
+                  color: state.running
+                      ? AppColors.success
+                      : state.error == null
+                          ? semantic.textTertiary
+                          : AppColors.danger,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    state.error ??
+                        (state.running
+                            ? '运行中 · 端口 ${state.port}'
+                            : '启动中…'),
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: state.error != null
+                            ? AppColors.danger
+                            : state.running
+                                ? AppColors.success
+                                : semantic.textTertiary),
+                  ),
+                ),
+                if (!state.running && state.error == null)
+                  const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+              ],
+            ),
+            if (state.running) ...[
+              const SizedBox(height: AppSpacing.sm),
+              if (_addresses.isEmpty)
+                Text('未发现局域网 IPv4 地址,请检查网络连接',
+                    style: TextStyle(
+                        fontSize: 12, color: semantic.textTertiary))
+              else
+                for (final address in _addresses)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.xs),
+                    child: Text('http://$address:${state.port}',
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontFamily: 'monospace',
+                            color: semantic.textSecondary)),
+                  ),
+              const SizedBox(height: AppSpacing.sm),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: semantic.background,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('配对令牌',
+                              style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: semantic.textTertiary)),
+                          const SizedBox(height: 2),
+                          Text(state.token,
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontFamily: 'monospace',
+                                  letterSpacing: 1.5,
+                                  color: semantic.textPrimary)),
+                        ],
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: state.token.isEmpty
+                          ? null
+                          : () => _copyToken(state.token),
+                      icon: const Icon(Icons.copy_rounded, size: 14),
+                      label: const Text('复制令牌',
+                          style: TextStyle(fontSize: 12)),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        foregroundColor: AppColors.brandBlue,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                '桌面端在请求头携带 X-Shelly-Token(或 ?token= 参数),'
+                '即可只读访问 /status、/conversations、/conversation/{id}。',
+                style: TextStyle(
+                    fontSize: 11.5, height: 1.4, color: semantic.textTertiary),
+              ),
+            ],
+          ],
         ],
       ),
     );
