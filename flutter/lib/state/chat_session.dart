@@ -13,6 +13,7 @@ import '../core/agent_core.dart';
 import '../core/context/context_compactor.dart';
 import '../core/dsh/tool_registry.dart';
 import '../core/approval_broker.dart';
+import '../core/crash/crash_log_store.dart';
 import '../core/gateway/openai_gateway.dart';
 import '../core/gateway/web_search.dart';
 import '../core/hermes/hermes_memory.dart';
@@ -32,6 +33,8 @@ import '../core/shell/shell_executor.dart';
 import '../core/task_queue.dart';
 import '../core/task_recovery.dart';
 import '../core/tools/registry.dart';
+import '../core/tools/memory_search_tool.dart';
+import '../core/tools/terminal_tools.dart';
 import '../core/tools/workspace.dart';
 import '../core/workspace/workspace_manager.dart';
 import '../platform/platform_workspace.dart';
@@ -363,6 +366,10 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
             .read(memoryStoreProvider.future)
             // Same "never a gate" contract: a slow or missing prefs backend
             // skips the memory block instead of stalling the send.
+            .timeout(const Duration(seconds: 2), onTimeout: () => null),
+        crashLogFuture: _ref
+            .read(crashLogProvider.future)
+            .then<CrashLogStore?>((store) => store)
             .timeout(const Duration(seconds: 2), onTimeout: () => null),
       ),
       listener: (status) {
@@ -764,6 +771,22 @@ MemoryExtractor? memoryExtractorFor({
 /// How many stored facts at most join the system prompt; the newest win.
 const int memoryPromptCap = 20;
 
+/// 「工具使用守则」 appended to every fresh persona (PHASE 43). Kept terse —
+/// it rides along on every round.
+const String toolUsageRules = '「工具使用守则」\n'
+    '- 优先调用工具获取事实,不要凭记忆猜测文件内容或项目结构。\n'
+    '- 搜索工具(fast_find/smart_grep)返回 JSON 且已限量截断,不要重复发起全量搜索。\n'
+    '- 工具失败时先检查参数(路径必须是工作区内的相对路径),再调整重试。\n'
+    '- 严禁通过 run_command 绕过搜索工具执行查找/过滤类命令。\n'
+    '- 需要历史对话或过往错误上下文时,调用 search_memory 检索,而不是要求用户复述。';
+
+/// Persona prompt with the 「工具使用守则」 prepended/appended.
+@visibleForTesting
+String personaWithToolRules(String persona) {
+  if (persona.trim().isEmpty) return toolUsageRules;
+  return '$persona\n\n$toolUsageRules';
+}
+
 /// Persona prompt with the 「长期记忆」 block appended (PHASE 41). Returns
 /// null when there is nothing to prepend, so bare sessions and resumes keep
 /// their original message list exactly as before.
@@ -797,6 +820,7 @@ class _TaskRunner implements AgentTaskRunner {
     required String conversationId,
     Future<ConversationImageStore?>? imageStoreFuture,
     Future<MemoryStore?>? memoryStoreFuture,
+    Future<CrashLogStore?>? crashLogFuture,
     ModelGateway? chatGatewayOverride,
   })  : _session = session,
         _store = store,
@@ -805,6 +829,7 @@ class _TaskRunner implements AgentTaskRunner {
         _conversationId = conversationId,
         _imageStoreFuture = imageStoreFuture,
         _memoryStoreFuture = memoryStoreFuture,
+        _crashLogFuture = crashLogFuture,
         _chatGatewayOverride = chatGatewayOverride;
 
   final ChatSessionController _session;
@@ -824,6 +849,12 @@ class _TaskRunner implements AgentTaskRunner {
   /// Test-only scripted gateway (see [chatGatewayOverrideProvider]); null
   /// in production.
   final ModelGateway? _chatGatewayOverride;
+
+  /// Crash log store for the search_memory tool; null when prefs are slow
+  /// or unavailable — history search degrades to conversations only.
+  final Future<CrashLogStore?>? _crashLogFuture;
+
+  CrashLogStore? _crashLog;
 
   /// Replaces inline data-URL images with on-disk file paths. Failures keep
   /// the original data URL — an attachment must never break a send.
@@ -898,10 +929,25 @@ class _TaskRunner implements AgentTaskRunner {
             const Duration(seconds: 5),
             onTimeout: () => McpToolRegistry(tools: const []),
           );
+    // Crash store is optional: slow or missing prefs degrade search_memory
+    // to conversations only — never a gate.
+    try {
+      _crashLog = await (_crashLogFuture ?? Future.value(null));
+    } catch (_) {
+      _crashLog = null;
+    }
     final registry = CompositeToolRegistry([
       workspaceTools,
       ShellToolRegistry(
         executor: ShellExecutor(runner: shellRunner),
+      ),
+      // Structured fd/rg search with find/grep fallback (PHASE 43).
+      TerminalSearchTools(runner: shellRunner),
+      // Self-diagnosis: the agent can grep its own past (PHASE 43).
+      MemorySearchToolRegistry(
+        loadSummaries: _store.loadConversations,
+        loadCheckpoint: _store.loadCheckpoint,
+        loadCrashes: _crashLog?.loadEntries,
       ),
       KnowledgeToolRegistry(store: knowledgeStore),
       _dshTools,
@@ -1019,7 +1065,7 @@ class _TaskRunner implements AgentTaskRunner {
     // Persona prompt (plus any stored long-term memories) opens every fresh
     // task; a resume keeps its checkpoint.
     final systemPrompt = systemPromptWithMemory(
-      persona: profile.systemPrompt,
+      persona: personaWithToolRules(profile.systemPrompt),
       memories: memories,
     );
     final effectiveMessages = resumeFrom == null && systemPrompt != null

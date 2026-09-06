@@ -106,19 +106,22 @@ void main() {
     test('prunes entries older than 30 days', () async {
       SharedPreferences.setMockInitialValues({});
       final store = UsageStatsStore(await SharedPreferences.getInstance());
-      final now = DateTime(2026, 9, 6);
+      final now = DateTime.now();
 
+      // Boundaries sit far from the 30-day line so the assertion is stable
+      // regardless of the wall-clock time at which the suite runs (the
+      // store prunes against DateTime.now(), not the injected `at`).
       await store.recordUsage(
         modelId: 'model-a',
         promptTokens: 1,
         completionTokens: 1,
-        at: now.subtract(const Duration(days: 31)),
+        at: now.subtract(const Duration(days: 45)),
       );
       await store.recordUsage(
         modelId: 'model-a',
         promptTokens: 2,
         completionTokens: 2,
-        at: now.subtract(const Duration(days: 29)),
+        at: now.subtract(const Duration(days: 10)),
       );
 
       final entries = store.loadEntries();
@@ -130,14 +133,16 @@ void main() {
     test('caps stored entries at 1000, keeping the newest', () async {
       SharedPreferences.setMockInitialValues({});
       final store = UsageStatsStore(await SharedPreferences.getInstance());
-      final now = DateTime(2026, 9, 6);
+      // Anchor to the real clock so the entries stay inside the 30-day
+      // retention window no matter when the suite runs.
+      final now = DateTime.now();
 
       for (var i = 0; i < UsageStatsStore.maxEntries + 5; i += 1) {
         await store.recordUsage(
           modelId: 'model-a',
           promptTokens: i,
           completionTokens: 0,
-          at: now.add(Duration(minutes: i)),
+          at: now.subtract(Duration(minutes: i)),
         );
       }
 
