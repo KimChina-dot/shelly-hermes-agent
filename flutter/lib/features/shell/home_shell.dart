@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/platform/home_widget_bridge.dart';
 import '../../state/scheduled_tasks.dart';
+import '../../state/settings_store.dart';
 import '../chat/chat_page.dart';
 import '../capabilities/capabilities_page.dart';
 import '../history/history_page.dart';
@@ -40,11 +42,23 @@ class _HomeShellState extends ConsumerState<HomeShell>
   /// break the shell; cleared on failure so the next trigger retries.
   Future<SchedulerTicker>? _tickerFuture;
 
+  /// Android home-screen widget bridge (PHASE 42). Best-effort only: all
+  /// channel errors are swallowed inside the bridge, so hosts without the
+  /// native handler (web, desktop dev) are unaffected.
+  final HomeWidgetBridge _widgetBridge = HomeWidgetBridge();
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _armScheduler();
+    _widgetBridge.register(_onWidgetAction);
+  }
+
+  /// Widget tap: open the app on the chat tab (对话).
+  void _onWidgetAction(String action) {
+    if (action != HomeWidgetBridge.actionOpen) return;
+    ref.read(tabIndexProvider.notifier).state = 0;
   }
 
   @override
@@ -55,6 +69,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
       onError: (Object _) {},
     ));
     _tickerFuture = null;
+    _widgetBridge.dispose();
     super.dispose();
   }
 
@@ -97,6 +112,18 @@ class _HomeShellState extends ConsumerState<HomeShell>
       scheduledTasksRevisionProvider,
       (_, _) => _armScheduler(),
     );
+    // Conversation list changed (created / renamed / pinned / deleted /
+    // invalidated): refresh the widget snapshot, best-effort (PHASE 42).
+    ref.listen(settingsStoreProvider, (_, next) {
+      final store = next.valueOrNull;
+      if (store == null) return;
+      final conversations = sortConversations(store.loadConversations());
+      unawaited(_widgetBridge.pushUpdate(
+        lastConversationTitle:
+            conversations.isEmpty ? '' : conversations.first.title,
+        conversationCount: conversations.length,
+      ));
+    });
     final index = ref.watch(tabIndexProvider);
     return Scaffold(
       body: IndexedStack(index: index, children: HomeShell._pages),
