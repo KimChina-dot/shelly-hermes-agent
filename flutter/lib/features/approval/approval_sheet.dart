@@ -66,7 +66,7 @@ class _ApprovalSheetState extends ConsumerState<ApprovalSheet> {
         decoration: BoxDecoration(
           color: semantic.floating,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
-          border: Border(top: BorderSide(color: AppColors.warning.withValues(alpha: 0.5), width: 2)),
+          border: Border(top: BorderSide(color: semantic.warning.withValues(alpha: 0.5), width: 2)),
         ),
         child: SafeArea(
           top: false,
@@ -85,13 +85,13 @@ class _ApprovalSheetState extends ConsumerState<ApprovalSheet> {
                       height: 36,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(colors: [
-                          AppColors.warning.withValues(alpha: 0.25),
-                          AppColors.danger.withValues(alpha: 0.25),
+                          semantic.warning.withValues(alpha: 0.25),
+                          semantic.danger.withValues(alpha: 0.25),
                         ]),
                         borderRadius: BorderRadius.circular(AppRadius.md),
                       ),
-                      child: const Icon(Icons.verified_user_outlined,
-                          size: 19, color: AppColors.warning),
+                      child: Icon(Icons.verified_user_outlined,
+                          size: 19, color: semantic.warning),
                     ),
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
