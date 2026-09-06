@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/agent_core.dart';
 import '../core/context/context_compactor.dart';
@@ -20,6 +21,8 @@ import '../core/hermes/forgetting.dart';
 import '../core/hermes/knowledge_tool.dart';
 import '../core/error_messages.dart';
 import '../core/mcp/mcp_tool_registry.dart';
+import '../core/memory/memory_extractor.dart';
+import '../core/memory/memory_store.dart';
 import '../core/runtime/hardened_tool_executor.dart';
 import '../core/models.dart';
 import '../core/runtime/agent_context.dart';
@@ -349,11 +352,17 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
         workspaceManager: manager,
         dshTools: _ref.read(dshToolsProvider),
         conversationId: conversationId,
+        chatGatewayOverride: _ref.read(chatGatewayOverrideProvider),
         imageStoreFuture: _ref
             .read(conversationImageStoreProvider.future)
             // The image cache is an optimization, never a gate: if the
             // platform is slow/unavailable (tests, odd hosts) fall back to
             // inline data URLs instead of stalling the task.
+            .timeout(const Duration(seconds: 2), onTimeout: () => null),
+        memoryStoreFuture: _ref
+            .read(memoryStoreProvider.future)
+            // Same "never a gate" contract: a slow or missing prefs backend
+            // skips the memory block instead of stalling the send.
             .timeout(const Duration(seconds: 2), onTimeout: () => null),
       ),
       listener: (status) {
@@ -557,6 +566,49 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     }());
   }
 
+  /// Best-effort automatic long-term memory (PHASE 41). After a completed
+  /// model round, asks the aux-or-main model for durable user facts from
+  /// the latest user + assistant pair and appends them to the memory store.
+  /// Any failure is swallowed so chat never breaks.
+  void recordRoundMemory(MemoryExtractor? extractor) {
+    if (extractor == null) return;
+    final pair = _latestRoundPair();
+    if (pair == null) return;
+    final conversationId = state.conversationId ?? '';
+    unawaited(() async {
+      try {
+        final facts = await extractor.extract(
+          userText: pair.userText,
+          assistantText: pair.assistantText,
+        );
+        if (facts.isEmpty) return;
+        final memoryStore = await _ref.read(memoryStoreProvider.future);
+        await memoryStore?.addFacts(facts, sourceConversationId: conversationId);
+      } catch (_) {
+        // Auto-memory is a nice-to-have; a broken extractor or store must
+        // never surface as a chat error.
+      }
+    }());
+  }
+
+  /// The latest user + assistant texts in the transcript, or null when
+  /// either side is missing (a tool-only round has no assistant reply yet,
+  /// and an image-only send has no user text).
+  ({String userText, String assistantText})? _latestRoundPair() {
+    String? userText;
+    String? assistantText;
+    for (final entry in state.entries) {
+      if (entry is UserEntry && entry.text.trim().isNotEmpty) {
+        userText = entry.text;
+        assistantText = null;
+      } else if (entry is AssistantEntry && entry.text.trim().isNotEmpty) {
+        assistantText = entry.text;
+      }
+    }
+    if (userText == null || assistantText == null) return null;
+    return (userText: userText, assistantText: assistantText);
+  }
+
   void notifyContextCompacted(ContextCompacted event) {
     state = state.copyWith(
       entries: [
@@ -685,6 +737,57 @@ Future<String> Function(String)? toolDigestSummarizerFor({
           .content;
 }
 
+/// Builds the automatic long-term-memory extractor (PHASE 41); null when the
+/// main model is not configured (demo rounds record nothing). Runs on the
+/// auxiliary model when enabled, otherwise the main gateway — the same
+/// choice as the context-compaction summary.
+@visibleForTesting
+MemoryExtractor? memoryExtractorFor({
+  required ModelConfig config,
+  required ModelConfig auxConfig,
+  required bool auxEnabled,
+  required ModelGateway mainGateway,
+  ModelGateway? auxGateway,
+}) {
+  if (!config.isComplete) return null;
+  return MemoryExtractor(
+    gateway: _summaryGateway(
+      mainConfig: config,
+      auxConfig: auxConfig,
+      auxEnabled: auxEnabled,
+      mainGateway: mainGateway,
+      auxGateway: auxGateway,
+    ),
+  );
+}
+
+/// How many stored facts at most join the system prompt; the newest win.
+const int memoryPromptCap = 20;
+
+/// Persona prompt with the 「长期记忆」 block appended (PHASE 41). Returns
+/// null when there is nothing to prepend, so bare sessions and resumes keep
+/// their original message list exactly as before.
+@visibleForTesting
+String? systemPromptWithMemory({
+  required String persona,
+  required List<MemoryFact> memories,
+}) {
+  final newest = memories.length > memoryPromptCap
+      ? memories.sublist(memories.length - memoryPromptCap)
+      : memories;
+  if (newest.isEmpty) return persona.isEmpty ? null : persona;
+  final buffer = StringBuffer();
+  if (persona.isNotEmpty) {
+    buffer
+      ..writeln(persona)
+      ..writeln();
+  }
+  buffer
+    ..writeln('「长期记忆」以下是已保存的关于用户的长期记忆,回答时可自然运用,不必复述:')
+    ..write([for (final fact in newest) '- ${fact.text}'].join('\n'));
+  return buffer.toString();
+}
+
 class _TaskRunner implements AgentTaskRunner {
   _TaskRunner({
     required ChatSessionController session,
@@ -693,12 +796,16 @@ class _TaskRunner implements AgentTaskRunner {
     required DshToolRegistry dshTools,
     required String conversationId,
     Future<ConversationImageStore?>? imageStoreFuture,
+    Future<MemoryStore?>? memoryStoreFuture,
+    ModelGateway? chatGatewayOverride,
   })  : _session = session,
         _store = store,
         _workspaceManager = workspaceManager,
         _dshTools = dshTools,
         _conversationId = conversationId,
-        _imageStoreFuture = imageStoreFuture;
+        _imageStoreFuture = imageStoreFuture,
+        _memoryStoreFuture = memoryStoreFuture,
+        _chatGatewayOverride = chatGatewayOverride;
 
   final ChatSessionController _session;
   final SettingsStore _store;
@@ -709,6 +816,14 @@ class _TaskRunner implements AgentTaskRunner {
   /// Persists attached images to disk so checkpoints keep short file paths
   /// instead of inline base64; null keeps the old inline behavior.
   final Future<ConversationImageStore?>? _imageStoreFuture;
+
+  /// Long-term memory source for the system-prompt block and round
+  /// extraction; null when prefs are unavailable, keeping memory best-effort.
+  final Future<MemoryStore?>? _memoryStoreFuture;
+
+  /// Test-only scripted gateway (see [chatGatewayOverrideProvider]); null
+  /// in production.
+  final ModelGateway? _chatGatewayOverride;
 
   /// Replaces inline data-URL images with on-disk file paths. Failures keep
   /// the original data URL — an attachment must never break a send.
@@ -792,18 +907,19 @@ class _TaskRunner implements AgentTaskRunner {
       _dshTools,
       ?mcpRegistry,
     ]);
-    final ModelGateway model = config.isComplete
-        ? OpenAiCompatibleGateway(
-            baseUrl: config.baseUrl,
-            apiKey: config.apiKey,
-            model: config.model,
-            tools: registry.openAiToolsJson(),
-            bodyDecorator: webSearchBodyDecorator(
-              enabled: config.webSearchEnabled,
-              baseUrl: config.baseUrl,
-            ),
-          )
-        : DemoModelGateway();
+    final ModelGateway model = _chatGatewayOverride ??
+        (config.isComplete
+            ? OpenAiCompatibleGateway(
+                baseUrl: config.baseUrl,
+                apiKey: config.apiKey,
+                model: config.model,
+                tools: registry.openAiToolsJson(),
+                bodyDecorator: webSearchBodyDecorator(
+                  enabled: config.webSearchEnabled,
+                  baseUrl: config.baseUrl,
+                ),
+              )
+            : DemoModelGateway());
 
     // Lightweight summary jobs (context-compaction digest, oversized
     // tool-output digests) run on the cheap auxiliary model when it is
@@ -844,6 +960,27 @@ class _TaskRunner implements AgentTaskRunner {
       auxGateway: auxGateway,
     );
 
+    // Automatic long-term memory (PHASE 41): completed rounds best-effort
+    // extract durable user facts; demo mode records nothing.
+    final memoryExtractor = memoryExtractorFor(
+      config: config,
+      auxConfig: auxStored,
+      auxEnabled: _store.auxEnabled,
+      mainGateway: model,
+      auxGateway: auxGateway,
+    );
+
+    // Stored memories join the persona prompt so replies can use them.
+    // Additive only: loading must never gate a send.
+    var memories = const <MemoryFact>[];
+    try {
+      final memoryStore =
+          await (_memoryStoreFuture ?? Future<MemoryStore?>.value(null));
+      if (memoryStore != null) memories = memoryStore.loadFacts();
+    } catch (_) {
+      memories = const <MemoryFact>[];
+    }
+
     final runtime = AgentRuntime(
       context: AgentContext(
         sessionId: _conversationId,
@@ -876,13 +1013,18 @@ class _TaskRunner implements AgentTaskRunner {
         ),
       ),
       approvals: _session.broker,
-      observer: _SessionObserver(_session),
+      observer: _SessionObserver(_session, memoryExtractor),
     );
 
-    // Persona prompt opens every fresh task; a resume keeps its checkpoint.
-    final effectiveMessages = resumeFrom == null && profile.systemPrompt.isNotEmpty
+    // Persona prompt (plus any stored long-term memories) opens every fresh
+    // task; a resume keeps its checkpoint.
+    final systemPrompt = systemPromptWithMemory(
+      persona: profile.systemPrompt,
+      memories: memories,
+    );
+    final effectiveMessages = resumeFrom == null && systemPrompt != null
         ? [
-            AgentMessage(role: MessageRole.system, content: profile.systemPrompt),
+            AgentMessage(role: MessageRole.system, content: systemPrompt),
             ...preparedMessages,
           ]
         : preparedMessages;
@@ -891,9 +1033,12 @@ class _TaskRunner implements AgentTaskRunner {
 }
 
 class _SessionObserver implements AgentObserver {
-  _SessionObserver(this._session);
+  _SessionObserver(this._session, this._memory);
 
   final ChatSessionController _session;
+
+  /// Null in demo mode: no model, no automatic memory extraction.
+  final MemoryExtractor? _memory;
 
   @override
   void onEvent(AgentEvent event) {
@@ -906,6 +1051,7 @@ class _SessionObserver implements AgentObserver {
         _session.recordTokens(event.inputTokens, event.outputTokens);
         if (event.succeeded) {
           _session.recordUsage(event.inputTokens, event.outputTokens);
+          _session.recordRoundMemory(_memory);
         }
       case ApprovalWaiting():
         break;
@@ -1064,6 +1210,24 @@ final conversationImageStoreProvider =
     return ConversationImageStore(
       Directory('${temp.path}${Platform.pathSeparator}shelly_images'),
     );
+  } catch (_) {
+    return null;
+  }
+});
+
+/// Test-only override for the main chat model gateway (the test binding
+/// blocks real sockets, so tests script full rounds by overriding this
+/// provider with a fake gateway). Always null in production, where the
+/// gateway is built from the stored [ModelConfig] below.
+@visibleForTesting
+final chatGatewayOverrideProvider = Provider<ModelGateway?>((ref) => null);
+
+/// Automatic long-term memory (PHASE 41). Null when SharedPreferences is
+/// unavailable (degraded hosts) — memory capture and prompt injection then
+/// quietly turn off instead of breaking the session.
+final memoryStoreProvider = FutureProvider<MemoryStore?>((ref) async {
+  try {
+    return MemoryStore(await SharedPreferences.getInstance());
   } catch (_) {
     return null;
   }

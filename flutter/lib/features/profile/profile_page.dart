@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app.dart' show themeModeProvider;
 import '../../core/agent_profile.dart';
+import '../../core/crash/crash_log_store.dart';
 import '../../core/error_messages.dart';
 import '../../core/gateway/model_discovery.dart';
 import '../../core/gateway/providers.dart';
@@ -219,7 +221,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     // Usage stats are written by the chat session outside this page's
     // build cycle; re-read them every time this tab becomes active.
     ref.listen<int>(tabIndexProvider, (previous, next) {
-      if (next == 4) ref.invalidate(usageStatsProvider);
+      if (next == 4) {
+        ref.invalidate(usageStatsProvider);
+        ref.invalidate(crashLogProvider);
+      }
     });
     if (!_initialized) {
       _hydrate(config);
@@ -581,6 +586,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           _SectionHeader('用量统计', semantic),
           _UsageCard(usage: ref.watch(usageStatsProvider).valueOrNull, semantic: semantic),
           const SizedBox(height: AppSpacing.xl),
+          _SectionHeader('诊断', semantic),
+          const _DiagnosticsCard(),
+          const SizedBox(height: AppSpacing.xl),
           _SectionHeader('关于', semantic),
           Container(
             decoration: BoxDecoration(
@@ -733,6 +741,191 @@ class _UsageCard extends StatelessWidget {
     );
   }
 }
+
+/// Local crash diagnostics (PHASE 41): a count summary with a clear action,
+/// then one expandable tile per recorded crash (time, source layer, error
+/// text and a truncated stack), plus copy-to-clipboard for the details.
+class _DiagnosticsCard extends ConsumerStatefulWidget {
+  const _DiagnosticsCard();
+
+  @override
+  ConsumerState<_DiagnosticsCard> createState() => _DiagnosticsCardState();
+}
+
+class _DiagnosticsCardState extends ConsumerState<_DiagnosticsCard> {
+  Future<void> _copyDetail(CrashEntry entry) async {
+    final buffer = StringBuffer()
+      ..writeln('时间: ${_formatCrashTime(entry.at)}')
+      ..writeln('来源: ${entry.context}')
+      ..writeln('错误: ${entry.error}')
+      ..write('堆栈:\n${entry.stack}');
+    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已复制崩溃详情')),
+    );
+  }
+
+  Future<void> _confirmClear(CrashLogStore store, int count) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('清空崩溃记录'),
+        content: Text('将删除本地保存的全部 $count 条记录,此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await store.clear();
+    ref.invalidate(crashLogProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final store = ref.watch(crashLogProvider).valueOrNull;
+    final entries = store?.loadEntries() ?? const <CrashEntry>[];
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: semantic.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: semantic.border),
+      ),
+      child: entries.isEmpty
+          ? Text('暂无崩溃记录,系统运行正常',
+              style: TextStyle(fontSize: 12, color: semantic.textTertiary))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.bug_report_outlined,
+                        size: 18, color: AppColors.brandViolet),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text('${entries.length} 条崩溃记录',
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: semantic.textPrimary)),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: () => _confirmClear(store!, entries.length),
+                      icon: const Icon(Icons.delete_sweep_outlined, size: 15),
+                      label:
+                          const Text('清空', style: TextStyle(fontSize: 12.5)),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        foregroundColor: AppColors.danger,
+                      ),
+                    ),
+                  ],
+                ),
+                for (final entry in entries)
+                  Theme(
+                    data: Theme.of(context)
+                        .copyWith(dividerColor: Colors.transparent),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: ExpansionTile(
+                        tilePadding: EdgeInsets.zero,
+                        childrenPadding:
+                            const EdgeInsets.only(bottom: AppSpacing.sm),
+                        collapsedIconColor: semantic.textTertiary,
+                        iconColor: semantic.textTertiary,
+                        title: Text(
+                            '${_formatCrashTime(entry.at)} · '
+                            '${entry.context == 'platform' ? '平台' : '框架'}',
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: semantic.textSecondary)),
+                        subtitle: Text(entry.error,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 11.5,
+                                color: semantic.textTertiary)),
+                        children: [
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(AppSpacing.sm),
+                            decoration: BoxDecoration(
+                              color: semantic.background,
+                              borderRadius:
+                                  BorderRadius.circular(AppRadius.md),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                    '时间 ${_formatCrashTime(entry.at)} · '
+                                    '来源 ${entry.context}',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: semantic.textTertiary)),
+                                const SizedBox(height: AppSpacing.xs),
+                                Text(entry.error,
+                                    maxLines: 4,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: semantic.textPrimary)),
+                                const SizedBox(height: AppSpacing.xs),
+                                Text(_truncateCrashStack(entry.stack),
+                                    maxLines: 10,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontFamily: 'monospace',
+                                        height: 1.3,
+                                        color: semantic.textTertiary)),
+                              ],
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: () => _copyDetail(entry),
+                              icon: const Icon(Icons.copy_rounded, size: 14),
+                              label: const Text('复制详情',
+                                  style: TextStyle(fontSize: 12)),
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                foregroundColor: AppColors.brandBlue,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+String _formatCrashTime(DateTime at) =>
+    '${at.year.toString().padLeft(4, '0')}-'
+    '${at.month.toString().padLeft(2, '0')}-'
+    '${at.day.toString().padLeft(2, '0')} '
+    '${at.hour.toString().padLeft(2, '0')}:'
+    '${at.minute.toString().padLeft(2, '0')}:'
+    '${at.second.toString().padLeft(2, '0')}';
+
+/// Keeps the tile body compact even when a full 2000-char stack was stored.
+String _truncateCrashStack(String stack, [int max = 800]) =>
+    stack.length <= max ? stack : '${stack.substring(0, max)}…';
 
 class _Field extends StatelessWidget {
   const _Field({
