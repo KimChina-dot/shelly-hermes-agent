@@ -13,6 +13,7 @@ import '../core/agent_core.dart';
 import '../core/context/context_compactor.dart';
 import '../core/dsh/tool_registry.dart';
 import '../core/approval_broker.dart';
+import '../core/crash/crash_log_store.dart';
 import '../core/gateway/openai_gateway.dart';
 import '../core/gateway/web_search.dart';
 import '../core/hermes/hermes_memory.dart';
@@ -32,6 +33,7 @@ import '../core/shell/shell_executor.dart';
 import '../core/task_queue.dart';
 import '../core/task_recovery.dart';
 import '../core/tools/registry.dart';
+import '../core/tools/memory_search_tool.dart';
 import '../core/tools/terminal_tools.dart';
 import '../core/tools/workspace.dart';
 import '../core/workspace/workspace_manager.dart';
@@ -364,6 +366,10 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
             .read(memoryStoreProvider.future)
             // Same "never a gate" contract: a slow or missing prefs backend
             // skips the memory block instead of stalling the send.
+            .timeout(const Duration(seconds: 2), onTimeout: () => null),
+        crashLogFuture: _ref
+            .read(crashLogProvider.future)
+            .then<CrashLogStore?>((store) => store)
             .timeout(const Duration(seconds: 2), onTimeout: () => null),
       ),
       listener: (status) {
@@ -814,6 +820,7 @@ class _TaskRunner implements AgentTaskRunner {
     required String conversationId,
     Future<ConversationImageStore?>? imageStoreFuture,
     Future<MemoryStore?>? memoryStoreFuture,
+    Future<CrashLogStore?>? crashLogFuture,
     ModelGateway? chatGatewayOverride,
   })  : _session = session,
         _store = store,
@@ -822,6 +829,7 @@ class _TaskRunner implements AgentTaskRunner {
         _conversationId = conversationId,
         _imageStoreFuture = imageStoreFuture,
         _memoryStoreFuture = memoryStoreFuture,
+        _crashLogFuture = crashLogFuture,
         _chatGatewayOverride = chatGatewayOverride;
 
   final ChatSessionController _session;
@@ -841,6 +849,12 @@ class _TaskRunner implements AgentTaskRunner {
   /// Test-only scripted gateway (see [chatGatewayOverrideProvider]); null
   /// in production.
   final ModelGateway? _chatGatewayOverride;
+
+  /// Crash log store for the search_memory tool; null when prefs are slow
+  /// or unavailable — history search degrades to conversations only.
+  final Future<CrashLogStore?>? _crashLogFuture;
+
+  CrashLogStore? _crashLog;
 
   /// Replaces inline data-URL images with on-disk file paths. Failures keep
   /// the original data URL — an attachment must never break a send.
@@ -915,6 +929,13 @@ class _TaskRunner implements AgentTaskRunner {
             const Duration(seconds: 5),
             onTimeout: () => McpToolRegistry(tools: const []),
           );
+    // Crash store is optional: slow or missing prefs degrade search_memory
+    // to conversations only — never a gate.
+    try {
+      _crashLog = await (_crashLogFuture ?? Future.value(null));
+    } catch (_) {
+      _crashLog = null;
+    }
     final registry = CompositeToolRegistry([
       workspaceTools,
       ShellToolRegistry(
@@ -922,6 +943,12 @@ class _TaskRunner implements AgentTaskRunner {
       ),
       // Structured fd/rg search with find/grep fallback (PHASE 43).
       TerminalSearchTools(runner: shellRunner),
+      // Self-diagnosis: the agent can grep its own past (PHASE 43).
+      MemorySearchToolRegistry(
+        loadSummaries: _store.loadConversations,
+        loadCheckpoint: _store.loadCheckpoint,
+        loadCrashes: _crashLog?.loadEntries,
+      ),
       KnowledgeToolRegistry(store: knowledgeStore),
       _dshTools,
       ?mcpRegistry,
