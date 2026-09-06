@@ -3,19 +3,101 @@ package dev.shelly.shelly_hermes
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import android.provider.DocumentsContract
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONObject
 
 class MainActivity : FlutterActivity() {
     private var pendingTreePick: MethodChannel.Result? = null
+
+    // Home-screen widget bridge (PHASE 42), see HomeWidgetProvider.
+    private var widgetChannel: MethodChannel? = null
+    private var pendingWidgetAction: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         registerWorkspaceChannel(flutterEngine)
         registerSecureStoreChannel(flutterEngine)
         registerTaskServiceChannel(flutterEngine)
+        registerWidgetChannel(flutterEngine)
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        intent?.getStringExtra(HomeWidgetProvider.ACTION_EXTRA)?.let(::deliverWidgetAction)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(HomeWidgetProvider.ACTION_EXTRA)?.let(::deliverWidgetAction)
+    }
+
+    // ------------------------------------------------------------------
+    // Home-screen widget: tap actions in, snapshot pushes out (PHASE 42).
+    // ------------------------------------------------------------------
+    private fun registerWidgetChannel(flutterEngine: FlutterEngine) {
+        val channel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "dev.shelly/hermes_widget",
+        )
+        channel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "pushUpdate" -> {
+                    try {
+                        writeWidgetState(call.arguments as? Map<*, *>)
+                        HomeWidgetProvider.updateAll(this)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("widget", e.message ?: "push failed", null)
+                    }
+                }
+                "takePendingAction" -> {
+                    val action = pendingWidgetAction
+                    pendingWidgetAction = null
+                    result.success(action)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        widgetChannel = channel
+    }
+
+    /** Caches the action first, then pushes; on success the cache clears. */
+    private fun deliverWidgetAction(action: String) {
+        pendingWidgetAction = action
+        val channel = widgetChannel ?: return
+        channel.invokeMethod(
+            "action",
+            action,
+            object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    if (pendingWidgetAction == action) pendingWidgetAction = null
+                }
+
+                override fun error(errorCode: String, message: String?, details: Any?) {
+                    // Dart not ready / channel busy: the cached copy is
+                    // delivered when the bridge pulls takePendingAction.
+                }
+
+                override fun notImplemented() {}
+            },
+        )
+    }
+
+    /** Persists the widget snapshot the provider renders on its next update. */
+    private fun writeWidgetState(args: Map<*, *>?) {
+        val title = (args?.get("lastConversationTitle") as? String).orEmpty()
+        val count = (args?.get("conversationCount") as? Number)?.toInt() ?: 0
+        val json = JSONObject()
+        json.put("lastConversationTitle", title)
+        json.put("conversationCount", count)
+        getSharedPreferences(HomeWidgetProvider.STATE_PREFS, MODE_PRIVATE)
+            .edit()
+            .putString(HomeWidgetProvider.STATE_KEY, json.toString())
+            .apply()
     }
 
     // ------------------------------------------------------------------
