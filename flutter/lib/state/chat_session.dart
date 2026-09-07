@@ -21,6 +21,7 @@ import '../core/hermes/knowledge_store.dart';
 import '../core/hermes/forgetting.dart';
 import '../core/hermes/knowledge_tool.dart';
 import '../core/error_messages.dart';
+import '../core/mcp/bridge_client.dart';
 import '../core/mcp/mcp_tool_registry.dart';
 import '../core/memory/memory_extractor.dart';
 import '../core/memory/memory_store.dart';
@@ -929,6 +930,23 @@ class _TaskRunner implements AgentTaskRunner {
             const Duration(seconds: 5),
             onTimeout: () => McpToolRegistry(tools: const []),
           );
+    // Desktop sidecar MCP bridge (PHASE 45): stdio servers run on a LAN PC
+    // and are consumed over HTTP. Best-effort discovery — an unreachable
+    // bridge degrades to no bridge tools, never stalls a task.
+    final bridgeConfig = _store.loadMcpBridge();
+    AgentToolRegistry? bridgeRegistry;
+    if (bridgeConfig.isComplete) {
+      try {
+        final registry = BridgeToolRegistry(
+          baseUrl: bridgeConfig.baseUrl,
+          token: bridgeConfig.token,
+        );
+        await registry.ensureLoaded().timeout(const Duration(seconds: 3));
+        bridgeRegistry = registry;
+      } catch (_) {
+        bridgeRegistry = null;
+      }
+    }
     // Crash store is optional: slow or missing prefs degrade search_memory
     // to conversations only — never a gate.
     try {
@@ -952,6 +970,7 @@ class _TaskRunner implements AgentTaskRunner {
       KnowledgeToolRegistry(store: knowledgeStore),
       _dshTools,
       ?mcpRegistry,
+      ?bridgeRegistry,
     ]);
     final ModelGateway model = _chatGatewayOverride ??
         (config.isComplete

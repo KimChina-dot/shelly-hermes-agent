@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/platform/background_tasks.dart';
 import '../../core/platform/home_widget_bridge.dart';
 import '../../state/scheduled_tasks.dart';
 import '../../state/settings_store.dart';
@@ -49,12 +50,17 @@ class _HomeShellState extends ConsumerState<HomeShell>
   /// native handler (web, desktop dev) are unaffected.
   final HomeWidgetBridge _widgetBridge = HomeWidgetBridge();
 
+  /// Background scheduled-task wake bridge (PHASE 45): routes notification
+  /// taps to the tasks tab. Best-effort, like the widget bridge.
+  final BackgroundTaskBridge _bgBridge = BackgroundTaskBridge();
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _armScheduler();
     _widgetBridge.register(_onWidgetAction);
+    _bgBridge.handlePendingCatchup(_onBgCatchup);
     // Web dev harness: ?tab=N deep-links straight to a tab so browser-based
     // verification tooling can reach every page without driving the nav.
     if (kIsWeb) {
@@ -73,6 +79,11 @@ class _HomeShellState extends ConsumerState<HomeShell>
     ref.read(tabIndexProvider.notifier).state = 0;
   }
 
+  /// Notification tap for due scheduled tasks: open the tasks tab (任务).
+  void _onBgCatchup() {
+    ref.read(tabIndexProvider.notifier).state = 1;
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -82,6 +93,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
     ));
     _tickerFuture = null;
     _widgetBridge.dispose();
+    _bgBridge.dispose();
     super.dispose();
   }
 
