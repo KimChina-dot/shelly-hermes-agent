@@ -19,6 +19,9 @@ dependencies:
   # HTTP client for the OpenAI-compatible model gateway.
   http: ^1.2.0
 
+  # SHA-256 fingerprints for the MCP tool-catalog supply-chain guard.
+  crypto: ^3.0.5
+
   # Pure-Dart syntax highlighting used by the code block component.
   highlight: ^0.7.0
   shared_preferences: ^2.5.5
