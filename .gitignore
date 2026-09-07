@@ -22,3 +22,5 @@ keystore.properties
 
 # local CI artifact download scratch
 release-ci/
+dist/
+shelly-asciiflutter/
