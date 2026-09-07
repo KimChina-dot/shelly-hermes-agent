@@ -6,6 +6,11 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+dependencies {
+    // Background scheduled-task wake-ups (PHASE 45).
+    implementation("androidx.work:work-runtime-ktx:2.10.5")
+}
+
 // Release signing credentials live in android/key.properties (NOT committed).
 // Generate a keystore with android/create_keystore.ps1; when the file is
 // absent the release build falls back to the debug key so CI stays green.

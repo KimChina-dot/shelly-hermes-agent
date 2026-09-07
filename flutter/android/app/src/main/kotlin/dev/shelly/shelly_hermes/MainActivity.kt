@@ -8,6 +8,7 @@ import android.provider.DocumentsContract
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONArray
 import org.json.JSONObject
 
 class MainActivity : FlutterActivity() {
@@ -17,22 +18,33 @@ class MainActivity : FlutterActivity() {
     private var widgetChannel: MethodChannel? = null
     private var pendingWidgetAction: String? = null
 
+    // Background scheduled-task wake bridge (PHASE 45), see BackgroundTaskWorker.
+    private var bgChannel: MethodChannel? = null
+    private var pendingBgCatchup: Boolean? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         registerWorkspaceChannel(flutterEngine)
         registerSecureStoreChannel(flutterEngine)
         registerTaskServiceChannel(flutterEngine)
         registerWidgetChannel(flutterEngine)
+        registerBackgroundTaskChannel(flutterEngine)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         intent?.getStringExtra(HomeWidgetProvider.ACTION_EXTRA)?.let(::deliverWidgetAction)
+        if (intent?.getBooleanExtra(BackgroundTaskWorker.ACTION_BG_CATCHUP, false) == true) {
+            deliverBgCatchup()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra(HomeWidgetProvider.ACTION_EXTRA)?.let(::deliverWidgetAction)
+        if (intent.getBooleanExtra(BackgroundTaskWorker.ACTION_BG_CATCHUP, false)) {
+            deliverBgCatchup()
+        }
     }
 
     // ------------------------------------------------------------------
@@ -80,6 +92,77 @@ class MainActivity : FlutterActivity() {
                 override fun error(errorCode: String, message: String?, details: Any?) {
                     // Dart not ready / channel busy: the cached copy is
                     // delivered when the bridge pulls takePendingAction.
+                }
+
+                override fun notImplemented() {}
+            },
+        )
+    }
+
+    // ------------------------------------------------------------------
+    // Background scheduled-task wake-ups (PHASE 45), see BackgroundTaskWorker.
+    // ------------------------------------------------------------------
+    private fun registerBackgroundTaskChannel(flutterEngine: FlutterEngine) {
+        val channel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "dev.shelly/bg_tasks",
+        )
+        channel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "schedule" -> {
+                    val minutes = (call.argument<Number>("intervalMinutes"))?.toInt() ?: 15
+                    BackgroundTaskWorker.schedule(this, minutes)
+                    result.success(null)
+                }
+                "cancel" -> {
+                    BackgroundTaskWorker.cancel(this)
+                    result.success(null)
+                }
+                "pushState" -> {
+                    val tasks = (call.argument<List<*>>("tasks")).orEmpty()
+                    val array = JSONArray()
+                    for (item in tasks) {
+                        if (item is Map<*, *>) {
+                            val entry = JSONObject()
+                            entry.put("id", item["id"] ?: "")
+                            entry.put("at", (item["at"] as? Number)?.toLong() ?: 0L)
+                            array.put(entry)
+                        }
+                    }
+                    getSharedPreferences(
+                        BackgroundTaskWorker.STATE_PREFS,
+                        MODE_PRIVATE,
+                    ).edit()
+                        .putString(BackgroundTaskWorker.BG_STATE_KEY, array.toString())
+                        .apply()
+                    result.success(null)
+                }
+                "takePendingCatchup" -> {
+                    val pending = pendingBgCatchup
+                    pendingBgCatchup = null
+                    result.success(pending)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        bgChannel = channel
+    }
+
+    /** Caches the catch-up flag first, then pushes; success clears the cache. */
+    private fun deliverBgCatchup() {
+        pendingBgCatchup = true
+        val channel = bgChannel ?: return
+        channel.invokeMethod(
+            "catchup",
+            null,
+            object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    pendingBgCatchup = null
+                }
+
+                override fun error(errorCode: String, message: String?, details: Any?) {
+                    // Dart not ready: the cached flag is drained via
+                    // takePendingCatchup once the bridge registers.
                 }
 
                 override fun notImplemented() {}

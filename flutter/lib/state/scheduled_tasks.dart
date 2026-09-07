@@ -8,6 +8,8 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/platform/background_tasks.dart';
+
 import '../core/gateway/openai_gateway.dart';
 import '../core/models.dart';
 import 'settings_store.dart';
@@ -437,10 +439,39 @@ class SchedulerTicker {
   /// no-op otherwise. Called on shell init and whenever the tasks page
   /// changes the store.
   void ensureRunning() {
+    _syncBackgroundState();
     if (_timer != null) return;
     if (!_service.store.hasRunnableTasks()) return;
     _timer = Timer.periodic(schedulerTickInterval, (_) => tick());
   }
+
+  /// Mirrors the runnable schedule into native prefs and (re)arms the
+  /// native 15-minute periodic check, so the WorkManager worker (PHASE 45)
+  /// can wake the user for due tasks after the app was swiped away.
+  /// Best-effort on all hosts.
+  void _syncBackgroundState() {
+    try {
+      final bridge = _backgroundBridge ??= BackgroundTaskBridge();
+      unawaited(bridge.scheduleWorkChecks(intervalMinutes: 15));
+      final mirrors = <Map<String, dynamic>>[];
+      for (final task in _service.store.loadTasks()) {
+        final runnable = task.enabled &&
+            (task.repeat != TaskRepeatMode.once ||
+                task.status == ScheduledTaskStatus.pending);
+        if (runnable) {
+          mirrors.add({
+            'id': task.id,
+            'at': task.at.millisecondsSinceEpoch,
+          });
+        }
+      }
+      unawaited(bridge.pushState(mirrors));
+    } catch (_) {
+      // Background wake-ups are an enhancement, never a requirement.
+    }
+  }
+
+  static BackgroundTaskBridge? _backgroundBridge;
 
   /// Stops the loop. Safe to call repeatedly.
   void stop() {
