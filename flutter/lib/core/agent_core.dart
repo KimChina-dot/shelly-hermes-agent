@@ -2,6 +2,7 @@
 // formals do not apply here.
 // ignore_for_file: prefer_initializing_formals
 import 'approval_broker.dart';
+import 'gateway/openai_gateway.dart' show CachedTokensReply;
 import 'context/context_compactor.dart';
 import 'diff_hunk_approval.dart';
 import 'models.dart';
@@ -331,6 +332,10 @@ class AgentCore {
         succeeded: true,
         inputTokens: reply.inputTokens,
         outputTokens: reply.outputTokens,
+        cachedTokens: switch (reply) {
+          final CachedTokensReply cached => cached.promptCachedTokens,
+          _ => 0,
+        },
       ));
       round += 1;
       consumedTokens += reply.inputTokens + reply.outputTokens;

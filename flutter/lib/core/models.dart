@@ -286,6 +286,7 @@ class ModelFinished extends AgentEvent {
     required this.succeeded,
     this.inputTokens = 0,
     this.outputTokens = 0,
+    this.cachedTokens = 0,
   });
 
   final int round;
@@ -293,6 +294,10 @@ class ModelFinished extends AgentEvent {
   final bool succeeded;
   final int inputTokens;
   final int outputTokens;
+
+  /// Prompt tokens served from the provider's KV cache (PHASE 46);
+  /// 0 when the provider does not report it.
+  final int cachedTokens;
 }
 
 class ApprovalWaiting extends AgentEvent {
