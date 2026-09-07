@@ -35,6 +35,40 @@ void main() {
     });
   });
 
+  group('extractPointers', () {
+    test('extracts relative workspace file paths with known extensions', () {
+      final pointers =
+          extractPointers('先看 lib/main.dart,再看 docs/a.md 和 README.md');
+      expect(pointers, ['lib/main.dart', 'docs/a.md', 'README.md']);
+    });
+
+    test('extracts http and https URLs', () {
+      final pointers = extractPointers(
+          '参考 https://example.com/a?b=1 与 http://example.org/docs。');
+      expect(pointers, ['https://example.com/a?b=1', 'http://example.org/docs']);
+    });
+
+    test('dedupes while keeping first-appearance order', () {
+      final pointers = extractPointers(
+          'lib/main.dart 然后 https://example.com/x 再 lib/main.dart 和 '
+          'https://example.com/x');
+      expect(pointers, ['lib/main.dart', 'https://example.com/x']);
+    });
+
+    test('caps the result at 10 pointers', () {
+      final text = List.generate(14, (i) => 'file$i.dart').join(' ');
+      final pointers = extractPointers(text);
+      expect(pointers, hasLength(10));
+      expect(pointers.first, 'file0.dart');
+      expect(pointers.last, 'file9.dart');
+    });
+
+    test('does not match plain words or bare dotted tokens', () {
+      expect(extractPointers('这是一段普通文本 with words only'), isEmpty);
+      expect(extractPointers('版本号 2.1.3 与 note.something 不算路径'), isEmpty);
+    });
+  });
+
   group('ContextCompactor', () {
     test('threshold check fires past the configured share of the window', () {
       final compactor = ContextCompactor(windowTokens: 1000, threshold: 0.8);
@@ -183,6 +217,99 @@ void main() {
 
       expect(result.usedModelSummary, isFalse);
       expect(result.messages.where((m) => m.content.contains('任务1')), hasLength(1));
+    });
+
+    test('summarized transcript carries the restorable pointer line', () async {
+      final compactor = ContextCompactor(
+        windowTokens: 100000,
+        keepRecentGroups: 1,
+      );
+      final messages = [
+        _user('帮我梳理这两份文档的结论'),
+        _assistant('要点在 docs/architecture.md,原型见 https://example.com/spec'),
+        _user('再核对 lib/core/context/context_compactor.dart 和 README.md'),
+        _assistant(_filler('回复')),
+        _user('最后一条'),
+      ];
+
+      final result = await compactor.compact(messages);
+
+      final summary = result.messages
+          .where((m) => m.content.startsWith('以下是此前对话的自动压缩摘要'))
+          .toList();
+      expect(summary, hasLength(1));
+      // Exactly one pointer line, appended after the summary body.
+      final pointerLines = summary.single.content
+          .split('\n')
+          .where((line) => line.startsWith('「可还原指针」'))
+          .toList();
+      expect(pointerLines, hasLength(1));
+      final pointers = pointerLines.single
+          .split('「可还原指针」 ')
+          .last
+          .split(', ');
+      expect(
+        pointers,
+        containsAll(<String>[
+          'docs/architecture.md',
+          'https://example.com/spec',
+          'lib/core/context/context_compactor.dart',
+          'README.md',
+        ]),
+      );
+      expect(pointers, hasLength(4));
+    });
+
+    test('summaries without pointers add no pointer line', () async {
+      final compactor = ContextCompactor(
+        windowTokens: 100000,
+        keepRecentGroups: 1,
+      );
+      final messages = [
+        _user(_filler('任务1')),
+        _assistant(_filler('回复1')),
+        _user(_filler('任务2')),
+        _assistant(_filler('回复2')),
+        _user('最后一条'),
+      ];
+
+      final result = await compactor.compact(messages);
+
+      final summary = result.messages
+          .where((m) => m.content.startsWith('以下是此前对话的自动压缩摘要'))
+          .toList();
+      expect(summary, hasLength(1));
+      expect(summary.single.content, isNot(contains('「可还原指针」')));
+    });
+
+    test('summarizer prompt carries the restorable-pointer instruction',
+        () async {
+      final received = <String>[];
+      final compactor = ContextCompactor(
+        windowTokens: 100000,
+        keepRecentGroups: 1,
+        summarizer: (transcript) async {
+          received.add(transcript);
+          return '模型摘要';
+        },
+      );
+      final messages = [
+        _user(_filler('任务1')),
+        _assistant(_filler('回复1')),
+        _user(_filler('任务2')),
+        _assistant(_filler('回复2')),
+        _user('最后一条'),
+      ];
+
+      final result = await compactor.compact(messages);
+
+      expect(result.usedModelSummary, isTrue);
+      expect(received, hasLength(1));
+      expect(received.single, contains('任务1'));
+      expect(
+        received.single,
+        contains('保留可还原指针(文件路径/URL),不要编造'),
+      );
     });
   });
 
