@@ -36,6 +36,7 @@ import '../core/task_queue.dart';
 import '../core/task_recovery.dart';
 import '../core/tools/registry.dart';
 import '../core/tools/memory_search_tool.dart';
+import '../core/tools/notes_tool.dart';
 import '../core/tools/terminal_tools.dart';
 import '../core/tools/workspace.dart';
 import '../core/workspace/workspace_manager.dart';
@@ -782,13 +783,27 @@ const String toolUsageRules = '「工具使用守则」\n'
     '- 搜索工具(fast_find/smart_grep)返回 JSON 且已限量截断,不要重复发起全量搜索。\n'
     '- 工具失败时先检查参数(路径必须是工作区内的相对路径),再调整重试。\n'
     '- 严禁通过 run_command 绕过搜索工具执行查找/过滤类命令。\n'
-    '- 需要历史对话或过往错误上下文时,调用 search_memory 检索,而不是要求用户复述。';
+    '- 需要历史对话或过往错误上下文时,调用 search_memory 检索,而不是要求用户复述。\n'
+    '- 计划有变化时用 plan 工具更新,保持目标清晰。';
 
 /// Persona prompt with the 「工具使用守则」 prepended/appended.
 @visibleForTesting
 String personaWithToolRules(String persona) {
   if (persona.trim().isEmpty) return toolUsageRules;
   return '$persona\n\n$toolUsageRules';
+}
+
+/// Persona prompt with the 「工具使用守则」 block prepended/appended, and
+/// (from PHASE 46) the current 「当前计划」 recitation block appended after
+/// the rules — still before any 「长期记忆」 block that
+/// [systemPromptWithMemory] adds. Returns the persona unchanged when the
+/// block is null (no plan or notes recorded yet), so bare fresh sends keep
+/// their exact prefix shape.
+@visibleForTesting
+String personaWithRecitation(String persona, String? block) {
+  if (block == null) return persona;
+  if (persona.trim().isEmpty) return block;
+  return '$persona\n\n$block';
 }
 
 /// Persona prompt with the 「长期记忆」 block appended (PHASE 41). Returns
@@ -813,6 +828,61 @@ String? systemPromptWithMemory({
     ..writeln('「长期记忆」以下是已保存的关于用户的长期记忆,回答时可自然运用,不必复述:')
     ..write([for (final fact in newest) '- ${fact.text}'].join('\n'));
   return buffer.toString();
+}
+
+/// Auto-approves the no-op plan/note state tools (PHASE 46): they only
+/// mutate in-memory recitation state and never touch the workspace, so a
+/// user prompt per update would defeat the recitation pattern. Every other
+/// tool defers to the wrapped [base] policy.
+class _NotesStateApprovalPolicy implements ToolApprovalPolicy {
+  const _NotesStateApprovalPolicy(this._base);
+
+  final ToolApprovalPolicy _base;
+
+  static const _stateOnlyTools = {'plan', 'note'};
+
+  @override
+  bool requiresApproval(ToolCall call) =>
+      _stateOnlyTools.contains(call.name) ? false : _base.requiresApproval(call);
+}
+
+/// Todo-recitation (PHASE 46): re-splices the current 「当前计划」 block
+/// into the persona system message of every outgoing request, so `plan` and
+/// `note` calls made during a task show up in the very next round — the
+/// block changing across rounds is the intended recitation effect, while
+/// the surrounding prompt shape stays stable. Fixed position: after the
+/// tool-usage rules, before the memory block (see [spliceRecitation]).
+/// [inner] (e.g. the web-search decorator) runs first.
+@visibleForTesting
+RequestBodyDecorator recitationBodyDecorator(
+  NotesToolRegistry notes,
+  RequestBodyDecorator? inner,
+) {
+  return (body) {
+    final decorated = inner == null ? body : inner(body);
+    final messages = decorated['messages'];
+    if (messages is! List) return decorated;
+    for (var i = 0; i < messages.length; i++) {
+      final message = messages[i];
+      // The persona system message is the last message of the leading
+      // system run (the Hermes recall message may precede it).
+      if (message is! Map<String, dynamic> || message['role'] != 'system') {
+        break;
+      }
+      final content = message['content'];
+      if (content is String &&
+          (content.contains('「工具使用守则」') ||
+              content.contains('「长期记忆」') ||
+              content.contains('「当前计划」'))) {
+        messages[i] = {
+          ...message,
+          'content': spliceRecitation(content, notes.recitationBlock()),
+        };
+        break;
+      }
+    }
+    return decorated;
+  };
 }
 
 class _TaskRunner implements AgentTaskRunner {
@@ -917,6 +987,9 @@ class _TaskRunner implements AgentTaskRunner {
     final workspace = _workspaceManager.workspace;
     final project = await _workspaceManager.detectProject();
     final workspaceTools = WorkspaceToolRegistry(workspace: workspace);
+    // No-op plan/notes state tools (PHASE 46): fresh per task run, so plan
+    // recitation state resets between tasks.
+    final notesTools = NotesToolRegistry();
     final knowledgeStore = HermesKnowledgeStore(
       workspace: workspace,
       project: project.name,
@@ -974,6 +1047,9 @@ class _TaskRunner implements AgentTaskRunner {
         loadCrashes: _crashLog?.loadEntries,
       ),
       KnowledgeToolRegistry(store: knowledgeStore),
+      // Plan/notes state (PHASE 46): record-only tools that feed the
+      // todo-recitation block; core entries win over plugin name clashes.
+      notesTools,
       _dshTools,
       ?mcpRegistry,
       ?bridgeRegistry,
@@ -985,9 +1061,15 @@ class _TaskRunner implements AgentTaskRunner {
                 apiKey: config.apiKey,
                 model: config.model,
                 tools: registry.openAiToolsJson(),
-                bodyDecorator: webSearchBodyDecorator(
-                  enabled: config.webSearchEnabled,
-                  baseUrl: config.baseUrl,
+                // Web-search rewrite first, then per-round todo-recitation
+                // (PHASE 46): the current 「当前计划」 block rides along on
+                // every model round.
+                bodyDecorator: recitationBodyDecorator(
+                  notesTools,
+                  webSearchBodyDecorator(
+                    enabled: config.webSearchEnabled,
+                    baseUrl: config.baseUrl,
+                  ),
                 ),
               )
             : DemoModelGateway());
@@ -1080,7 +1162,11 @@ class _TaskRunner implements AgentTaskRunner {
           maxToolCalls: profile.maxToolCalls,
         ),
         approvalPolicy: ShellApprovalPolicy(
-          base: ToolPolicy.standard.toApprovalPolicy(),
+          // Plan/note state tools auto-run (PHASE 46); everything else
+          // keeps the standard trust policy.
+          base: _NotesStateApprovalPolicy(
+            ToolPolicy.standard.toApprovalPolicy(),
+          ),
         ),
       ),
       approvals: _session.broker,
@@ -1088,9 +1174,14 @@ class _TaskRunner implements AgentTaskRunner {
     );
 
     // Persona prompt (plus any stored long-term memories) opens every fresh
-    // task; a resume keeps its checkpoint.
+    // task; a resume keeps its checkpoint. The 「当前计划」 recitation block
+    // rides along after the tool rules (empty at task start — it refreshes
+    // per round through the gateway body decorator).
     final systemPrompt = systemPromptWithMemory(
-      persona: personaWithToolRules(profile.systemPrompt),
+      persona: personaWithRecitation(
+        personaWithToolRules(profile.systemPrompt),
+        notesTools.recitationBlock(),
+      ),
       memories: memories,
     );
     final effectiveMessages = resumeFrom == null && systemPrompt != null
