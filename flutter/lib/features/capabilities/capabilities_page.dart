@@ -72,6 +72,8 @@ class CapabilitiesPage extends ConsumerWidget {
           const SizedBox(height: AppSpacing.lg),
           const _McpSection(),
           const SizedBox(height: AppSpacing.lg),
+          const _BridgeSection(),
+          const SizedBox(height: AppSpacing.lg),
           const _PluginRepoSection(),
           const SizedBox(height: AppSpacing.lg),
           const _EnvironmentSection(),
@@ -761,6 +763,172 @@ class _McpSectionState extends ConsumerState<_McpSection> {
                       fontSize: 11.5, color: semantic.textSecondary)),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// 桌面桥接 (PHASE 45): configure the LAN PC that runs stdio MCP servers
+/// behind `tool/mcp_bridge.dart`; the app consumes them as bridge tools.
+class _BridgeSection extends ConsumerStatefulWidget {
+  const _BridgeSection();
+
+  @override
+  ConsumerState<_BridgeSection> createState() => _BridgeSectionState();
+}
+
+class _BridgeSectionState extends ConsumerState<_BridgeSection> {
+  McpBridgeConfig _config = const McpBridgeConfig();
+
+  @override
+  void initState() {
+    super.initState();
+    _hydrate();
+  }
+
+  Future<SettingsStore> _resolveStore() async {
+    final cached = ref.read(settingsStoreProvider).valueOrNull;
+    if (cached != null) return cached;
+    return ref.read(settingsStoreProvider.future);
+  }
+
+  Future<void> _hydrate() async {
+    final store = await _resolveStore();
+    if (!mounted) return;
+    setState(() => _config = store.loadMcpBridge());
+  }
+
+  Future<void> _edit() async {
+    final url = TextEditingController(text: _config.baseUrl);
+    final token = TextEditingController(text: _config.token);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('桌面 MCP 桥接'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '在电脑上运行 flutter/tool/mcp_bridge.dart 并加载 stdio 服务器配置,'
+                '手机即可通过局域网调用这些工具。',
+                style: TextStyle(fontSize: 12.5, height: 1.5),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: url,
+                autofocus: true,
+                decoration: const InputDecoration(
+                    labelText: '桥接地址', hintText: 'http://192.168.x.x:8766'),
+              ),
+              TextField(
+                controller: token,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: '桥接令牌'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true) return;
+    final store = await _resolveStore();
+    await store.saveMcpBridge(McpBridgeConfig(
+      baseUrl: url.text.trim(),
+      token: token.text.trim(),
+    ));
+    ref.invalidate(settingsStoreProvider);
+    final latest = await _resolveStore();
+    if (!mounted) return;
+    setState(() => _config = latest.loadMcpBridge());
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_config.isComplete
+          ? '桥接已保存,下次对话生效'
+          : '桥接已清空')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    return Container(
+      decoration: BoxDecoration(
+        color: semantic.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: semantic.border),
+      ),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.computer_outlined,
+                  size: 18, color: semantic.textSecondary),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text('桌面 MCP 桥接',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: semantic.textPrimary)),
+              ),
+              _BridgePill(configured: _config.isComplete, onTap: _edit),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            _config.isComplete
+                ? '已连接 ${_config.baseUrl}'
+                : '未配置:在电脑上运行桥接后填入地址与令牌',
+            style: TextStyle(
+              fontSize: 12,
+              color: _config.isComplete
+                  ? semantic.textSecondary
+                  : semantic.textTertiary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BridgePill extends StatelessWidget {
+  const _BridgePill({required this.configured, required this.onTap});
+
+  final bool configured;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
+        decoration: BoxDecoration(
+          color: semantic.floating,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+        child: Text(
+          configured ? '编辑' : '配置',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: semantic.textPrimary,
+          ),
+        ),
       ),
     );
   }

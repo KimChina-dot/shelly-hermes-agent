@@ -134,6 +134,28 @@ List<ConversationSummary> sortConversations(List<ConversationSummary> list) {
 /// (PHASE 42). HTTP connectors use [McpServerConfig]; servers registered
 /// by the plugin preset catalog land here so their command line survives
 /// the JSON round-trip.
+/// Desktop sidecar MCP bridge connection (PHASE 45). The bridge process
+/// (flutter/tool/mcp_bridge.dart) runs on a LAN PC and exposes stdio MCP
+/// servers to this app over HTTP.
+class McpBridgeConfig {
+  const McpBridgeConfig({
+    this.baseUrl = '',
+    this.token = '',
+  });
+
+  final String baseUrl;
+  final String token;
+
+  bool get isComplete => baseUrl.isNotEmpty && token.isNotEmpty;
+
+  Map<String, dynamic> toJson() => {'baseUrl': baseUrl, 'token': token};
+
+  static McpBridgeConfig fromJson(Map<String, dynamic> json) => McpBridgeConfig(
+        baseUrl: json['baseUrl'] as String? ?? '',
+        token: json['token'] as String? ?? '',
+      );
+}
+
 class McpStdioServerConfig {
   const McpStdioServerConfig({
     required this.id,
@@ -419,6 +441,25 @@ class SettingsStore implements TaskRecoveryStore {
 
   /// Stdio MCP servers registered by the plugin preset catalog (PHASE 42);
   /// corrupt records fall back to an empty list like every other store.
+  static const _mcpBridgeKey = 'shelly.mcp.bridge';
+
+  McpBridgeConfig loadMcpBridge() {
+    final raw = _prefs.getString(_mcpBridgeKey);
+    if (raw == null || raw.isEmpty) return const McpBridgeConfig();
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) return McpBridgeConfig.fromJson(decoded);
+    } on FormatException {
+      // Fall through to the default.
+    } catch (_) {
+      // Corrupt payload: treat as unconfigured.
+    }
+    return const McpBridgeConfig();
+  }
+
+  Future<void> saveMcpBridge(McpBridgeConfig config) =>
+      _prefs.setString(_mcpBridgeKey, jsonEncode(config.toJson()));
+
   List<McpStdioServerConfig> loadMcpStdioServers() {
     final raw = _prefs.getString(_mcpStdioServersKey);
     if (raw == null) return const [];
