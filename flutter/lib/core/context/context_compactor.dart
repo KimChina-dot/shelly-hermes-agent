@@ -26,6 +26,89 @@ int estimateMessageTokens(AgentMessage message) {
 int estimateTokens(List<AgentMessage> messages) =>
     messages.fold(0, (sum, m) => sum + estimateMessageTokens(m));
 
+/// Well-known file extensions that mark a whitespace-delimited token as a
+/// workspace file path. Kept deliberately conservative (source, doc and
+/// config extensions only) so plain words, version numbers or email
+/// domains never match.
+const _pathExtensions = <String>{
+  'adoc', 'astro', 'bash', 'bat', 'cc', 'cfg', 'clj', 'cljs', 'cjs', 'cmd',
+  'conf', 'cpp', 'cs', 'css', 'csv', 'cxx', 'dart', 'erl', 'ex', 'exs',
+  'fish', 'fs', 'fsx', 'go', 'gradle', 'gql', 'graphql', 'groovy', 'h', 'hh',
+  'hpp', 'hs', 'htm', 'html', 'ini', 'ipynb', 'java', 'jl', 'js', 'json',
+  'json5', 'jsonc', 'jsx', 'kt', 'kts', 'less', 'lock', 'lua', 'md',
+  'markdown', 'mk', 'mjs', 'php', 'pl', 'properties', 'proto', 'ps1', 'py',
+  'pyi', 'rb', 'rst', 'rs', 'sass', 'scala', 'scss', 'sh', 'sql', 'svg',
+  'svelte', 'swift', 'tex', 'toml', 'ts', 'tsx', 'txt', 'vue', 'xml', 'yaml',
+  'yml', 'zsh',
+};
+
+/// Alternation source for [_pathPattern]; extensions are plain word chars.
+final _pathExtensionPattern = _pathExtensions.join('|');
+
+/// Relative workspace paths with a known extension (`lib/main.dart`,
+/// `docs/a.md`, `README.md`). The lookbehind keeps the match from starting
+/// inside a longer token or inside an URL body.
+final _pathPattern = RegExp(
+  r'(?<![\w./\\:\-])'
+  r'(?:[\w\-.]+[/\\])*'
+  r'[\w\-.]+'
+  r'\.(?:'
+  '$_pathExtensionPattern'
+  r')\b',
+  caseSensitive: false,
+);
+
+/// http/https URLs. CJK text and common prose punctuation terminate the
+/// match so copy around a URL never gets swallowed.
+final _urlPattern = RegExp(
+  r'https?://[^\s<>"`(),;、。…\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]+',
+  caseSensitive: false,
+);
+
+/// Trailing prose punctuation stripped from URL matches.
+const _urlTrailingJunk = '.,;:!?\'")]}》」』、。…';
+
+/// Upper bound on pointers carried through one compaction.
+const _maxPointers = 10;
+
+/// One-line instruction appended to the summarizer prompt so model-backed
+/// summaries keep restorable pointers instead of inventing content.
+const _summarizerPointerInstruction = '保留可还原指针(文件路径/URL),不要编造';
+
+/// Strips trailing prose punctuation from a URL match.
+String _trimTrailingJunk(String url) {
+  while (url.isNotEmpty) {
+    final last = url.substring(url.length - 1);
+    if (!_urlTrailingJunk.contains(last)) break;
+    url = url.substring(0, url.length - 1);
+  }
+  return url;
+}
+
+/// Extracts restorable pointers from [text]: tokens that look like relative
+/// workspace file paths with a known extension (e.g. `lib/main.dart`,
+/// `docs/a.md`, `README.md`) plus http/https URLs. Results keep order of
+/// first appearance, are deduplicated and capped at [_maxPointers]. Pure:
+/// deterministic and free of side effects.
+List<String> extractPointers(String text) {
+  final found = <int, String>{};
+  for (final match in _pathPattern.allMatches(text)) {
+    found.putIfAbsent(match.start, () => match.group(0)!);
+  }
+  for (final match in _urlPattern.allMatches(text)) {
+    final url = _trimTrailingJunk(match.group(0)!);
+    if (url.isNotEmpty) found.putIfAbsent(match.start, () => url);
+  }
+  final starts = found.keys.toList()..sort();
+  final pointers = <String>[];
+  for (final start in starts) {
+    final value = found[start]!;
+    if (!pointers.contains(value)) pointers.add(value);
+    if (pointers.length >= _maxPointers) break;
+  }
+  return pointers;
+}
+
 /// Keeps a running conversation inside the model's context window by folding
 /// older exchanges into a summary before each model round.
 ///
@@ -84,12 +167,17 @@ class ContextCompactor {
     final firstTask = _firstUserLine(dropped);
     final droppedCount = dropped.fold(0, (n, g) => n + g.messages.length);
     final transcript = _transcript(dropped);
+    // Restorable pointers come from the full dropped content (the transcript
+    // is truncated per message, which could cut a URL in half).
+    final droppedPointers =
+        extractPointers(dropped.expand((g) => g.messages.map((m) => m.content)).join('\n'));
     String? summary;
     var usedModelSummary = false;
     final summarizer = this.summarizer;
     if (summarizer != null) {
       try {
-        final text = (await summarizer(transcript)).trim();
+        final text =
+            (await summarizer('$transcript\n$_summarizerPointerInstruction')).trim();
         if (text.isNotEmpty) {
           summary = text;
           usedModelSummary = true;
@@ -100,6 +188,11 @@ class ContextCompactor {
     }
     summary ??= '（此前 $droppedCount 条消息已折叠:任务为「$firstTask」。'
         '具体早期对话与工具结果不再保留,请基于当前上下文继续。）';
+    // Every compression must be reversible: if the dropped content carried
+    // file paths or URLs, keep them so the agent can re-read the original.
+    if (droppedPointers.isNotEmpty) {
+      summary = '$summary\n「可还原指针」 ${droppedPointers.join(', ')}';
+    }
 
     final compacted = [
       ...groups.list.where((g) => g.isSystem).expand((g) => g.messages),
