@@ -224,6 +224,7 @@ class SettingsStore implements TaskRecoveryStore {
   static const _memorySettingsKey = 'shelly.memory.settings';
   static const _mcpServersKey = 'shelly.mcp.servers';
   static const _mcpStdioServersKey = 'shelly.mcp.stdio';
+  static const _mcpToolprintsKey = 'shelly.mcp.toolprints';
   static const _ttsEnabledKey = 'shelly.tts.enabled';
 
   /// Convenience accessor for reactive UI reads.
@@ -438,6 +439,40 @@ class SettingsStore implements TaskRecoveryStore {
         _mcpServersKey,
         jsonEncode([for (final server in servers) server.toJson()]),
       );
+
+  /// serverId → approved MCP tool-catalog fingerprint (PHASE 46 supply-chain
+  /// guard); corrupt records fall back to an empty map like every other store.
+  Map<String, String> loadMcpToolFingerprints() {
+    final raw = _prefs.getString(_mcpToolprintsKey);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return {
+          for (final entry in decoded.entries)
+            if (entry.value is String) entry.key: entry.value as String,
+        };
+      }
+    } on FormatException {
+      // Corrupt payload: treat as unapproved.
+    }
+    return const {};
+  }
+
+  /// Records the approved tool-catalog fingerprint for one server; an empty
+  /// [fingerprint] clears the record (revoked approval).
+  Future<void> saveMcpToolFingerprint(
+    String serverId,
+    String fingerprint,
+  ) async {
+    final current = <String, String>{...loadMcpToolFingerprints()};
+    if (fingerprint.isEmpty) {
+      current.remove(serverId);
+    } else {
+      current[serverId] = fingerprint;
+    }
+    await _prefs.setString(_mcpToolprintsKey, jsonEncode(current));
+  }
 
   /// Stdio MCP servers registered by the plugin preset catalog (PHASE 42);
   /// corrupt records fall back to an empty list like every other store.

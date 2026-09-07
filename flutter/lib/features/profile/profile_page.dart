@@ -759,8 +759,16 @@ class _UsageCard extends StatelessWidget {
         border: Border.all(color: semantic.border),
       ),
       child: totals.rounds == 0
-          ? Text('暂无用量记录,对话后自动统计(保留 30 天)',
-              style: TextStyle(fontSize: 12, color: semantic.textTertiary))
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('暂无用量记录,对话后自动统计(保留 30 天)',
+                    style: TextStyle(
+                        fontSize: 12, color: semantic.textTertiary)),
+                const SizedBox(height: AppSpacing.sm),
+                _cacheRateRow(totals, semantic),
+              ],
+            )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -781,6 +789,8 @@ class _UsageCard extends StatelessWidget {
                             fontSize: 11.5, color: semantic.textTertiary)),
                   ],
                 ),
+                const SizedBox(height: AppSpacing.sm),
+                _cacheRateRow(totals, semantic),
                 if (modelIds.isNotEmpty) ...[
                   const SizedBox(height: AppSpacing.sm),
                   for (final modelId in modelIds)
@@ -813,6 +823,32 @@ class _UsageCard extends StatelessWidget {
                 ],
               ],
             ),
+    );
+  }
+
+  /// KV-cache visibility (PHASE 46): the share of prompt tokens served from
+  /// the provider's cache plus the cached-token total. Shows '—' when no
+  /// rounds have been recorded yet.
+  Widget _cacheRateRow(UsageTotals totals, AppSemanticColors semantic) {
+    final hasData = totals.rounds > 0;
+    final rate = hasData
+        ? '${(totals.cacheHitRate * 100).toStringAsFixed(1)}%'
+        : '—';
+    return Row(
+      children: [
+        Icon(Icons.cached_outlined, size: 15, color: semantic.success),
+        const SizedBox(width: AppSpacing.sm),
+        Text('缓存命中率',
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: semantic.textSecondary)),
+        const Spacer(),
+        Text(
+          hasData ? '$rate · 已缓存 ${totals.cachedTokens} tokens' : rate,
+          style: TextStyle(fontSize: 11.5, color: semantic.textTertiary),
+        ),
+      ],
     );
   }
 }

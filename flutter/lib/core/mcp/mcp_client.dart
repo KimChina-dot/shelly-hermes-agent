@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'mcp_guard.dart';
+
 /// One configured MCP server (Streamable HTTP transport only — stdio is a
 /// desktop concern and sockets are out of scope on Android).
 class McpServerConfig {
@@ -11,6 +13,7 @@ class McpServerConfig {
     required this.name,
     required this.url,
     this.token = '',
+    this.toolFingerprint = '',
   });
 
   final String id;
@@ -18,12 +21,18 @@ class McpServerConfig {
   final String url;
   final String token;
 
-  McpServerConfig copyWith({String? name, String? url, String? token}) =>
+  /// Supply-chain guard (PHASE 46): SHA-256 of the tool catalog the user
+  /// last approved (see [McpGuard.fingerprint]). Empty until first approval.
+  final String toolFingerprint;
+
+  McpServerConfig copyWith(
+          {String? name, String? url, String? token, String? toolFingerprint}) =>
       McpServerConfig(
         id: id,
         name: name ?? this.name,
         url: url ?? this.url,
         token: token ?? this.token,
+        toolFingerprint: toolFingerprint ?? this.toolFingerprint,
       );
 
   Map<String, dynamic> toJson() => {
@@ -31,6 +40,8 @@ class McpServerConfig {
         'name': name,
         'url': url,
         if (token.isNotEmpty) 'token': token,
+        if (toolFingerprint.isNotEmpty)
+          'toolFingerprint': toolFingerprint,
       };
 
   static McpServerConfig fromJson(Map<String, dynamic> json) =>
@@ -39,6 +50,7 @@ class McpServerConfig {
         name: json['name'] as String? ?? '',
         url: json['url'] as String? ?? '',
         token: json['token'] as String? ?? '',
+        toolFingerprint: json['toolFingerprint'] as String? ?? '',
       );
 }
 
@@ -79,10 +91,9 @@ class McpClient {
 
   Future<List<McpToolInfo>> listTools(McpServerConfig server) async {
     final result = await _roundTrip(server, 'tools/list', {});
-    final tools = result['tools'];
-    return [
-      if (tools is List)
-        for (final tool in tools)
+    final tools = [
+      if (result['tools'] is List)
+        for (final tool in result['tools'] as List)
           if (tool is Map<String, dynamic>)
             McpToolInfo(
               name: tool['name'] as String? ?? '',
@@ -92,6 +103,23 @@ class McpClient {
                   : null,
             ),
     ].where((tool) => tool.name.isNotEmpty).toList();
+    // Supply-chain guard (PHASE 46): fingerprint every discovery so a rug
+    // pull (catalog mutated after approval) is detected and surfaced instead
+    // of silently trusted. connect() maps McpToolInfo back to raw maps for
+    // the diff API.
+    McpGuardLedger.record(
+      server.id,
+      [
+        for (final tool in tools)
+          <String, dynamic>{
+            'name': tool.name,
+            'description': tool.description,
+            if (tool.inputSchema != null) 'inputSchema': tool.inputSchema,
+          },
+      ],
+      configFingerprint: server.toolFingerprint,
+    );
+    return tools;
   }
 
   Future<String> callTool(

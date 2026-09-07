@@ -22,6 +22,7 @@ import '../core/hermes/forgetting.dart';
 import '../core/hermes/knowledge_tool.dart';
 import '../core/error_messages.dart';
 import '../core/mcp/bridge_client.dart';
+import '../core/mcp/mcp_guard.dart';
 import '../core/mcp/mcp_tool_registry.dart';
 import '../core/memory/memory_extractor.dart';
 import '../core/memory/memory_store.dart';
@@ -555,7 +556,8 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
 
   /// Persists one completed model round into the local usage statistics
   /// (PHASE 40). Best-effort: any failure is swallowed so chat never breaks.
-  void recordUsage(int promptTokens, int completionTokens) {
+  void recordUsage(int promptTokens, int completionTokens,
+      {int cachedTokens = 0}) {
     final store = _store;
     final modelId =
         store == null ? null : _modelIdFrom(store) ?? 'demo';
@@ -566,6 +568,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
           modelId: modelId ?? 'demo',
           promptTokens: promptTokens,
           completionTokens: completionTokens,
+          cachedTokens: cachedTokens,
         );
       } catch (_) {
         // Usage stats are a nice-to-have; a broken store must never
@@ -924,6 +927,9 @@ class _TaskRunner implements AgentTaskRunner {
     // Registered MCP servers join the tool surface; discovery is
     // best-effort so an unreachable server can never stall a task.
     final mcpServers = _store.loadMcpServers();
+    // Supply-chain guard (PHASE 46): seed the approved-fingerprint table
+    // so discovery can flag changed catalogs for re-approval.
+    McpGuardLedger.seedApproved(_store.loadMcpToolFingerprints());
     final mcpRegistry = mcpServers.isEmpty
         ? null
         : await McpToolRegistry.connect(mcpServers).timeout(
@@ -1115,7 +1121,11 @@ class _SessionObserver implements AgentObserver {
       case ModelFinished():
         _session.recordTokens(event.inputTokens, event.outputTokens);
         if (event.succeeded) {
-          _session.recordUsage(event.inputTokens, event.outputTokens);
+          _session.recordUsage(
+            event.inputTokens,
+            event.outputTokens,
+            cachedTokens: event.cachedTokens,
+          );
           _session.recordRoundMemory(_memory);
         }
       case ApprovalWaiting():
