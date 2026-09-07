@@ -97,6 +97,48 @@ class GatewayException implements Exception {
       'GatewayException($message${statusCode == null ? '' : ', status: $statusCode'})';
 }
 
+/// [ModelReply] with KV-cache telemetry attached (PHASE 46). The gateway
+/// always returns this subclass, so every round carries the OpenAI-compatible
+/// `usage.prompt_tokens_details.cached_tokens` figure; providers that omit
+/// the field leave [promptCachedTokens] at 0 and any consumer that expects a
+/// plain [ModelReply] keeps working unchanged.
+class CachedTokensReply extends ModelReply {
+  const CachedTokensReply({
+    super.content = '',
+    super.toolCalls = const [],
+    super.inputTokens = 0,
+    super.outputTokens = 0,
+    this.promptCachedTokens = 0,
+  });
+
+  /// Prompt tokens served from the provider's KV cache this round.
+  final int promptCachedTokens;
+}
+
+/// Reads the cache-hit figure from a chat/completions `usage` object.
+/// Returns null when the provider reports none: the canonical OpenAI field
+/// is `prompt_tokens_details.cached_tokens`, with DeepSeek-style
+/// `prompt_cache_hit_tokens` accepted as a fallback. The result is clamped
+/// to `prompt_tokens` so a malformed payload can never push the cache-hit
+/// rate above 100%.
+int? cachedTokensFromUsage(Map<String, dynamic>? usage) {
+  if (usage == null) return null;
+  int? cached;
+  final details = usage['prompt_tokens_details'];
+  if (details is Map<String, dynamic>) {
+    final value = details['cached_tokens'];
+    if (value is num) cached = value.toInt();
+  }
+  if (cached == null) {
+    final legacy = usage['prompt_cache_hit_tokens'];
+    if (legacy is num) cached = legacy.toInt();
+  }
+  if (cached == null) return null;
+  final prompt = (usage['prompt_tokens'] as num?)?.toInt();
+  if (prompt != null && cached > prompt) return prompt;
+  return cached;
+}
+
 /// OpenAI-compatible chat/completions gateway: works with any endpoint that
 /// speaks the standard schema (OpenAI, DeepSeek, Qwen compatible mode,
 /// OpenRouter, local vLLM...). Supports tool calls, SSE streaming with delta
@@ -182,6 +224,7 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
     final content = StringBuffer();
     var inputTokens = 0;
     var outputTokens = 0;
+    var cachedTokens = 0;
     final done = Completer<void>();
 
     parser.data.listen(
@@ -208,6 +251,7 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
             inputTokens = (usage['prompt_tokens'] as num?)?.toInt() ?? inputTokens;
             outputTokens =
                 (usage['completion_tokens'] as num?)?.toInt() ?? outputTokens;
+            cachedTokens = cachedTokensFromUsage(usage) ?? cachedTokens;
           }
         } on FormatException {
           // Ignore malformed keep-alive fragments; the stream continues.
@@ -230,11 +274,12 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
     );
 
     await done.future;
-    return ModelReply(
+    return CachedTokensReply(
       content: content.toString(),
       toolCalls: accumulator.build(),
       inputTokens: inputTokens,
       outputTokens: outputTokens,
+      promptCachedTokens: cachedTokens,
     );
   }
 
@@ -258,7 +303,14 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
     } on FormatException {
       throw GatewayException('malformed JSON from gateway', body: body);
     }
-    return decodeMessagePayload(payload);
+    final reply = decodeMessagePayload(payload);
+    return CachedTokensReply(
+      content: reply.content,
+      toolCalls: reply.toolCalls,
+      inputTokens: reply.inputTokens,
+      outputTokens: reply.outputTokens,
+      promptCachedTokens: cachedTokensFromUsage(payload['usage'] as Map<String, dynamic>?) ?? 0,
+    );
   }
 
   bool _isRetryableStatus(int statusCode) =>

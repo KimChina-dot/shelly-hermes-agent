@@ -13,11 +13,17 @@ class UsageEntry {
     required this.promptTokens,
     required this.completionTokens,
     required this.at,
+    this.cachedTokens = 0,
   });
 
   final String modelId;
   final int promptTokens;
   final int completionTokens;
+
+  /// Prompt tokens served from the provider's KV cache this round
+  /// (PHASE 46). 0 for records written before the field existed.
+  final int cachedTokens;
+
   final DateTime at;
 
   int get totalTokens => promptTokens + completionTokens;
@@ -26,6 +32,7 @@ class UsageEntry {
         'modelId': modelId,
         'promptTokens': promptTokens,
         'completionTokens': completionTokens,
+        'cachedTokens': cachedTokens,
         'at': at.toIso8601String(),
       };
 
@@ -33,6 +40,8 @@ class UsageEntry {
         modelId: json['modelId'] as String? ?? '',
         promptTokens: (json['promptTokens'] as num?)?.toInt() ?? 0,
         completionTokens: (json['completionTokens'] as num?)?.toInt() ?? 0,
+        // Records written before PHASE 46 lack the key and load with 0.
+        cachedTokens: (json['cachedTokens'] as num?)?.toInt() ?? 0,
         at: json['at'] is String
             ? DateTime.tryParse(json['at'] as String) ?? DateTime.now()
             : DateTime.now(),
@@ -44,10 +53,12 @@ class UsageEntry {
       other.modelId == modelId &&
       other.promptTokens == promptTokens &&
       other.completionTokens == completionTokens &&
+      other.cachedTokens == cachedTokens &&
       other.at == at;
 
   @override
-  int get hashCode => Object.hash(modelId, promptTokens, completionTokens, at);
+  int get hashCode =>
+      Object.hash(modelId, promptTokens, completionTokens, cachedTokens, at);
 }
 
 /// Aggregated token totals shared by the per-model and per-day views.
@@ -55,20 +66,31 @@ class UsageTotals {
   const UsageTotals({
     this.promptTokens = 0,
     this.completionTokens = 0,
+    this.cachedTokens = 0,
     this.rounds = 0,
   });
 
   final int promptTokens;
   final int completionTokens;
 
+  /// Sum of KV-cache hit tokens across the aggregated rounds (PHASE 46).
+  final int cachedTokens;
+
   /// How many recorded rounds the bucket aggregates.
   final int rounds;
 
   int get totalTokens => promptTokens + completionTokens;
 
+  /// Share of prompt tokens served from the provider's KV cache
+  /// (cachedTokens / promptTokens). 0 when no prompt tokens were recorded,
+  /// so an empty bucket never divides by zero.
+  double get cacheHitRate =>
+      promptTokens == 0 ? 0 : cachedTokens / promptTokens;
+
   UsageTotals add(UsageEntry entry) => UsageTotals(
         promptTokens: promptTokens + entry.promptTokens,
         completionTokens: completionTokens + entry.completionTokens,
+        cachedTokens: cachedTokens + entry.cachedTokens,
         rounds: rounds + 1,
       );
 
@@ -77,10 +99,12 @@ class UsageTotals {
       other is UsageTotals &&
       other.promptTokens == promptTokens &&
       other.completionTokens == completionTokens &&
+      other.cachedTokens == cachedTokens &&
       other.rounds == rounds;
 
   @override
-  int get hashCode => Object.hash(promptTokens, completionTokens, rounds);
+  int get hashCode =>
+      Object.hash(promptTokens, completionTokens, cachedTokens, rounds);
 }
 
 /// Local token usage statistics (PHASE 40). Every completed model round is
@@ -102,10 +126,13 @@ class UsageStatsStore {
 
   /// Appends one round, prunes stale/overflowing entries and persists.
   /// An explicit [at] is for tests; production stamps the current time.
+  /// [cachedTokens] is optional (default 0) so existing callers that predate
+  /// KV-cache telemetry keep working unchanged.
   Future<void> recordUsage({
     required String modelId,
     required int promptTokens,
     required int completionTokens,
+    int cachedTokens = 0,
     DateTime? at,
   }) async {
     final reference = DateTime.now();
@@ -113,6 +140,7 @@ class UsageStatsStore {
       modelId: modelId,
       promptTokens: promptTokens,
       completionTokens: completionTokens,
+      cachedTokens: cachedTokens,
       at: at ?? reference,
     );
     final entries = [...loadEntries(), entry];

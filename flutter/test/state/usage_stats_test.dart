@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -182,6 +184,137 @@ void main() {
       // Rounds aggregate into the same totals the profile page reads.
       expect(usage.totals().rounds, 2);
       expect(usage.totalsByModel()['demo']!.rounds, 2);
+    });
+  });
+
+  group('UsageStatsStore cache metrics', () {
+    test('recordUsage round-trips cachedTokens', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final store = UsageStatsStore(prefs);
+
+      final at = DateTime(2026, 9, 5, 10);
+      await store.recordUsage(
+        modelId: 'deepseek-chat',
+        promptTokens: 100,
+        completionTokens: 20,
+        cachedTokens: 64,
+        at: at,
+      );
+
+      final reloaded = UsageStatsStore(await SharedPreferences.getInstance());
+      final entries = reloaded.loadEntries();
+      expect(entries.single.cachedTokens, 64);
+      expect(entries.single.promptTokens, 100);
+      // Equality must distinguish cache metrics so round-trips are exact.
+      expect(
+        entries.single,
+        UsageEntry(
+          modelId: 'deepseek-chat',
+          promptTokens: 100,
+          completionTokens: 20,
+          cachedTokens: 64,
+          at: at,
+        ),
+      );
+      // JSON carries the field for the next load.
+      expect(
+        entries.single.toJson()['cachedTokens'],
+        64,
+      );
+    });
+
+    test('old records without cachedTokens load with 0', () async {
+      SharedPreferences.setMockInitialValues({
+        'shelly.usage.stats': jsonEncode([
+          {
+            'modelId': 'deepseek-chat',
+            'promptTokens': 120,
+            'completionTokens': 80,
+            'at': '2026-09-01T12:30:00.000',
+          },
+        ]),
+      });
+      final store = UsageStatsStore(await SharedPreferences.getInstance());
+
+      final entries = store.loadEntries();
+      expect(entries, hasLength(1));
+      expect(entries.single.cachedTokens, 0);
+      expect(entries.single.promptTokens, 120);
+
+      // Aggregates stay well-defined for pre-PHASE 46 data.
+      final totals = store.totals();
+      expect(totals.cachedTokens, 0);
+      expect(totals.cacheHitRate, 0);
+    });
+
+    test('cacheHitRate divides cached by prompt tokens', () {
+      expect(
+        const UsageTotals(
+          promptTokens: 100,
+          completionTokens: 10,
+          cachedTokens: 64,
+        ).cacheHitRate,
+        closeTo(0.64, 1e-9),
+      );
+      // Full cache hit tops out at exactly 1.
+      expect(
+        const UsageTotals(promptTokens: 50, cachedTokens: 50).cacheHitRate,
+        1,
+      );
+    });
+
+    test('cacheHitRate is 0 when no prompt tokens were recorded', () {
+      // Zero-division safety: an empty or prompt-less bucket must not
+      // divide by zero.
+      expect(const UsageTotals().cacheHitRate, 0);
+      expect(
+        const UsageTotals(promptTokens: 0, cachedTokens: 0).cacheHitRate,
+        0,
+      );
+      expect(
+        const UsageTotals(promptTokens: 0, cachedTokens: 5).cacheHitRate,
+        0,
+      );
+    });
+
+    test('totals, byModel and byDay all aggregate cachedTokens', () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = UsageStatsStore(await SharedPreferences.getInstance());
+      final day = DateTime(2026, 9, 2, 9);
+
+      await store.recordUsage(
+          modelId: 'model-a',
+          promptTokens: 100,
+          completionTokens: 10,
+          cachedTokens: 80,
+          at: day);
+      await store.recordUsage(
+          modelId: 'model-a',
+          promptTokens: 10,
+          completionTokens: 5,
+          cachedTokens: 0,
+          at: day);
+      await store.recordUsage(
+          modelId: 'model-b',
+          promptTokens: 50,
+          completionTokens: 3,
+          cachedTokens: 20,
+          at: day.add(const Duration(days: 1)));
+
+      final totals = store.totals();
+      expect(totals.cachedTokens, 100);
+      expect(totals.promptTokens, 160);
+      expect(totals.cacheHitRate, closeTo(100 / 160, 1e-9));
+
+      final byModel = store.totalsByModel();
+      expect(byModel['model-a']!.cachedTokens, 80);
+      expect(byModel['model-a']!.cacheHitRate, closeTo(80 / 110, 1e-9));
+      expect(byModel['model-b']!.cachedTokens, 20);
+
+      final byDay = store.totalsByDay();
+      expect(byDay['2026-09-02']!.cachedTokens, 80);
+      expect(byDay['2026-09-03']!.cacheHitRate, closeTo(20 / 50, 1e-9));
     });
   });
 }
