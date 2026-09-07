@@ -1,13 +1,16 @@
 {
   "$schema": "./schemas/version-manifest.schema.json",
   "product": "shelly-hermes-agent",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "components": {
-    "core": "2.0.0",
+    "flutter": "2.2.0",
+    "core": "2.2.0",
     "windows": "2.0.0",
-    "androidBridge": "2.0.0"
+    "androidBridge": "2.2.0"
   },
-  "runtime": { "node": ">=20" },
+  "runtime": {
+    "node": ">=20"
+  },
   "flutter": {
     "sdk": "3.47.2",
     "dart": "3.13.2",
@@ -16,7 +19,7 @@
   "android": {
     "status": "releasable",
     "applicationId": "dev.shelly.shelly_hermes",
-    "versionCode": 2,
+    "versionCode": 3,
     "minSdk": 24
   }
 }

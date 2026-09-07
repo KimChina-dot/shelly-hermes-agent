@@ -2,11 +2,12 @@ name: Flutter Android
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 concurrency:
   group: flutter-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 permissions:
   contents: read
 defaults:
@@ -56,3 +57,32 @@ jobs:
             flutter/build/app/outputs/flutter-apk/SHA256SUMS
             version-manifest.json
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: shelly-hermes-flutter-release
+          path: release
+      - name: Prepare release assets
+        run: |
+          cd release
+          mv flutter/build/app/outputs/flutter-apk/app-release.apk shelly-hermes-${{ github.ref_name }}.apk
+          mv flutter/build/app/outputs/flutter-apk/SHA256SUMS SHA256SUMS
+          sed -i "s/app-release.apk/shelly-hermes-${{ github.ref_name }}.apk/" SHA256SUMS
+          cp flutter/../version-manifest.json . 2>/dev/null || true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Shelly Hermes ${{ github.ref_name }}
+          body: |
+            Flutter Android release APK (release-signed, falls back to debug key when no signing config is committed).
+            - APK: shelly-hermes-${{ github.ref_name }}.apk
+            - Checksums: SHA256SUMS
+          files: |
+            release/shelly-hermes-${{ github.ref_name }}.apk
+            release/SHA256SUMS
