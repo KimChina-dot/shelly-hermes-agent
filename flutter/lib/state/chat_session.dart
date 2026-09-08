@@ -114,6 +114,7 @@ class ChatSessionState {
     this.outputTokens = 0,
     this.conversationId,
     this.error,
+    this.queuedMessages = const [],
   });
 
   final List<ChatEntry> entries;
@@ -127,6 +128,13 @@ class ChatSessionState {
 
   final String? error;
 
+  /// PHASE 51 steering-lite: messages composed while a task was busy. They
+  /// are parked here oldest-first (capped at
+  /// [ChatSessionController.maxQueuedMessages]) and auto-sent FIFO, one per
+  /// task completion. Immutable copy semantics like [entries]: every update
+  /// stores a freshly built list.
+  final List<String> queuedMessages;
+
   bool get isBusy => phase != SessionPhase.idle;
 
   ChatSessionState copyWith({
@@ -139,6 +147,7 @@ class ChatSessionState {
     String? conversationId,
     String? error,
     bool clearError = false,
+    List<String>? queuedMessages,
   }) {
     return ChatSessionState(
       entries: entries ?? this.entries,
@@ -148,6 +157,7 @@ class ChatSessionState {
       outputTokens: outputTokens ?? this.outputTokens,
       conversationId: conversationId ?? this.conversationId,
       error: clearError ? null : error ?? this.error,
+      queuedMessages: queuedMessages ?? this.queuedMessages,
     );
   }
 
@@ -161,6 +171,16 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
   ChatSessionController(this._ref) : super(const ChatSessionState()) {
     _broker.launcher = _onApprovalRequested;
   }
+
+  /// PHASE 51: upper bound on parked steering messages; the oldest is
+  /// dropped when the cap is exceeded.
+  static const int maxQueuedMessages = 5;
+
+  /// True while a dequeued message is being dispatched through [send].
+  /// Guards the completion observer against re-entrancy: the dequeue of the
+  /// NEXT queued message must wait for the dequeued one's own completion,
+  /// never chain inside the same callback.
+  bool _dequeueing = false;
 
   final Ref _ref;
   final ApprovalBroker _broker = ApprovalBroker();
@@ -234,7 +254,15 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     List<TextFileAttachment> files = const [],
   }) async {
     final trimmed = text.trim();
-    if ((trimmed.isEmpty && images.isEmpty && files.isEmpty) || state.isBusy) {
+    if ((trimmed.isEmpty && images.isEmpty && files.isEmpty)) {
+      return;
+    }
+    // PHASE 51 steering-lite: while a task is running the message does not
+    // die — it parks in the queue and auto-sends when the task completes.
+    // Only text steers; attachments keep requiring an idle composer.
+    if (state.isBusy) {
+      if (trimmed.isEmpty || images.isNotEmpty || files.isNotEmpty) return;
+      _enqueueMessage(trimmed);
       return;
     }
 
@@ -262,6 +290,44 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
         ),
       ],
     );
+  }
+
+  /// PHASE 51: parks [text] in the steering queue while busy — FIFO with a
+  /// [maxQueuedMessages] cap, dropping the OLDEST entry when full.
+  void _enqueueMessage(String text) {
+    final queue = [...state.queuedMessages, text];
+    if (queue.length > maxQueuedMessages) {
+      queue.removeRange(0, queue.length - maxQueuedMessages);
+    }
+    state = state.copyWith(queuedMessages: queue);
+  }
+
+  /// PHASE 51: removes the queued message at [index] (user tapped the chip's
+  /// dismiss X). No-op when the index is out of range.
+  void removeQueuedMessage(int index) {
+    if (index < 0 || index >= state.queuedMessages.length) return;
+    final queue = [...state.queuedMessages]..removeAt(index);
+    state = state.copyWith(queuedMessages: queue);
+  }
+
+  /// PHASE 51: one steering message per completed task. Pops the FIRST
+  /// queued message and re-dispatches it through [send] with full semantics
+  /// (fresh user entry, persona, persistence, its own completion → the next
+  /// dequeue). Called from the completion observer only after the session is
+  /// idle and no approval is pending; [_dequeueing] keeps the re-entrant
+  /// [send] from triggering another dequeue inside the same callback.
+  void _dequeueNext() {
+    if (_dequeueing || state.queuedMessages.isEmpty || state.isBusy) return;
+    _dequeueing = true;
+    try {
+      final next = state.queuedMessages.first;
+      state = state.copyWith(
+        queuedMessages: [...state.queuedMessages]..removeAt(0),
+      );
+      unawaited(send(next));
+    } finally {
+      _dequeueing = false;
+    }
   }
 
   Future<void> resume(String conversationId) async => switchTo(conversationId);
@@ -306,6 +372,8 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
   /// UI surfaces that instead of silently dropping the request).
   bool newConversation() {
     if (state.isBusy) return false;
+    // PHASE 51: a fresh state also drops parked steering messages — they
+    // belong to the old conversation.
     state = const ChatSessionState();
     return true;
   }
@@ -316,10 +384,12 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     if (state.isBusy || _store == null) return false;
     final checkpoint = _store!.loadCheckpoint(conversationId);
     if (checkpoint == null) return false;
+    // PHASE 51: parked steering messages belong to the previous context.
     state = ChatSessionState(
       phase: SessionPhase.idle,
       conversationId: conversationId,
       entries: _entriesFromCheckpoint(checkpoint),
+      queuedMessages: const [],
     );
     return true;
   }
@@ -492,6 +562,10 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
             _finishAssistantEntry();
             state = state.copyWith(phase: SessionPhase.idle, clearActiveTask: true);
             _persistConversation();
+            // PHASE 51 steering-lite: the session is idle and no approval is
+            // pending (drained above) — a queued message now goes out, one
+            // per completion. Its own completion dequeues the next one.
+            _dequeueNext();
           case TaskState.failed:
             unawaited(TaskService.stop());
             unawaited(store.clearActiveTask());
@@ -1177,6 +1251,9 @@ class _TaskRunner implements AgentTaskRunner {
                 baseUrl: config.baseUrl,
                 apiKey: config.apiKey,
                 model: config.model,
+                temperature: config.temperature,
+                topP: config.topP,
+                maxTokens: config.maxTokens,
                 tools: registry.openAiToolsJson(),
                 // Web-search rewrite first, then per-round todo-recitation
                 // (PHASE 46): the current 「当前计划」 block rides along on
@@ -1207,6 +1284,9 @@ class _TaskRunner implements AgentTaskRunner {
             baseUrl: auxConfig.baseUrl,
             apiKey: auxConfig.apiKey,
             model: auxConfig.model,
+            temperature: auxConfig.temperature,
+            topP: auxConfig.topP,
+            maxTokens: auxConfig.maxTokens,
           )
         : null;
 

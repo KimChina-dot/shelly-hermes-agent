@@ -313,6 +313,16 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (text.isEmpty && _pendingImages.isEmpty && _pendingFiles.isEmpty) {
       return;
     }
+    // PHASE 51: while a task runs, a text send parks the message in the
+    // steering queue (放入队列) instead of being dead — the controller
+    // auto-sends it when the task completes. Attachments cannot be queued,
+    // so they stay pending for the next real send.
+    if (ref.read(chatSessionProvider).isBusy) {
+      if (text.isEmpty) return;
+      ref.read(chatSessionProvider.notifier).send(text);
+      _composer.clear();
+      return;
+    }
     final images = [..._pendingImages];
     final files = [..._pendingFiles];
     _composer.clear();
@@ -568,6 +578,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               waitingApproval: session.phase == SessionPhase.waitingApproval,
               inputTokens: session.inputTokens,
               outputTokens: session.outputTokens,
+              queuedMessages: session.queuedMessages,
+              onRemoveQueued: (index) => ref
+                  .read(chatSessionProvider.notifier)
+                  .removeQueuedMessage(index),
               pendingImages: List.unmodifiable(_pendingImages),
               pendingFiles: List.unmodifiable(_pendingFiles),
               onAttach:
@@ -1825,6 +1839,8 @@ class _Composer extends StatelessWidget {
     required this.waitingApproval,
     required this.inputTokens,
     required this.outputTokens,
+    required this.queuedMessages,
+    required this.onRemoveQueued,
     required this.pendingImages,
     required this.pendingFiles,
     required this.onAttach,
@@ -1842,6 +1858,12 @@ class _Composer extends StatelessWidget {
   final bool waitingApproval;
   final int inputTokens;
   final int outputTokens;
+
+  /// PHASE 51: steering messages parked while busy, rendered as dismissible
+  /// chips between the transcript and the input row; X removes one.
+  final List<String> queuedMessages;
+  final void Function(int index) onRemoveQueued;
+
   final List<String> pendingImages;
   final List<TextFileAttachment> pendingFiles;
   final VoidCallback? onAttach;
@@ -1871,6 +1893,14 @@ class _Composer extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (queuedMessages.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: _QueuedMessagesBar(
+                messages: queuedMessages,
+                onRemove: onRemoveQueued,
+              ),
+            ),
           if (pendingFiles.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -1945,13 +1975,17 @@ class _Composer extends StatelessWidget {
                   minLines: 1,
                   maxLines: 4,
                   textInputAction: TextInputAction.send,
-                  onSubmitted: busy ? null : (_) => onSend(),
-                  enabled: !busy || waitingApproval,
+                  // PHASE 51: the composer stays alive while busy — submits
+                  // park the text in the steering queue. Only the approval
+                  // wait keeps keyboard submits off.
+                  onSubmitted: waitingApproval ? null : (_) => onSend(),
                   style: const TextStyle(fontSize: 14.5, height: 1.4),
                   decoration: InputDecoration(
                     hintText: waitingApproval
                         ? '请在上方做出审批决定…'
-                        : '给 Shelly 发送消息…',
+                        : busy
+                            ? '任务进行中,发送将放入队列…'
+                            : '给 Shelly 发送消息…',
                     hintStyle: TextStyle(
                       fontSize: 13.5,
                       color: semantic.textTertiary,
@@ -1981,9 +2015,14 @@ class _Composer extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              if (busy)
-                _StopButton(onStop: onStop)
-              else
+              if (busy) ...[
+                // PHASE 51: while a task runs the send affordance stays
+                // alive — it parks the composed text in the steering queue
+                // (tooltip 放入队列) next to the stop control.
+                _QueueButton(onQueue: onSend),
+                const SizedBox(width: AppSpacing.sm),
+                _StopButton(onStop: onStop),
+              ] else
                 GradientButton(
                   label: '',
                   icon: Icons.arrow_upward_rounded,
@@ -2080,6 +2119,84 @@ class _StopButton extends StatelessWidget {
         ),
         child: const Icon(Icons.stop, size: 22),
       ),
+    );
+  }
+}
+
+/// PHASE 51: the busy-state send affordance. Pressing it parks the composed
+/// text in the steering queue (tooltip 放入队列) — the queued message
+/// auto-sends when the running task completes. Brand-tinted so it reads as
+/// the send button's alive twin next to [_StopButton].
+class _QueueButton extends StatelessWidget {
+  const _QueueButton({required this.onQueue});
+
+  final VoidCallback onQueue;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '放入队列',
+      child: GestureDetector(
+        onTap: onQueue,
+        child: Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: AppColors.brandBlue.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: AppColors.brandBlue.withValues(alpha: 0.35),
+            ),
+          ),
+          child: const Icon(
+            Icons.arrow_upward_rounded,
+            size: 22,
+            color: AppColors.brandBlue,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// PHASE 51: steering messages parked while a task runs, shown between the
+/// transcript and the composer. Each chip dismisses (X) its message so the
+/// user can cancel a queued send before its auto-dispatch.
+class _QueuedMessagesBar extends StatelessWidget {
+  const _QueuedMessagesBar({required this.messages, required this.onRemove});
+
+  final List<String> messages;
+  final void Function(int index) onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.xs,
+      children: [
+        for (var i = 0; i < messages.length; i += 1)
+          InputChip(
+            avatar: Icon(
+              Icons.schedule_rounded,
+              size: 14,
+              color: AppColors.brandBlue,
+            ),
+            label: Text(
+              messages[i],
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                color: semantic.textSecondary,
+              ),
+            ),
+            backgroundColor: semantic.card,
+            side: BorderSide(color: semantic.border),
+            deleteIconColor: semantic.textTertiary,
+            onDeleted: () => onRemove(i),
+          ),
+      ],
     );
   }
 }

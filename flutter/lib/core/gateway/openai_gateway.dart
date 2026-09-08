@@ -151,6 +151,7 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
     required String model,
     this.tools,
     this.temperature,
+    this.topP,
     this.maxTokens,
     ChatTransport? transport,
     this.maxRetries = 2,
@@ -174,6 +175,10 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
   final int maxRetries;
   final Duration retryDelay;
   final double? temperature;
+
+  /// nucleus-sampling cutoff (`top_p` on the wire); null leaves the field
+  /// out of the request body so the provider default applies.
+  final double? topP;
   final int? maxTokens;
 
   /// OpenAI function-calling definitions advertised to the model; taken
@@ -290,6 +295,7 @@ class OpenAiCompatibleGateway implements StreamingModelGateway {
       'stream': stream,
       if (tools != null && tools!.isNotEmpty) 'tools': tools,
       if (temperature != null) 'temperature': temperature,
+      if (topP != null) 'top_p': topP,
       if (maxTokens != null) 'max_tokens': maxTokens,
     };
     final payload = bodyDecorator?.call(body) ?? body;

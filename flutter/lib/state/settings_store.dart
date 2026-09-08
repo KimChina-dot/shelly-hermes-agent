@@ -21,6 +21,9 @@ class ModelConfig {
     this.model = '',
     this.contextWindow = 0,
     this.webSearchEnabled = false,
+    this.temperature,
+    this.topP,
+    this.maxTokens,
   });
 
   final String baseUrl;
@@ -35,6 +38,13 @@ class ModelConfig {
   /// endpoint supports one (see [webSearchSupportFor]).
   final bool webSearchEnabled;
 
+  /// Per-model sampling overrides (PHASE 51); null = unset, in which case
+  /// the gateway request omits the field entirely and the provider default
+  /// applies. [temperature] 0-2, [topP] 0-1, [maxTokens] an integer cap.
+  final double? temperature;
+  final double? topP;
+  final int? maxTokens;
+
   bool get isComplete => baseUrl.isNotEmpty && apiKey.isNotEmpty && model.isNotEmpty;
 
   /// The window the context compactor plans against.
@@ -47,6 +57,9 @@ class ModelConfig {
     String? model,
     int? contextWindow,
     bool? webSearchEnabled,
+    double? temperature,
+    double? topP,
+    int? maxTokens,
   }) =>
       ModelConfig(
         baseUrl: baseUrl ?? this.baseUrl,
@@ -54,6 +67,9 @@ class ModelConfig {
         model: model ?? this.model,
         contextWindow: contextWindow ?? this.contextWindow,
         webSearchEnabled: webSearchEnabled ?? this.webSearchEnabled,
+        temperature: temperature ?? this.temperature,
+        topP: topP ?? this.topP,
+        maxTokens: maxTokens ?? this.maxTokens,
       );
 
   Map<String, dynamic> toJson() => {
@@ -62,6 +78,9 @@ class ModelConfig {
         'model': model,
         if (contextWindow > 0) 'contextWindow': contextWindow,
         if (webSearchEnabled) 'webSearchEnabled': true,
+        if (temperature != null) 'temperature': temperature,
+        if (topP != null) 'topP': topP,
+        if (maxTokens != null) 'maxTokens': maxTokens,
       };
 
   static ModelConfig fromJson(Map<String, dynamic> json) => ModelConfig(
@@ -70,6 +89,9 @@ class ModelConfig {
         model: json['model'] as String? ?? '',
         contextWindow: (json['contextWindow'] as num?)?.toInt() ?? 0,
         webSearchEnabled: json['webSearchEnabled'] as bool? ?? false,
+        temperature: (json['temperature'] as num?)?.toDouble(),
+        topP: (json['topP'] as num?)?.toDouble(),
+        maxTokens: (json['maxTokens'] as num?)?.toInt(),
       );
 
   /// Masks the key for display: keeps a short prefix and suffix.
