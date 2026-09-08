@@ -169,8 +169,14 @@ ThemeData buildShellyTheme(Brightness brightness) {
       ),
     ),
     dividerTheme: DividerThemeData(color: semantic.border, thickness: 1, space: 1),
-    splashColor: const Color(0xFF1D1D1F).withValues(alpha: 0.04),
-    highlightColor: const Color(0xFF1D1D1F).withValues(alpha: 0.03),
+    // Ripple tint follows the brightness: ink on the light canvas,
+    // white on the dark canvas (an ink ripple is invisible in dark).
+    splashColor: isLight
+        ? const Color(0xFF1D1D1F).withValues(alpha: 0.04)
+        : Colors.white.withValues(alpha: 0.06),
+    highlightColor: isLight
+        ? const Color(0xFF1D1D1F).withValues(alpha: 0.03)
+        : Colors.white.withValues(alpha: 0.05),
     textTheme: base.textTheme.apply(
       bodyColor: semantic.textPrimary,
       displayColor: semantic.textPrimary,
