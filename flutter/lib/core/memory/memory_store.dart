@@ -83,6 +83,44 @@ class MemoryFact {
   int get hashCode => Object.hash(id, text, createdAt, sourceConversationId, tier);
 }
 
+/// Outcome of one [MemoryStore.importJson] run (PHASE 50): how many facts
+/// were written, how many valid entries were dropped because their text
+/// already existed, and how many entries could not become facts at all.
+class ImportReport {
+  const ImportReport({
+    required this.imported,
+    required this.skippedDuplicates,
+    required this.invalidEntries,
+  });
+
+  /// Facts that were actually added to the store.
+  final int imported;
+
+  /// Valid entries skipped because their normalized text already existed
+  /// (merge mode; existing facts win).
+  final int skippedDuplicates;
+
+  /// Entries that were not usable facts (wrong shape or empty text); they
+  /// are skipped and only counted.
+  final int invalidEntries;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ImportReport &&
+      other.imported == imported &&
+      other.skippedDuplicates == skippedDuplicates &&
+      other.invalidEntries == invalidEntries;
+
+  @override
+  int get hashCode =>
+      Object.hash(imported, skippedDuplicates, invalidEntries);
+
+  @override
+  String toString() =>
+      'ImportReport(imported: $imported, '
+      'skippedDuplicates: $skippedDuplicates, invalidEntries: $invalidEntries)';
+}
+
 /// Persistent automatic long-term memory (PHASE 41). Facts live in a single
 /// JSON list under SharedPreferences (works on Android and the web dev
 /// harness) and are matched case-insensitively on whitespace-normalized
@@ -94,6 +132,10 @@ class MemoryStore {
   final SharedPreferences _prefs;
 
   static const storageKey = 'shelly.memory.facts';
+
+  /// Envelope version stamped by [exportJson] (PHASE 50); lets future
+  /// formats be detected and migrated on import.
+  static const int exportVersion = 1;
 
   /// Hard cap on stored facts; the newest ones win.
   static const int maxFacts = 200;
@@ -177,6 +219,92 @@ class MemoryStore {
   /// Case-insensitive comparison key: trimmed with whitespace collapsed.
   static String normalize(String text) =>
       text.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+
+  /// Renders the whole fact list as a versioned JSON backup (PHASE 50):
+  /// an envelope `{version, exportedAt, count, facts}` whose per-fact
+  /// entries use the exact same shape as on-disk persistence, so a backup
+  /// file round-trips through [importJson] without any conversion.
+  String exportJson({DateTime? exportedAt}) {
+    final facts = loadFacts();
+    return const JsonEncoder.withIndent('  ').convert({
+      'version': exportVersion,
+      'exportedAt':
+          (exportedAt ?? DateTime.now()).toIso8601String(),
+      'count': facts.length,
+      'facts': [for (final fact in facts) fact.toJson()],
+    });
+  }
+
+  /// Restores facts from an [exportJson] backup (PHASE 50). Replace mode
+  /// (the default) wipes the store and loads exactly what the file holds;
+  /// merge mode keeps existing facts and adds only the entries whose
+  /// normalized text is new (existing facts win, so their tier and
+  /// timestamps are untouched). Entries that cannot become facts (wrong
+  /// shape, missing id or blank text) are counted in
+  /// [ImportReport.invalidEntries] and skipped; structurally corrupt JSON
+  /// (bad syntax, wrong envelope) throws [FormatException] for the caller
+  /// to surface.
+  Future<ImportReport> importJson(
+    String json, {
+    bool merge = false,
+  }) async {
+    final decoded = jsonDecode(json);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FormatException('memory backup: envelope must be an object');
+    }
+    final rawFacts = decoded['facts'];
+    if (rawFacts is! List<dynamic>) {
+      throw const FormatException("memory backup: missing 'facts' list");
+    }
+    final imported = <MemoryFact>[];
+    var invalid = 0;
+    for (final entry in rawFacts) {
+      if (entry is! Map<String, dynamic>) {
+        invalid += 1;
+        continue;
+      }
+      final fact = MemoryFact.fromJson(entry);
+      // A fact without an id or with blank text is meaningless; count it
+      // as invalid in both modes instead of silently storing it.
+      if (fact.id.isEmpty || normalize(fact.text).isEmpty) {
+        invalid += 1;
+        continue;
+      }
+      imported.add(fact);
+    }
+    if (merge) {
+      final facts = loadFacts();
+      final existingTexts = {
+        for (final fact in facts) normalize(fact.text),
+      };
+      final additions = <MemoryFact>[];
+      var duplicates = 0;
+      for (final fact in imported) {
+        final key = normalize(fact.text);
+        if (existingTexts.contains(key)) {
+          duplicates += 1;
+          continue;
+        }
+        existingTexts.add(key);
+        additions.add(fact);
+      }
+      if (additions.isNotEmpty) {
+        await _save([...facts, ...additions]);
+      }
+      return ImportReport(
+        imported: additions.length,
+        skippedDuplicates: duplicates,
+        invalidEntries: invalid,
+      );
+    }
+    await _save(imported);
+    return ImportReport(
+      imported: imported.length,
+      skippedDuplicates: 0,
+      invalidEntries: invalid,
+    );
+  }
+
 
   /// Keeps at most [maxFacts] facts (PHASE 47): the cap applies to the
   /// total, core entries included, but core entries are exempt from
