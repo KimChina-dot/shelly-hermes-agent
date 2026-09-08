@@ -773,7 +773,10 @@ MemoryExtractor? memoryExtractorFor({
   );
 }
 
-/// How many stored facts at most join the system prompt; the newest win.
+/// Total budget of auto-injected facts in the system prompt (tier-aware
+/// from PHASE 47): core facts always ride along — uncapped, but they
+/// consume budget that recall facts would otherwise fill — and the newest
+/// recall facts take whatever remains. Archival facts never auto-inject.
 const int memoryPromptCap = 20;
 
 /// 「工具使用守则」 appended to every fresh persona (PHASE 43). Kept terse —
@@ -806,18 +809,30 @@ String personaWithRecitation(String persona, String? block) {
   return '$persona\n\n$block';
 }
 
-/// Persona prompt with the 「长期记忆」 block appended (PHASE 41). Returns
-/// null when there is nothing to prepend, so bare sessions and resumes keep
-/// their original message list exactly as before.
+/// Persona prompt with the 「长期记忆」 block appended (PHASE 41; tier-aware
+/// from PHASE 47). Core facts always inject (uncapped), then the newest
+/// recall facts fill the remaining budget up to [memoryPromptCap] total;
+/// archival facts never auto-inject (search_memory covers archival
+/// retrieval). Returns null when there is nothing to prepend, so bare
+/// sessions and resumes keep their original message list exactly as before.
 @visibleForTesting
 String? systemPromptWithMemory({
   required String persona,
   required List<MemoryFact> memories,
 }) {
-  final newest = memories.length > memoryPromptCap
-      ? memories.sublist(memories.length - memoryPromptCap)
-      : memories;
-  if (newest.isEmpty) return persona.isEmpty ? null : persona;
+  final core = [
+    for (final fact in memories) if (fact.tier == MemoryTier.core) fact,
+  ];
+  final recall =
+      memories.where((fact) => fact.tier == MemoryTier.recall).toList();
+  final recallBudget = memoryPromptCap - core.length;
+  final selectedRecall = recallBudget > 0
+      ? (recall.length > recallBudget
+          ? recall.sublist(recall.length - recallBudget)
+          : recall)
+      : const <MemoryFact>[];
+  final injected = [...core, ...selectedRecall];
+  if (injected.isEmpty) return persona.isEmpty ? null : persona;
   final buffer = StringBuffer();
   if (persona.isNotEmpty) {
     buffer
@@ -826,7 +841,7 @@ String? systemPromptWithMemory({
   }
   buffer
     ..writeln('「长期记忆」以下是已保存的关于用户的长期记忆,回答时可自然运用,不必复述:')
-    ..write([for (final fact in newest) '- ${fact.text}'].join('\n'));
+    ..write([for (final fact in injected) '- ${fact.text}'].join('\n'));
   return buffer.toString();
 }
 
