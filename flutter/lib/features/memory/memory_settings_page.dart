@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/hermes/memory_settings.dart';
 import '../../design/tokens.dart';
@@ -19,6 +20,54 @@ class MemorySettingsPage extends ConsumerStatefulWidget {
 class _MemorySettingsPageState extends ConsumerState<MemorySettingsPage> {
   MemorySettings? _draft;
   bool _saved = false;
+
+  // PHASE 47: tier upkeep knobs, persisted as plain int prefs with the
+  // same keys the consolidator reads. Stored via SharedPreferences
+  // directly (outside the Hermes [MemorySettings] blob) and saved
+  // immediately on change — no extra save button.
+  static const _recallAgeDaysKey = 'shelly.memory.recallAgeDays';
+  static const _archivalCapKey = 'shelly.memory.archivalCap';
+  static const _defaultRecallAgeDays = 45;
+  static const _defaultArchivalCap = 300;
+
+  int _recallAgeDays = _defaultRecallAgeDays;
+  int _archivalCap = _defaultArchivalCap;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTierSettings();
+  }
+
+  Future<void> _loadTierSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _recallAgeDays =
+            prefs.getInt(_recallAgeDaysKey) ?? _defaultRecallAgeDays;
+        _archivalCap = prefs.getInt(_archivalCapKey) ?? _defaultArchivalCap;
+      });
+    } on Exception {
+      // SharedPreferences unavailable: keep the defaults for this session.
+    }
+  }
+
+  Future<void> _saveTierInt(String key, int value) async {
+    setState(() {
+      if (key == _recallAgeDaysKey) {
+        _recallAgeDays = value;
+      } else if (key == _archivalCapKey) {
+        _archivalCap = value;
+      }
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(key, value);
+    } on Exception {
+      // Best-effort persistence; the slider state stays for this session.
+    }
+  }
 
   MemorySettings get _settings =>
       _draft ??
@@ -152,6 +201,35 @@ class _MemorySettingsPageState extends ConsumerState<MemorySettingsPage> {
                   _update((s) => s.copyWith(recallTokens: v.round())),
             ),
           ]),
+          const SizedBox(height: AppSpacing.lg),
+          _SectionHeader('记忆整理', semantic),
+          const SizedBox(height: AppSpacing.sm),
+          _Card(semantic: semantic, children: [
+            _SliderTile(
+              key: const Key('recall-age-days-slider'),
+              label: '回忆老化天数',
+              description: '回忆层条目超过该天数未被召回,整理时降级为归档',
+              value: _recallAgeDays.toDouble(),
+              min: 1,
+              max: 180,
+              divisions: 179,
+              display: '$_recallAgeDays 天',
+              semantic: semantic,
+              onChanged: (v) => _saveTierInt(_recallAgeDaysKey, v.round()),
+            ),
+            _SliderTile(
+              key: const Key('archival-cap-slider'),
+              label: '归档容量上限',
+              description: '归档层最多保留的条数,超出时整理会清理最旧的条目',
+              value: _archivalCap.toDouble(),
+              min: 20,
+              max: 1000,
+              divisions: 98,
+              display: '$_archivalCap 条',
+              semantic: semantic,
+              onChanged: (v) => _saveTierInt(_archivalCapKey, v.round()),
+            ),
+          ]),
           const SizedBox(height: AppSpacing.xl),
           FilledButton.icon(
             onPressed: _draft == null ? null : _save,
@@ -162,7 +240,8 @@ class _MemorySettingsPageState extends ConsumerState<MemorySettingsPage> {
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            '保存后立即生效于下一次记忆整理与召回,不会改动已有条目。',
+            '预算与分层参数立即持久化:预算改动生效于下一次记忆整理与召回,'
+            '整理参数生效于下一次「整理记忆」,都不会改动已有条目。',
             style: TextStyle(
                 fontSize: 11.5, color: semantic.textTertiary),
           ),
@@ -209,6 +288,7 @@ class _Card extends StatelessWidget {
 
 class _SliderTile extends StatelessWidget {
   const _SliderTile({
+    super.key,
     required this.label,
     required this.description,
     required this.value,

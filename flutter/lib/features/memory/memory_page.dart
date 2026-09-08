@@ -4,16 +4,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/hermes/forgetting.dart';
 import '../../core/hermes/memory_settings.dart';
 import '../../core/hermes/knowledge.dart';
+import '../../core/memory/consolidation.dart' hide MemoryTier;
+import '../../core/memory/memory_store.dart';
 import '../../design/tokens.dart';
 import '../../state/hermes_provider.dart';
 import '../../state/chat_session.dart';
 import '../../state/settings_store.dart';
 import 'memory_settings_page.dart';
 
+/// Tiered view over the automatic long-term memory store (PHASE 47):
+/// every [MemoryFact] with its current tier, reloaded on each mutation.
+final memoryFactsProvider =
+    FutureProvider.autoDispose<List<MemoryFact>>((ref) async {
+  final store = await ref.watch(memoryStoreProvider.future);
+  return store?.loadFacts() ?? const <MemoryFact>[];
+});
+
 /// Hermes memory page (V2.0 B1): makes the agent's memory explainable —
 /// what the ledger holds, how alive each entry is, and why forgetting
 /// happens. V2.1 adds the budget progress bar, manual upkeep and the
-/// settings entry. Pure text ledger, no vector database.
+/// settings entry. PHASE 47 adds the Letta-style tier view: facts are
+/// grouped into 核心/回忆/归档 with promote/demote controls and a
+/// deterministic 整理记忆 pass backed by [MemoryConsolidator]. Pure text
+/// ledger, no vector database.
 class MemoryPage extends ConsumerStatefulWidget {
   const MemoryPage({super.key});
 
@@ -24,6 +37,64 @@ class MemoryPage extends ConsumerStatefulWidget {
 class _MemoryPageState extends ConsumerState<MemoryPage> {
   bool _upkeeping = false;
   UpkeepReport? _report;
+  bool _consolidating = false;
+
+  /// Cycle order for the per-fact tier control: 归档 → 回忆 → 核心 → 归档.
+  /// One tap moves the fact one step up the hierarchy, wrapping back to
+  /// archival from the top.
+  static const List<MemoryTier> _tierCycle = [
+    MemoryTier.archival,
+    MemoryTier.recall,
+    MemoryTier.core,
+  ];
+
+  MemoryTier _nextTier(MemoryTier tier) {
+    final index = _tierCycle.indexOf(tier);
+    if (index < 0) return MemoryTier.recall;
+    // 归档→回忆、回忆→核心、核心→归档(the cycle wraps around).
+    return _tierCycle[(index + 1) % _tierCycle.length];
+  }
+
+  Future<void> _promote(MemoryFact fact) async {
+    final target = _nextTier(fact.tier);
+    final store = await ref.read(memoryStoreProvider.future);
+    if (store == null) return;
+    await store.promote(fact.id, target);
+    ref.invalidate(memoryFactsProvider);
+  }
+
+  Future<void> _runConsolidation() async {
+    setState(() => _consolidating = true);
+    try {
+      final store = await ref.read(memoryStoreProvider.future);
+      if (!mounted) return;
+      if (store == null) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: const Text('记忆存储不可用,无法整理')),
+        );
+        return;
+      }
+      // Deterministic pass only — no summarizer, so nothing calls the model.
+      final report = await MemoryConsolidator().consolidate(store);
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            '整理完成:合并 ${report.merged}、降级 ${report.demoted}、'
+            '清理 ${report.evicted}、合成 ${report.synthesized}',
+          ),
+        ),
+      );
+      ref.invalidate(memoryFactsProvider);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('整理失败:$error')),
+      );
+    } finally {
+      if (mounted) setState(() => _consolidating = false);
+    }
+  }
 
   Future<void> _runUpkeep() async {
     setState(() {
@@ -72,6 +143,15 @@ class _MemoryPageState extends ConsumerState<MemoryPage> {
                 fontWeight: FontWeight.w700,
                 color: semantic.textPrimary)),
         actions: [
+          TextButton(
+            onPressed: _consolidating ? null : _runConsolidation,
+            child: _consolidating
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('整理记忆', style: TextStyle(fontSize: 13)),
+          ),
           TextButton(
             onPressed: _upkeeping ? null : _runUpkeep,
             child: _upkeeping
@@ -130,6 +210,13 @@ class _MemoryPageState extends ConsumerState<MemoryPage> {
                   entry: entry,
                   vitality: snapshot.vitalityOf(entry),
                 ),
+              const SizedBox(height: AppSpacing.lg),
+              _SectionHeader('自动记忆', semantic),
+              _TierFactsSection(
+                factsAsync: ref.watch(memoryFactsProvider),
+                semantic: semantic,
+                onPromote: (fact) => _promote(fact),
+              ),
               const SizedBox(height: AppSpacing.lg),
               Container(
                 padding: const EdgeInsets.all(AppSpacing.md),
@@ -352,6 +439,194 @@ class _SectionHeader extends StatelessWidget {
             fontSize: 13,
             fontWeight: FontWeight.w600,
             color: semantic.textTertiary));
+  }
+}
+
+/// Letta-style tier sections (核心/回忆/归档) over the automatic memory
+/// facts, with per-tier counts and friendly hints for empty tiers.
+class _TierFactsSection extends StatelessWidget {
+  const _TierFactsSection({
+    required this.factsAsync,
+    required this.semantic,
+    required this.onPromote,
+  });
+
+  final AsyncValue<List<MemoryFact>> factsAsync;
+  final AppSemanticColors semantic;
+  final ValueChanged<MemoryFact> onPromote;
+
+  /// Render order mirrors the cycle: core on top, archival at the bottom.
+  static const List<MemoryTier> _renderOrder = [
+    MemoryTier.core,
+    MemoryTier.recall,
+    MemoryTier.archival,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return factsAsync.when(
+      loading: () =>
+          _TierEmptyHint(text: '正在读取分层记忆…', semantic: semantic),
+      error: (error, _) =>
+          _TierEmptyHint(text: '分层记忆读取失败:$error', semantic: semantic),
+      data: (facts) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final tier in _renderOrder)
+            _buildTier(
+              tier,
+              facts.where((fact) => fact.tier == tier).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTier(MemoryTier tier, List<MemoryFact> facts) {
+    final (label, color) = _tierChipStyle(tier);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          margin: const EdgeInsets.only(top: AppSpacing.sm),
+          child: Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+              Text('$label · ${facts.length}',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: semantic.textSecondary)),
+            ],
+          ),
+        ),
+        if (facts.isEmpty)
+          _TierEmptyHint(text: _emptyHint(tier), semantic: semantic)
+        else
+          for (final fact in facts)
+            _FactCard(
+              fact: fact,
+              semantic: semantic,
+              onPromote: () => onPromote(fact),
+            ),
+      ],
+    );
+  }
+
+  String _emptyHint(MemoryTier tier) => switch (tier) {
+        MemoryTier.core =>
+          '核心层还没有记忆。把最重要的长期偏好升级到这里,它们会始终注入上下文。',
+        MemoryTier.recall => '回忆层暂时是空的。新学到的事实会先落在这里。',
+        MemoryTier.archival => '归档层暂时是空的。久未使用的回忆会被整理降级到这里保存。',
+      };
+}
+
+/// Chip label + accent color for each tier.
+(String, Color) _tierChipStyle(MemoryTier tier) => switch (tier) {
+      MemoryTier.core => ('核心', AppColors.brandViolet),
+      MemoryTier.recall => ('回忆', AppColors.brandBlue),
+      MemoryTier.archival => ('归档', AppColors.warning),
+    };
+
+/// One automatic memory fact with its tier chip and promote/demote control.
+class _FactCard extends StatelessWidget {
+  const _FactCard({
+    required this.fact,
+    required this.semantic,
+    required this.onPromote,
+  });
+
+  final MemoryFact fact;
+  final AppSemanticColors semantic;
+  final VoidCallback onPromote;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = _tierChipStyle(fact.tier);
+    return Container(
+      margin: const EdgeInsets.only(top: AppSpacing.sm),
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, 2, AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: semantic.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: semantic.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
+                      child: Text(label,
+                          style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              color: color)),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text('记录于 ${_formatDate(fact.createdAt)}',
+                        style: TextStyle(
+                            fontSize: 10.5, color: semantic.textTertiary)),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(fact.text,
+                    style: TextStyle(
+                        fontSize: 13,
+                        height: 1.5,
+                        color: semantic.textPrimary)),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: '调整层级',
+            onPressed: onPromote,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.upgrade_rounded,
+                size: 18, color: semantic.textTertiary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Quiet placeholder for an empty or failed tier.
+class _TierEmptyHint extends StatelessWidget {
+  const _TierEmptyHint({required this.text, required this.semantic});
+
+  final String text;
+  final AppSemanticColors semantic;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: semantic.card,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: semantic.border),
+      ),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 12, height: 1.6, color: semantic.textTertiary)),
+    );
   }
 }
 
