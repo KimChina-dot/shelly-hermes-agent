@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/platform/background_tasks.dart';
 import '../../core/platform/home_widget_bridge.dart';
+import '../../state/chat_session.dart';
+import '../../state/memory_maintenance.dart';
 import '../../state/scheduled_tasks.dart';
 import '../../state/settings_store.dart';
 import '../../design/tokens.dart';
@@ -61,6 +63,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
     _armScheduler();
     _widgetBridge.register(_onWidgetAction);
     _bgBridge.handlePendingCatchup(_onBgCatchup);
+    // Sleep-time memory maintenance (PHASE 47): every wake — shell start
+    // included — is a chance to tidy memory; the daily throttle inside the
+    // service keeps this cheap.
+    _runMemoryMaintenance();
     // Web dev harness: ?tab=N deep-links straight to a tab so browser-based
     // verification tooling can reach every page without driving the nav.
     if (kIsWeb) {
@@ -105,7 +111,25 @@ class _HomeShellState extends ConsumerState<HomeShell>
       unawaited(_resolveTicker()
           .then((ticker) => ticker.onResume())
           .catchError((Object _) {}));
+      // Waking up is the other automatic maintenance trigger (PHASE 47);
+      // the daily throttle makes redundant calls nearly free.
+      _runMemoryMaintenance();
     }
+  }
+
+  /// Best-effort automatic memory maintenance (PHASE 47): resolves the
+  /// memory store and runs the daily-throttled consolidation pass.
+  /// Fire-and-forget with every error swallowed, so a degraded store can
+  /// never break the shell.
+  void _runMemoryMaintenance() {
+    unawaited(() async {
+      try {
+        final store = await ref.read(memoryStoreProvider.future);
+        await MemoryMaintenanceService().runIfNeeded(store);
+      } catch (_) {
+        // Maintenance must never break the shell.
+      }
+    }());
   }
 
   void _armScheduler() {
