@@ -203,6 +203,17 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     }
   }
 
+  /// PHASE 48 (OpenAI HITL `always_approve`): approves [approval] and records
+  /// its tool NAME in the broker's session-scoped allow set, so the same tool
+  /// name is not asked again for the rest of this session. Mirrors the
+  /// [resolveApproval] approve flow exactly; the allow set is in-memory only
+  /// and dies with the controller. UI hook left to the controller: call this
+  /// from the approval sheet's 「本次会话不再询问」 action.
+  void approveAlwaysAndResume(PendingApproval approval) {
+    _broker.approveAlways(approval.call);
+    resolveApproval(approval, ApprovalDecision.approve);
+  }
+
   /// Completes any still-queued approvals with a rejection when the task
   /// ends abnormally, so no UI listener is left hanging.
   void _drainApprovals() {
