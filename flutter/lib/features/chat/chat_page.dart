@@ -389,6 +389,28 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
+  /// PHASE 50: 编辑并重发 — long-pressing the last user bubble opens the
+  /// management sheet; saving re-runs the turn with the edited text.
+  void _showEditResendSheet(UserEntry entry) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _EditResendSheet(
+        initialText: entry.text,
+        onSubmit: (text) {
+          final ok =
+              ref.read(chatSessionProvider.notifier).editAndResend(text);
+          if (!ok) {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+              const SnackBar(content: Text('任务进行中,请先停止当前任务')),
+            );
+          }
+        },
+      ),
+    );
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scroll.hasClients) return;
@@ -516,6 +538,23 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       ),
                       speakingEntryId: _speakingEntryId,
                       onToggleSpeak: _toggleSpeak,
+                      onRegenerate: session.isBusy
+                          ? null
+                          : () {
+                              final ok = ref
+                                  .read(chatSessionProvider.notifier)
+                                  .regenerateLast();
+                              if (!ok) {
+                                ScaffoldMessenger.maybeOf(context)
+                                    ?.showSnackBar(
+                                  const SnackBar(
+                                      content: Text('没有可重新生成的回复')),
+                                );
+                              }
+                            },
+                      onEditResend: session.isBusy
+                          ? null
+                          : (entry) => _showEditResendSheet(entry),
                       pluginToolNames: ref
                           .watch(dshToolsProvider)
                           .specs
@@ -1169,6 +1208,8 @@ class _Transcript extends StatelessWidget {
     this.ttsEnabled = false,
     this.speakingEntryId,
     this.onToggleSpeak,
+    this.onRegenerate,
+    this.onEditResend,
     this.pluginToolNames = const {},
   });
 
@@ -1181,12 +1222,21 @@ class _Transcript extends StatelessWidget {
   final String? speakingEntryId;
   final Future<void> Function(AssistantEntry entry)? onToggleSpeak;
 
+  /// PHASE 50: re-runs the conversation from the last user message. Offered
+  /// on the LAST assistant entry only, via a small refresh icon.
+  final VoidCallback? onRegenerate;
+
+  /// PHASE 50: opens the 编辑并重发 sheet for the LAST user bubble.
+  final void Function(UserEntry entry)? onEditResend;
+
   /// DSH tool names currently registered; entries hitting these render with
   /// the 插件 badge so users can tell plugin calls from core tool calls.
   final Set<String> pluginToolNames;
 
   @override
   Widget build(BuildContext context) {
+    final lastAssistantIndex = entries.lastIndexWhere((e) => e is AssistantEntry);
+    final lastUserIndex = entries.lastIndexWhere((e) => e is UserEntry);
     return ListView.builder(
       controller: controller,
       padding: const EdgeInsets.fromLTRB(
@@ -1203,6 +1253,9 @@ class _Transcript extends StatelessWidget {
             text: entry.text,
             images: entry.images,
             fileNames: entry.fileNames,
+            onLongPress: onEditResend == null || index != lastUserIndex
+                ? null
+                : () => onEditResend!(entry),
           ),
           AssistantEntry() => _AssistantMessage(
             entry: entry,
@@ -1211,6 +1264,10 @@ class _Transcript extends StatelessWidget {
             onToggleSpeak: onToggleSpeak == null
                 ? null
                 : () => onToggleSpeak!(entry),
+            onRegenerate:
+                onRegenerate == null || index != lastAssistantIndex
+                    ? null
+                    : onRegenerate,
           ),
           ToolEntry() => ToolCard(
             entry: entry,
@@ -1281,10 +1338,15 @@ class _UserBubble extends StatelessWidget {
     required this.text,
     this.images = const [],
     this.fileNames = const [],
+    this.onLongPress,
   });
   final String text;
   final List<String> images;
   final List<String> fileNames;
+
+  /// PHASE 50: opens the 编辑并重发 sheet. Only the LAST user bubble
+  /// receives a non-null callback (regeneration truncates from there).
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -1313,6 +1375,12 @@ class _UserBubble extends StatelessWidget {
         ),
       ),
     );
+    final textBubble = onLongPress == null
+        ? bubble
+        : GestureDetector(
+            onLongPress: onLongPress,
+            child: bubble,
+          );
     return Align(
       alignment: Alignment.centerRight,
       child: Column(
@@ -1407,7 +1475,7 @@ class _UserBubble extends StatelessWidget {
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.78,
               ),
-              child: bubble,
+              child: textBubble,
             ),
         ],
       ),
@@ -1421,6 +1489,7 @@ class _AssistantMessage extends StatelessWidget {
     this.ttsEnabled = false,
     this.speaking = false,
     this.onToggleSpeak,
+    this.onRegenerate,
   });
 
   final AssistantEntry entry;
@@ -1432,11 +1501,18 @@ class _AssistantMessage extends StatelessWidget {
   final bool speaking;
   final VoidCallback? onToggleSpeak;
 
+  /// PHASE 50: re-runs the conversation from the last user message. Only
+  /// the last assistant row receives a non-null callback; streaming rows
+  /// never show the icon.
+  final VoidCallback? onRegenerate;
+
   @override
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
     final empty = entry.text.isEmpty && entry.streaming;
     final canSpeak = ttsEnabled && !entry.streaming && entry.text.trim().isNotEmpty;
+    final canRegenerate =
+        onRegenerate != null && !entry.streaming && entry.text.trim().isNotEmpty;
     // Motion discipline: message rows announce themselves with a soft
     // fade + rise; no stagger inside the transcript (it grows live).
     return FadeSlideIn(
@@ -1465,30 +1541,203 @@ class _AssistantMessage extends StatelessWidget {
             else ...[
               MarkdownText(data: entry.text),
               if (entry.streaming) const _StreamingCursor(),
-              if (canSpeak)
+              if (canSpeak || canRegenerate)
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    tooltip: speaking ? '停止朗读' : '朗读回复',
-                    onPressed: onToggleSpeak,
-                    visualDensity: VisualDensity.compact,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                    constraints:
-                        const BoxConstraints(minWidth: 32, minHeight: 32),
-                    icon: Icon(
-                      speaking
-                          ? Icons.stop_circle_outlined
-                          : Icons.volume_up_outlined,
-                      size: 18,
-                      color: speaking
-                          ? AppColors.brandBlue
-                          : semantic.textTertiary,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (canSpeak)
+                        IconButton(
+                          tooltip: speaking ? '停止朗读' : '朗读回复',
+                          onPressed: onToggleSpeak,
+                          visualDensity: VisualDensity.compact,
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                          constraints:
+                              const BoxConstraints(minWidth: 32, minHeight: 32),
+                          icon: Icon(
+                            speaking
+                                ? Icons.stop_circle_outlined
+                                : Icons.volume_up_outlined,
+                            size: 18,
+                            color: speaking
+                                ? AppColors.brandBlue
+                                : semantic.textTertiary,
+                          ),
+                        ),
+                      if (canRegenerate)
+                        IconButton(
+                          tooltip: '重新生成回复',
+                          onPressed: onRegenerate,
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.sm),
+                          constraints:
+                              const BoxConstraints(minWidth: 32, minHeight: 32),
+                          icon: Icon(
+                            Icons.refresh_rounded,
+                            size: 18,
+                            color: semantic.textTertiary,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// PHASE 50: 编辑并重发 sheet shown on long-pressing the last user bubble.
+/// The field comes prefilled with the current message text (capped at 500
+/// chars); saving replaces the turn's text and re-runs the conversation
+/// from that point, mirroring the regenerate flow.
+class _EditResendSheet extends StatefulWidget {
+  const _EditResendSheet({
+    required this.initialText,
+    required this.onSubmit,
+  });
+
+  final String initialText;
+  final void Function(String text) onSubmit;
+
+  @override
+  State<_EditResendSheet> createState() => _EditResendSheetState();
+}
+
+class _EditResendSheetState extends State<_EditResendSheet> {
+  late final TextEditingController _field =
+      TextEditingController(text: widget.initialText);
+
+  @override
+  void dispose() {
+    _field.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final text = _field.text.trim();
+    if (text.isEmpty) return;
+    Navigator.of(context).pop();
+    widget.onSubmit(text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: semantic.card,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppRadius.xl),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.sm,
+            AppSpacing.lg,
+            AppSpacing.lg,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: semantic.border,
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(
+                  top: AppSpacing.sm,
+                  bottom: AppSpacing.sm,
+                ),
+                child: Text(
+                  '编辑并重发',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: semantic.textPrimary,
+                  ),
+                ),
+              ),
+              TextField(
+                controller: _field,
+                autofocus: true,
+                maxLines: 4,
+                minLines: 1,
+                maxLength: 500,
+                style: TextStyle(
+                  fontSize: 14.5,
+                  height: 1.4,
+                  color: semantic.textPrimary,
+                ),
+                decoration: InputDecoration(
+                  hintText: '修改这条消息后将重新发送',
+                  hintStyle: TextStyle(
+                    fontSize: 13.5,
+                    color: semantic.textTertiary,
+                  ),
+                  filled: true,
+                  fillColor: semantic.background,
+                  counterStyle: TextStyle(
+                    fontSize: 11,
+                    color: semantic.textTertiary,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    borderSide: BorderSide(color: semantic.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    borderSide: BorderSide(color: semantic.border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    borderSide: BorderSide(
+                      color: semantic.textSecondary,
+                      width: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('取消'),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _field,
+                    builder: (context, value, _) {
+                      final enabled = value.text.trim().isNotEmpty;
+                      return GradientButton(
+                        label: '保存并重发',
+                        onPressed: enabled ? _submit : null,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
