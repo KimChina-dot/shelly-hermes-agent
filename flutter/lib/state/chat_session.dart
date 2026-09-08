@@ -1251,6 +1251,9 @@ class _TaskRunner implements AgentTaskRunner {
                 baseUrl: config.baseUrl,
                 apiKey: config.apiKey,
                 model: config.model,
+                temperature: config.temperature,
+                topP: config.topP,
+                maxTokens: config.maxTokens,
                 tools: registry.openAiToolsJson(),
                 // Web-search rewrite first, then per-round todo-recitation
                 // (PHASE 46): the current 「当前计划」 block rides along on
@@ -1281,6 +1284,9 @@ class _TaskRunner implements AgentTaskRunner {
             baseUrl: auxConfig.baseUrl,
             apiKey: auxConfig.apiKey,
             model: auxConfig.model,
+            temperature: auxConfig.temperature,
+            topP: auxConfig.topP,
+            maxTokens: auxConfig.maxTokens,
           )
         : null;
 
