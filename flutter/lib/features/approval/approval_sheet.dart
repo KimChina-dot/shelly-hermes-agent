@@ -14,8 +14,20 @@ import '../../state/chat_session.dart';
 /// call, or a single apply_patch hunk the engine sends sequentially — gets
 /// its own decision card with risk coloring, rendered diff, and
 /// 允许/拒绝 actions. Rejects may carry a reason delivered back to the model.
+///
+/// 「跨会话记住此类操作」 (cross-session memory) is only offered when the WIRER
+/// passes [onAllowAlwaysPersistent]: the sheet itself never touches storage —
+/// the injected callback (typically composing the broker's
+/// `approveAlways`/`onAllowAlwaysPersist` hook with the persistent resume
+/// flow in the controller) decides how the tool name is remembered. When the
+/// callback is null the option is hidden and the sheet behaves exactly as in
+/// PHASE 48.
 class ApprovalSheet extends ConsumerStatefulWidget {
-  const ApprovalSheet({super.key});
+  const ApprovalSheet({super.key, this.onAllowAlwaysPersistent});
+
+  /// Invoked when the user picks 「跨会话记住此类操作」 for [approval]. Nullable:
+  /// when null the cross-session option is hidden entirely.
+  final Future<void> Function(PendingApproval approval)? onAllowAlwaysPersistent;
 
   @override
   ConsumerState<ApprovalSheet> createState() => _ApprovalSheetState();
@@ -182,18 +194,34 @@ class _ApprovalSheetState extends ConsumerState<ApprovalSheet> {
                 child: Padding(
                   padding:
                       const EdgeInsets.fromLTRB(AppSpacing.xl, 0, AppSpacing.xl, AppSpacing.md),
-                  child: TextButton(
-                    onPressed: () {
-                      ref
-                          .read(chatSessionProvider.notifier)
-                          .approveAlwaysAndResume(approval);
-                    },
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    child: Text('本次会话不再询问此类操作',
-                        style: TextStyle(
-                            fontSize: 11.5, color: semantic.textTertiary)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          ref
+                              .read(chatSessionProvider.notifier)
+                              .approveAlwaysAndResume(approval);
+                        },
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        child: Text('本次会话不再询问此类操作',
+                            style: TextStyle(
+                                fontSize: 11.5, color: semantic.textTertiary)),
+                      ),
+                      if (widget.onAllowAlwaysPersistent != null)
+                        TextButton(
+                          onPressed: () =>
+                              widget.onAllowAlwaysPersistent!(approval),
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          child: Text('跨会话记住此类操作',
+                              style: TextStyle(
+                                  fontSize: 11.5, color: semantic.textTertiary)),
+                        ),
+                    ],
                   ),
                 ),
               ),

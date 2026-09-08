@@ -1,5 +1,12 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/hermes/forgetting.dart';
 import '../../core/hermes/memory_settings.dart';
@@ -11,6 +18,46 @@ import '../../state/chat_session.dart';
 import '../../state/memory_maintenance.dart';
 import '../../state/settings_store.dart';
 import 'memory_settings_page.dart';
+
+/// Injectable backup share hook (PHASE 50); widget tests capture the
+/// payload instead of writing files or opening the platform share sheet.
+Future<void> Function(String json, String fileName) shareMemoryBackupFile =
+    _defaultShareMemoryBackupFile;
+
+void resetShareMemoryBackup() =>
+    shareMemoryBackupFile = _defaultShareMemoryBackupFile;
+
+/// Injectable backup file picker; returns the file content, or null when
+/// the user dismisses the system dialog. Widget tests override it because
+/// the real selector needs a platform channel.
+Future<String?> Function() pickMemoryBackupJson = _defaultPickMemoryBackupJson;
+
+void resetPickMemoryBackup() => pickMemoryBackupJson = _defaultPickMemoryBackupJson;
+
+Future<void> _defaultShareMemoryBackupFile(String json, String fileName) async {
+  final temp = await getTemporaryDirectory();
+  final file = File('${temp.path}${Platform.pathSeparator}$fileName');
+  await file.writeAsString(json, flush: true);
+  await SharePlus.instance.share(
+    ShareParams(files: [XFile(file.path)], title: '记忆备份'),
+  );
+}
+
+Future<String?> _defaultPickMemoryBackupJson() async {
+  const typeGroup = XTypeGroup(label: '记忆备份(JSON)', extensions: ['json']);
+  final file = await openFile(acceptedTypeGroups: [typeGroup]);
+  if (file == null) return null;
+  final bytes = await file.readAsBytes();
+  return utf8.decode(bytes, allowMalformed: true);
+}
+
+/// Timestamped backup file name: shelly-memory-backup-20260909-143005.json.
+String memoryBackupFileName(DateTime at) {
+  String two(int value) => value.toString().padLeft(2, '0');
+  return 'shelly-memory-backup-'
+      '${at.year}${two(at.month)}${two(at.day)}'
+      '-${two(at.hour)}${two(at.minute)}${two(at.second)}.json';
+}
 
 /// Tiered view over the automatic long-term memory store (PHASE 47):
 /// every [MemoryFact] with its current tier, reloaded on each mutation.
@@ -138,6 +185,118 @@ class _MemoryPageState extends ConsumerState<MemoryPage> {
     }
   }
 
+  /// 导出 (PHASE 50): serializes the automatic memory facts into a
+  /// versioned JSON backup and hands the timestamped .json file to the
+  /// system share sheet; when sharing fails the JSON falls back to the
+  /// clipboard so the backup is never lost.
+  Future<void> _exportMemory() async {
+    final store = await ref.read(memoryStoreProvider.future);
+    if (!mounted) return;
+    if (store == null) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: const Text('记忆存储不可用,无法导出')),
+      );
+      return;
+    }
+    final facts = store.loadFacts();
+    if (facts.isEmpty) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: const Text('还没有可导出的记忆')),
+      );
+      return;
+    }
+    final json = store.exportJson();
+    final fileName = memoryBackupFileName(DateTime.now());
+    try {
+      await shareMemoryBackupFile(json, fileName);
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('已导出 ${facts.length} 条记忆:$fileName')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      try {
+        await Clipboard.setData(ClipboardData(text: json));
+        if (!mounted) return;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text('分享失败($error),备份 JSON 已复制到剪贴板')),
+        );
+      } catch (clipboardError) {
+        if (!mounted) return;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text('导出失败:$clipboardError')),
+        );
+      }
+    }
+  }
+
+  /// 导入 (PHASE 50): picks a backup .json file, asks for confirmation,
+  /// then merges it into the store (existing facts win on duplicates) and
+  /// reports the outcome in a snackbar. Corrupt files surface the
+  /// [FormatException] as a failure snackbar.
+  Future<void> _importMemory() async {
+    final store = await ref.read(memoryStoreProvider.future);
+    if (!mounted) return;
+    if (store == null) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: const Text('记忆存储不可用,无法导入')),
+      );
+      return;
+    }
+    final String content;
+    try {
+      final picked = await pickMemoryBackupJson();
+      if (picked == null) return; // user dismissed the picker
+      content = picked;
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('读取备份文件失败:$error')),
+      );
+      return;
+    }
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('导入记忆备份'),
+        content: const Text(
+            '将以合并方式导入备份:内容重复的记忆会自动跳过,'
+            '现有记忆不会被覆盖;仅新增备份中不存在的事实。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('导入'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final report = await store.importJson(content, merge: true);
+      if (!mounted) return;
+      ref.invalidate(memoryFactsProvider);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            '导入完成:新增 ${report.imported} 条、'
+            '跳过重复 ${report.skippedDuplicates} 条、'
+            '无效条目 ${report.invalidEntries} 条',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('导入失败:$error')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final semantic = Theme.of(context).extension<AppSemanticColors>()!;
@@ -170,6 +329,14 @@ class _MemoryPageState extends ConsumerState<MemoryPage> {
                     height: 14,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('立即整理', style: TextStyle(fontSize: 13)),
+          ),
+          TextButton(
+            onPressed: _exportMemory,
+            child: const Text('导出', style: TextStyle(fontSize: 13)),
+          ),
+          TextButton(
+            onPressed: _importMemory,
+            child: const Text('导入', style: TextStyle(fontSize: 13)),
           ),
           IconButton(
             tooltip: '记忆参数',

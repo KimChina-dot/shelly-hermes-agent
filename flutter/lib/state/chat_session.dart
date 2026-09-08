@@ -340,6 +340,97 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     if (taskId != null) _activeCoordinator?.stop(taskId);
   }
 
+  /// PHASE 50: drops the trailing assistant reply (and any tool/error rows
+  /// after it) and re-runs the SAME user message — both the in-memory
+  /// transcript and the persisted checkpoint are truncated back to the last
+  /// user turn. No-op (returns false) while a task is running or when there
+  /// is no user message to re-dispatch.
+  bool regenerateLast() => _resendLastUserTurn();
+
+  /// PHASE 50: like [regenerateLast], but the last user message's text is
+  /// replaced by [newText] before the task re-runs. No-op (returns false)
+  /// while busy, when the text is blank, or when there is no user message.
+  bool editAndResend(String newText) =>
+      _resendLastUserTurn(replacementText: newText);
+
+  /// Shared regeneration core: trims everything after the last [UserEntry],
+  /// optionally swapping its text for the edited version, then re-dispatches
+  /// the truncated checkpoint via the [AgentCheckpoint] resume path so
+  /// earlier turns (and the original persona/recall system messages) stay in
+  /// context. The busy-guard runs first: nothing is touched mid-task.
+  bool _resendLastUserTurn({String? replacementText}) {
+    if (state.isBusy) return false;
+    final store = _store;
+    if (store == null) return false;
+    final entries = [...state.entries];
+    final lastUserIndex = entries.lastIndexWhere((e) => e is UserEntry);
+    if (lastUserIndex < 0) return false;
+    final userEntry = entries[lastUserIndex] as UserEntry;
+    final edited = replacementText?.trim();
+    if (replacementText != null && (edited == null || edited.isEmpty)) {
+      return false;
+    }
+
+    // Persisted transcript first: cut back to (and including) the last user
+    // message so a crash mid-regeneration can never resurrect the dropped
+    // reply from the old checkpoint.
+    final conversationId = state.conversationId;
+    final checkpoint =
+        conversationId == null ? null : store.loadCheckpoint(conversationId);
+    List<AgentMessage> messages;
+    AgentCheckpoint? resumeFrom;
+    if (checkpoint != null) {
+      final lastUserMessage = checkpoint.messages
+          .lastIndexWhere((m) => m.role == MessageRole.user);
+      if (lastUserMessage < 0) return false;
+      messages = checkpoint.messages.sublist(0, lastUserMessage + 1);
+      if (edited != null) {
+        final original = messages.last;
+        messages[messages.length - 1] = AgentMessage(
+          role: MessageRole.user,
+          content: edited,
+          images: original.images,
+          textFiles: original.textFiles,
+        );
+      }
+      resumeFrom = AgentCheckpoint(
+        messages: messages,
+        // A regeneration is a fresh run of the turn: budgets reset.
+        round: 0,
+        consumedTokens: 0,
+        toolCalls: 0,
+      );
+      unawaited(store.saveCheckpoint(conversationId!, resumeFrom));
+    } else {
+      // No persisted checkpoint (degraded hosts): rebuild the turn from the
+      // entry itself; a fresh send re-applies the persona and re-persists
+      // inline images.
+      messages = [
+        AgentMessage(
+          role: MessageRole.user,
+          content: edited ?? userEntry.text,
+          images: userEntry.images,
+        ),
+      ];
+    }
+
+    final kept = entries.sublist(0, lastUserIndex + 1);
+    if (edited != null) {
+      kept[lastUserIndex] = UserEntry(
+        edited,
+        images: userEntry.images,
+        fileNames: userEntry.fileNames,
+      );
+    }
+    state = state.copyWith(
+      entries: kept,
+      phase: SessionPhase.working,
+      clearError: true,
+    );
+    _startTask(initialMessages: messages, resumeFrom: resumeFrom);
+    return true;
+  }
+
   void _startTask({required List<AgentMessage> initialMessages, AgentCheckpoint? resumeFrom}) {
     final store = _store;
     if (store == null) {
