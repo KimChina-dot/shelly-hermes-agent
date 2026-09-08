@@ -177,6 +177,26 @@ class _ApprovalSheetState extends ConsumerState<ApprovalSheet> {
                   ],
                 ),
               ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.fromLTRB(AppSpacing.xl, 0, AppSpacing.xl, AppSpacing.md),
+                  child: TextButton(
+                    onPressed: () {
+                      ref
+                          .read(chatSessionProvider.notifier)
+                          .approveAlwaysAndResume(approval);
+                    },
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: Text('本次会话不再询问此类操作',
+                        style: TextStyle(
+                            fontSize: 11.5, color: semantic.textTertiary)),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
