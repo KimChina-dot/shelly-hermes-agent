@@ -6,6 +6,7 @@ import '../../core/dsh/installer.dart';
 import '../../core/dsh/plugin.dart';
 import '../../core/dsh/tool_registry.dart' show DshTrust;
 import '../../core/mcp/mcp_client.dart';
+import '../../core/mcp/mcp_guard.dart';
 import '../../core/tools/registry.dart';
 import '../../design/components/risk_chip.dart';
 import '../../design/tokens.dart';
@@ -539,6 +540,13 @@ class _ToolTile extends StatelessWidget {
 /// MCP connector management (PHASE 35): register Streamable-HTTP MCP
 /// servers, probe their tool list and remove them again. Registered servers
 /// expose their tools to every new task; each call needs approval.
+///
+/// PHASE 48: drift verdicts from the in-memory [McpGuardLedger] (seeded per
+/// chat task before discovery) surface here as a warning card with
+/// re-approval actions. The ledger is empty until a chat task or a
+/// 测试连接 probe runs a discovery, so the card is simply absent before
+/// that; both paths record fresh reports that this section picks up on its
+/// next rebuild.
 class _McpSection extends ConsumerStatefulWidget {
   const _McpSection();
 
@@ -644,6 +652,35 @@ class _McpSectionState extends ConsumerState<_McpSection> {
         _probeNote = '${server.name}:${error.message}';
       });
     }
+  }
+
+  /// Supply-chain guard re-approval (PHASE 48): persists the catalog
+  /// fingerprint the latest verdict was computed against as the newly
+  /// approved fingerprint, mirrors the approval into the in-memory ledger
+  /// (same table chat_session seeds from the store) and refreshes the card.
+  /// Defensive: no report / empty fingerprint → nothing is written.
+  Future<void> _retrust(String serverId) async {
+    final report = McpGuardLedger.reportFor(serverId);
+    if (report == null || report.fingerprint.isEmpty) return;
+    final store = await _store();
+    if (store == null) return;
+    await store.saveMcpToolFingerprint(serverId, report.fingerprint);
+    McpGuardLedger.seedApproved(store.loadMcpToolFingerprints());
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _retrustAll(List<String> serverIds) async {
+    final store = await _store();
+    if (store == null) return;
+    for (final serverId in serverIds) {
+      final report = McpGuardLedger.reportFor(serverId);
+      if (report == null || report.fingerprint.isEmpty) continue;
+      await store.saveMcpToolFingerprint(serverId, report.fingerprint);
+    }
+    McpGuardLedger.seedApproved(store.loadMcpToolFingerprints());
+    if (!mounted) return;
+    setState(() {});
   }
 
   @override
@@ -761,6 +798,144 @@ class _McpSectionState extends ConsumerState<_McpSection> {
               child: Text(_probeNote!,
                   style: TextStyle(
                       fontSize: 11.5, color: semantic.textSecondary)),
+            ),
+          // Supply-chain guard (PHASE 48): surfaces rug-pull verdicts after
+          // the server list. Defensive — an empty ledger renders nothing.
+          if (_pendingGuardIds.isNotEmpty)
+            _GuardWarningCard(
+              pendingIds: _pendingGuardIds,
+              onRetrust: _retrust,
+              onRetrustAll: () => _retrustAll(_pendingGuardIds),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Server ids whose latest discovery drifted from the approved catalog
+  /// fingerprint (changed / removed). A server stops being pending once the
+  /// approved fingerprint matches the drifted report's fingerprint again —
+  /// `_retrust` seeds that approval into the ledger, and the next real
+  /// discovery (`record`) refreshes the verdict either way, so a renewed
+  /// drift after re-approval resurfaces here.
+  List<String> get _pendingGuardIds => [
+        for (final entry in McpGuardLedger.reports.entries)
+          if (entry.value.requiresReapproval &&
+              McpGuardLedger.approvedFor(entry.key) !=
+                  entry.value.fingerprint)
+            entry.key,
+      ];
+}
+
+/// 「MCP 工具目录已变更」card: one row per server awaiting re-approval with
+/// its verdict summary from the guard ledger, a per-server 重新信任 action
+/// and a bulk 全部重新信任 action. Styled with the warning semantic color.
+class _GuardWarningCard extends StatelessWidget {
+  const _GuardWarningCard({
+    required this.pendingIds,
+    required this.onRetrust,
+    required this.onRetrustAll,
+  });
+
+  final List<String> pendingIds;
+  final ValueChanged<String> onRetrust;
+  final VoidCallback onRetrustAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    return Container(
+      margin: const EdgeInsets.only(top: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: semantic.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: semantic.warning.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  size: 16, color: semantic.warning),
+              const SizedBox(width: AppSpacing.xs),
+              Expanded(
+                child: Text('MCP 工具目录已变更',
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: semantic.warning)),
+              ),
+              GestureDetector(
+                onTap: onRetrustAll,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: semantic.warning.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                  child: Text('全部重新信任',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: semantic.warning)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text('以下服务器的工具目录与已批准的指纹不一致,重新发现前请确认来源可信。',
+              style: TextStyle(
+                  fontSize: 11, height: 1.5, color: semantic.textTertiary)),
+          for (final serverId in pendingIds)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.sm),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(serverId,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: 'monospace',
+                                color: semantic.textPrimary)),
+                        const SizedBox(height: 2),
+                        Text(
+                          McpGuardLedger.reportFor(serverId)?.summary ??
+                              '工具目录指纹变化',
+                          style: TextStyle(
+                              fontSize: 11,
+                              height: 1.4,
+                              color: semantic.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  GestureDetector(
+                    onTap: () => onRetrust(serverId),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.sm, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: semantic.warning.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
+                      child: Text('重新信任',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: semantic.warning)),
+                    ),
+                  ),
+                ],
+              ),
             ),
         ],
       ),
