@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/hermes/forgetting.dart';
 import '../../core/hermes/memory_settings.dart';
 import '../../core/hermes/knowledge.dart';
-import '../../core/memory/consolidation.dart';
+import '../../core/memory/consolidation.dart' hide MemoryTier;
 import '../../core/memory/memory_store.dart';
 import '../../design/tokens.dart';
 import '../../state/hermes_provider.dart';

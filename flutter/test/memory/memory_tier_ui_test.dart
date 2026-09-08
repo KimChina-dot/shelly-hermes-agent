@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:shelly_hermes/core/memory/consolidation.dart';
+import 'package:shelly_hermes/core/memory/consolidation.dart' hide MemoryTier;
 import 'package:shelly_hermes/core/memory/memory_store.dart';
 import 'package:shelly_hermes/design/theme.dart';
 import 'package:shelly_hermes/features/memory/memory_page.dart';
