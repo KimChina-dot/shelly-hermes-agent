@@ -4,11 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/hermes/forgetting.dart';
 import '../../core/hermes/memory_settings.dart';
 import '../../core/hermes/knowledge.dart';
-import '../../core/memory/consolidation.dart' hide MemoryTier;
 import '../../core/memory/memory_store.dart';
 import '../../design/tokens.dart';
 import '../../state/hermes_provider.dart';
 import '../../state/chat_session.dart';
+import '../../state/memory_maintenance.dart';
 import '../../state/settings_store.dart';
 import 'memory_settings_page.dart';
 
@@ -74,9 +74,19 @@ class _MemoryPageState extends ConsumerState<MemoryPage> {
         );
         return;
       }
-      // Deterministic pass only — no summarizer, so nothing calls the model.
-      final report = await MemoryConsolidator().consolidate(store);
+      // Manual pass (PHASE 47): `force: true` so the daily throttle never
+      // blocks an explicit 整理记忆; report + failure snackbars unchanged.
+      final report = await MemoryMaintenanceService().runIfNeeded(
+        store,
+        force: true,
+      );
       if (!mounted) return;
+      if (report == null) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: const Text('整理失败:维护未执行')),
+        );
+        return;
+      }
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(
           content: Text(
