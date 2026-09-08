@@ -24,12 +24,16 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
   final _model = TextEditingController();
   final _auxBaseUrl = TextEditingController();
   final _auxModel = TextEditingController();
+  final _temperature = TextEditingController();
+  final _topP = TextEditingController();
+  final _maxTokens = TextEditingController();
   final _discovery = ModelDiscovery();
   bool _initialized = false;
   bool _discovering = false;
   bool _testing = false;
   bool _webSearch = false;
   bool _auxEnabled = false;
+  bool _advancedOpen = false;
   Duration? _latency;
   String? _error;
   List<RemoteModel> _remoteModels = const [];
@@ -40,6 +44,9 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
     _model.dispose();
     _auxBaseUrl.dispose();
     _auxModel.dispose();
+    _temperature.dispose();
+    _topP.dispose();
+    _maxTokens.dispose();
     super.dispose();
   }
 
@@ -48,6 +55,13 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
     _baseUrl.text = config.baseUrl;
     _model.text = config.model;
     _webSearch = config.webSearchEnabled;
+    if (config.temperature != null) {
+      _temperature.text = _formatDouble(config.temperature!);
+    }
+    if (config.topP != null) _topP.text = _formatDouble(config.topP!);
+    if (config.maxTokens != null) {
+      _maxTokens.text = config.maxTokens.toString();
+    }
     final aux = store?.loadAuxModelConfig();
     if (aux != null) {
       _auxBaseUrl.text = aux.baseUrl;
@@ -55,6 +69,31 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
       _auxEnabled = store!.auxEnabled;
     }
   }
+
+  /// 1.0 prints as "1" so round-tripping a stored value doesn't grow a
+  /// trailing decimal that implies non-integer precision.
+  static String _formatDouble(double value) =>
+      value == value.roundToDouble() ? value.toInt().toString() : value.toString();
+
+  /// Parses an optional sampling field; blank or non-numeric input means
+  /// "unset" and in-range values are clamped to [min] - [max].
+  static double? _parseClampedDouble(String raw, double min, double max) {
+    final value = double.tryParse(raw.trim());
+    if (value == null) return null;
+    return value.clamp(min, max).toDouble();
+  }
+
+  /// Max tokens stays an integer cap clamped to 1 - 32768; blank = unset.
+  static int? _parseMaxTokens(String raw) {
+    final value = int.tryParse(raw.trim());
+    if (value == null) return null;
+    return value.clamp(1, 32768);
+  }
+
+  bool get _hasAdvancedParams =>
+      _temperature.text.trim().isNotEmpty ||
+      _topP.text.trim().isNotEmpty ||
+      _maxTokens.text.trim().isNotEmpty;
 
   String get _apiKey =>
       ref.read(settingsStoreProvider).valueOrNull?.loadModelConfig().apiKey ??
@@ -119,6 +158,9 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
         apiKey: _apiKey,
         model: _model.text.trim(),
         webSearchEnabled: _webSearch,
+        temperature: _parseClampedDouble(_temperature.text, 0, 2),
+        topP: _parseClampedDouble(_topP.text, 0, 1),
+        maxTokens: _parseMaxTokens(_maxTokens.text),
       ),
     );
     // Auxiliary model for summaries/titles: no key field — those jobs reuse
@@ -297,6 +339,51 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  const SizedBox(width: AppSpacing.sm),
+                  // Collapsed-by-default sampling params toggle; it rides in
+                  // this row so the sheet keeps its height until expanded.
+                  GestureDetector(
+                    onTap: () =>
+                        setState(() => _advancedOpen = !_advancedOpen),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                        vertical: AppSpacing.xs,
+                      ),
+                      decoration: BoxDecoration(
+                        color: semantic.accent.withValues(
+                          alpha:
+                              _advancedOpen || _hasAdvancedParams ? 0.15 : 0.12,
+                        ),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.tune,
+                            size: 12,
+                            color: semantic.textSecondary,
+                          ),
+                          const SizedBox(width: AppSpacing.xs),
+                          Text(
+                            '高级参数',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: semantic.textSecondary,
+                            ),
+                          ),
+                          Icon(
+                            _advancedOpen
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                            size: 12,
+                            color: semantic.textSecondary,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
               if (webSearchSupport != WebSearchSupport.none) ...[
@@ -398,6 +485,57 @@ class _ModelPickerSheetState extends ConsumerState<ModelPickerSheet> {
                       TextStyle(fontSize: 13.5, color: semantic.textPrimary),
                   decoration: const InputDecoration(
                     hintText: '例如 Qwen/Qwen2.5-7B-Instruct',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
+              if (_advancedOpen) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  '温度 temperature(0 - 2)',
+                  style: TextStyle(fontSize: 12, color: semantic.textTertiary),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                TextField(
+                  controller: _temperature,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  style: TextStyle(fontSize: 13.5, color: semantic.textPrimary),
+                  decoration: const InputDecoration(
+                    hintText: '留空使用默认,例如 0.7',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  '核采样 top_p(0 - 1)',
+                  style: TextStyle(fontSize: 12, color: semantic.textTertiary),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                TextField(
+                  controller: _topP,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  style: TextStyle(fontSize: 13.5, color: semantic.textPrimary),
+                  decoration: const InputDecoration(
+                    hintText: '留空使用默认,例如 0.95',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  '最大生成 tokens(1 - 32768)',
+                  style: TextStyle(fontSize: 12, color: semantic.textTertiary),
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                TextField(
+                  controller: _maxTokens,
+                  keyboardType: TextInputType.number,
+                  style: TextStyle(fontSize: 13.5, color: semantic.textPrimary),
+                  decoration: const InputDecoration(
+                    hintText: '留空使用默认,例如 4096',
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
