@@ -439,7 +439,8 @@ void main() {
         name: 'mcp_github_create_issue',
         argumentsJson: '{"title":"hi"}',
       ));
-      expect(result, 'issue #42 已创建');
+      // PHASE 48: successful MCP results carry the untrusted marker.
+      expect(result, '[不可信来源: MCP:github]\nissue #42 已创建');
     });
 
     test('empty catalog after approval → removed verdict', () async {
