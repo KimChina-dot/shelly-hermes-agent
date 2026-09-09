@@ -9,11 +9,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../application/mission_coordinator.dart';
 import '../core/agent_core.dart';
 import '../core/context/context_compactor.dart';
 import '../core/dsh/tool_registry.dart';
 import '../core/approval_broker.dart';
 import '../core/crash/crash_log_store.dart';
+import '../core/events/event_bus.dart';
 import '../core/gateway/openai_gateway.dart';
 import '../core/gateway/web_search.dart';
 import '../core/hermes/hermes_memory.dart';
@@ -40,6 +42,7 @@ import '../core/tools/notes_tool.dart';
 import '../core/tools/terminal_tools.dart';
 import '../core/tools/workspace.dart';
 import '../core/workspace/workspace_manager.dart';
+import '../domain/agent/mission_store.dart';
 import '../platform/platform_workspace.dart';
 import '../platform/conversation_images.dart';
 import '../platform/process_runner.dart';
@@ -545,6 +548,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
         workspaceManager: manager,
         dshTools: _ref.read(dshToolsProvider),
         conversationId: conversationId,
+        taskId: taskId,
         chatGatewayOverride: _ref.read(chatGatewayOverrideProvider),
         imageStoreFuture: _ref
             .read(conversationImageStoreProvider.future)
@@ -556,6 +560,10 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
             .read(memoryStoreProvider.future)
             // Same "never a gate" contract: a slow or missing prefs backend
             // skips the memory block instead of stalling the send.
+            .timeout(const Duration(seconds: 2), onTimeout: () => null),
+        missionCoordinatorFuture: _ref
+            .read(missionCoordinatorProvider.future)
+            // PHASE 2 mission bridge: bookkeeping only, never a gate.
             .timeout(const Duration(seconds: 2), onTimeout: () => null),
         crashLogFuture: _ref
             .read(crashLogProvider.future)
@@ -1102,8 +1110,10 @@ class _TaskRunner implements AgentTaskRunner {
     required WorkspaceManager workspaceManager,
     required DshToolRegistry dshTools,
     required String conversationId,
+    String taskId = '',
     Future<ConversationImageStore?>? imageStoreFuture,
     Future<MemoryStore?>? memoryStoreFuture,
+    Future<MissionCoordinator?>? missionCoordinatorFuture,
     Future<CrashLogStore?>? crashLogFuture,
     ModelGateway? chatGatewayOverride,
   })  : _session = session,
@@ -1111,8 +1121,10 @@ class _TaskRunner implements AgentTaskRunner {
         _workspaceManager = workspaceManager,
         _dshTools = dshTools,
         _conversationId = conversationId,
+        _taskId = taskId,
         _imageStoreFuture = imageStoreFuture,
         _memoryStoreFuture = memoryStoreFuture,
+        _missionCoordinatorFuture = missionCoordinatorFuture,
         _crashLogFuture = crashLogFuture,
         _chatGatewayOverride = chatGatewayOverride;
 
@@ -1122,6 +1134,11 @@ class _TaskRunner implements AgentTaskRunner {
   final DshToolRegistry _dshTools;
   final String _conversationId;
 
+  /// Engine task id (from TaskCoordinator.start) carried into the mission
+  /// bridge so StepStarted/tool-call records name the originating task.
+  /// Empty when the factory closure did not capture it (legacy call sites).
+  final String _taskId;
+
   /// Persists attached images to disk so checkpoints keep short file paths
   /// instead of inline base64; null keeps the old inline behavior.
   final Future<ConversationImageStore?>? _imageStoreFuture;
@@ -1129,6 +1146,11 @@ class _TaskRunner implements AgentTaskRunner {
   /// Long-term memory source for the system-prompt block and round
   /// extraction; null when prefs are unavailable, keeping memory best-effort.
   final Future<MemoryStore?>? _memoryStoreFuture;
+
+  /// v3 mission bridge (PHASE 2): resolves the mission coordinator for this
+  /// task run; null when prefs are slow/unavailable — the task then runs
+  /// without mission bookkeeping, exactly as before the bridge existed.
+  final Future<MissionCoordinator?>? _missionCoordinatorFuture;
 
   /// Test-only scripted gateway (see [chatGatewayOverrideProvider]); null
   /// in production.
@@ -1252,6 +1274,36 @@ class _TaskRunner implements AgentTaskRunner {
           await (_memoryStoreFuture ?? Future<MemoryStore?>.value(null));
     } catch (_) {
       memoryStore = null;
+    }
+    // v3 mission bridge (PHASE 2): one mission per task run — created at
+    // task start, one StepStarted per model round, one tool-call record per
+    // ToolFinished, completed/failed when the run settles. Best-effort and
+    // never a gate: a slow/missing store or a failed creation leaves
+    // [bridge] null and the chat runs exactly as before the bridge existed.
+    MissionCoordinator? missionCoordinator;
+    try {
+      missionCoordinator = await (_missionCoordinatorFuture ??
+          Future<MissionCoordinator?>.value(null));
+    } catch (_) {
+      missionCoordinator = null;
+    }
+    _MissionBridge? bridge;
+    if (missionCoordinator != null) {
+      var userText = '';
+      for (final message in preparedMessages) {
+        if (message.role == MessageRole.user) userText = message.content;
+      }
+      final missionId = missionCoordinator.startForConversation(
+        _conversationId,
+        userText,
+      );
+      if (missionId != MissionCoordinator.noMission) {
+        bridge = _MissionBridge(
+          coordinator: missionCoordinator,
+          missionId: missionId,
+          taskId: _taskId,
+        );
+      }
     }
     final registry = CompositeToolRegistry([
       workspaceTools,
@@ -1398,7 +1450,7 @@ class _TaskRunner implements AgentTaskRunner {
         ),
       ),
       approvals: _session.broker,
-      observer: _SessionObserver(_session, memoryExtractor),
+      observer: _SessionObserver(_session, memoryExtractor, mission: bridge),
     );
 
     // Persona prompt (plus any stored long-term memories) opens every fresh
@@ -1418,23 +1470,47 @@ class _TaskRunner implements AgentTaskRunner {
             ...preparedMessages,
           ]
         : preparedMessages;
-    return runtime.run(effectiveMessages, cancellation, resumeFrom: resumeFrom);
+    AgentResult result;
+    try {
+      result = await runtime.run(
+        effectiveMessages,
+        cancellation,
+        resumeFrom: resumeFrom,
+      );
+    } catch (error) {
+      // PHASE 2 mission bridge: engine errors settle the mission as failed.
+      bridge?.complete(error: error.toString());
+      rethrow;
+    }
+    // PHASE 2 mission bridge: a clean engine finish settles the mission as
+    // completed — AgentCompleted and AgentStopped alike (the session treats
+    // completed/stopped the same; the bridge's complete() only models
+    // success vs failure, so user stops land on the success side).
+    bridge?.complete();
+    return result;
   }
 }
 
 class _SessionObserver implements AgentObserver {
-  _SessionObserver(this._session, this._memory);
+  _SessionObserver(this._session, this._memory, {MissionBridgeRef? mission})
+      : _mission = mission;
 
   final ChatSessionController _session;
 
   /// Null in demo mode: no model, no automatic memory extraction.
   final MemoryExtractor? _memory;
 
+  /// v3 mission bridge (PHASE 2): null when the coordinator or store was
+  /// unavailable at task start — round/tool-call bookkeeping then turns off.
+  final MissionBridgeRef? _mission;
+
   @override
   void onEvent(AgentEvent event) {
     switch (event) {
       case ModelStarted():
-        break;
+        // PHASE 2 mission bridge: tool calls that finish after this round's
+        // model reply are attributed to it.
+        _lastRound = event.round;
       case ModelDelta():
         _session.appendDelta(event.text);
       case ModelFinished():
@@ -1447,6 +1523,9 @@ class _SessionObserver implements AgentObserver {
           );
           _session.recordRoundMemory(_memory);
         }
+        _lastRound = event.round;
+        // PHASE 2 mission bridge: one step per model round.
+        _mission?.onRound(event.round);
       case ApprovalWaiting():
         break;
       case ApprovalFinished():
@@ -1458,8 +1537,88 @@ class _SessionObserver implements AgentObserver {
           ToolStarted(event.toolCallId, event.toolName),
           finished: event,
         );
+        // PHASE 2 mission bridge: one action record per finished tool call.
+        _mission?.onToolCall(
+          toolName: event.toolName,
+          ok: event.succeeded,
+          durationMillis: event.durationMillis,
+          round: _lastRound,
+        );
       case ContextCompacted():
         _session.notifyContextCompacted(event);
+    }
+  }
+
+  /// Round number of the most recent [ModelFinished], attributed to tool
+  /// calls that finish afterwards (the engine emits tool events between a
+  /// round's model reply and the next round).
+  int _lastRound = 0;
+}
+
+/// Narrow view of the mission bridge used by [_SessionObserver], kept
+/// name-only so tests can inject lightweight stand-ins.
+abstract interface class MissionBridgeRef {
+  void onRound(int round);
+  void onToolCall({
+    required String toolName,
+    required bool ok,
+    required int durationMillis,
+    required int round,
+  });
+}
+
+/// Per-task mission bookkeeping handle created in [_TaskRunner.run]; wraps
+/// the coordinator with the task's mission and engine task ids.
+class _MissionBridge implements MissionBridgeRef {
+  _MissionBridge({
+    required MissionCoordinator coordinator,
+    required String missionId,
+    required String taskId,
+  })  : _coordinator = coordinator,
+        missionId = missionId,
+        _taskId = taskId;
+
+  final MissionCoordinator _coordinator;
+
+  /// Mission handle (coordinator-issued) this bridge talks to.
+  final String missionId;
+  final String _taskId;
+
+  @override
+  void onRound(int round) {
+    try {
+      _coordinator.recordRound(missionId, round: round, taskId: _taskId);
+    } catch (_) {
+      // Bookkeeping must never break the chat.
+    }
+  }
+
+  @override
+  void onToolCall({
+    required String toolName,
+    required bool ok,
+    required int durationMillis,
+    required int round,
+  }) {
+    try {
+      _coordinator.recordToolCall(
+        missionId,
+        toolName: toolName,
+        ok: ok,
+        durationMillis: durationMillis,
+        round: round,
+      );
+    } catch (_) {
+      // Bookkeeping must never break the chat.
+    }
+  }
+
+  /// Settles the mission: completed on success, failed with [error] otherwise.
+  void complete({String? error}) {
+    try {
+      _coordinator.complete(missionId, error: error);
+    } catch (_) {
+      // Bookkeeping must never break the chat.
     }
   }
 }
@@ -1622,6 +1781,42 @@ final chatGatewayOverrideProvider = Provider<ModelGateway?>((ref) => null);
 final memoryStoreProvider = FutureProvider<MemoryStore?>((ref) async {
   try {
     return MemoryStore(await SharedPreferences.getInstance());
+  } catch (_) {
+    return null;
+  }
+});
+
+/// v3 mission persistence (PHASE 2 mission bridge). Null when SharedPreferences
+/// is unavailable (tests, degraded hosts) — mission bookkeeping then quietly
+/// turns off and the chat runs exactly as before. Mirrors
+/// [memoryStoreProvider]'s never-a-gate contract.
+final missionStoreProvider = FutureProvider<MissionStore?>((ref) async {
+  try {
+    return MissionStore(await SharedPreferences.getInstance());
+  } catch (_) {
+    return null;
+  }
+});
+
+/// Application-scoped mission event bus (PHASE 2 mission bridge): one bus
+/// per process, shared by every conversation's mission bookkeeping. Tests
+/// override this provider with a fresh [AgentEventBus] to assert on events.
+final missionBusProvider = Provider<AgentEventBus>((ref) => AgentEventBus());
+
+/// Lazily-created bridge from the chat task lifecycle onto the v3 Mission
+/// domain (Mission = task, Step = round, Action = tool call). Null when the
+/// mission store is unavailable — the chat then runs exactly as before.
+/// Awaited inside the task runner with a timeout, mirroring the
+/// memoryStore/crashLog "never a gate" contract.
+final missionCoordinatorProvider =
+    FutureProvider<MissionCoordinator?>((ref) async {
+  try {
+    final store = await ref.watch(missionStoreProvider.future);
+    if (store == null) return null;
+    return MissionCoordinator(
+      store: store,
+      bus: ref.watch(missionBusProvider),
+    );
   } catch (_) {
     return null;
   }
