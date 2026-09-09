@@ -1037,12 +1037,17 @@ class _NotesStateApprovalPolicy implements ToolApprovalPolicy {
       _stateOnlyTools.contains(call.name) ? false : _base.requiresApproval(call);
 }
 
-/// Todo-recitation (PHASE 46): re-splices the current 「当前计划」 block
-/// into the persona system message of every outgoing request, so `plan` and
-/// `note` calls made during a task show up in the very next round — the
-/// block changing across rounds is the intended recitation effect, while
-/// the surrounding prompt shape stays stable. Fixed position: after the
-/// tool-usage rules, before the memory block (see [spliceRecitation]).
+/// Todo-recitation (PHASE 53, KV-cache-safe): the current 「当前计划」
+/// block is appended as the LAST message of every outgoing request instead
+/// of being spliced into the persona system message. Rewriting the first
+/// system message each round invalidates the entire provider-side prefix
+/// cache (everything after byte 0 must be re-prefilled); appending keeps
+/// the prefix byte-stable so cached tokens survive, while the plan sits
+/// closest to the attention window — strictly better for both cost and
+/// recitation effect. The appended message is role `user` carrying an
+/// explicit system-state marker; it replaces any block appended by a
+/// previous decoration of the same body, and disappears entirely when the
+/// plan is empty (no trailing noise on plan-less tasks).
 /// [inner] (e.g. the web-search decorator) runs first.
 @visibleForTesting
 RequestBodyDecorator recitationBodyDecorator(
@@ -1052,29 +1057,28 @@ RequestBodyDecorator recitationBodyDecorator(
   return (body) {
     final decorated = inner == null ? body : inner(body);
     final messages = decorated['messages'];
-    if (messages is! List) return decorated;
-    for (var i = 0; i < messages.length; i++) {
-      final message = messages[i];
-      // The persona system message is the last message of the leading
-      // system run (the Hermes recall message may precede it).
-      if (message is! Map<String, dynamic> || message['role'] != 'system') {
-        break;
-      }
-      final content = message['content'];
-      if (content is String &&
-          (content.contains('「工具使用守则」') ||
-              content.contains('「长期记忆」') ||
-              content.contains('「当前计划」'))) {
-        messages[i] = {
-          ...message,
-          'content': spliceRecitation(content, notes.recitationBlock()),
-        };
-        break;
-      }
+    if (messages is! List || messages.isEmpty) return decorated;
+    // Strip any recitation message a previous decoration appended, then
+    // append the current one at the end.
+    messages.removeWhere((message) {
+      return message is Map<String, dynamic> &&
+          message['role'] == 'user' &&
+          message['content'] is String &&
+          (message['content'] as String).startsWith(_recitationMarker);
+    });
+    final block = notes.recitationBlock();
+    if (block != null) {
+      messages.add({
+        'role': 'user',
+        'content': '$_recitationMarker\n$block',
+      });
     }
     return decorated;
   };
 }
+
+/// Marker prefix for the appended recitation message (PHASE 53).
+const String _recitationMarker = '「当前计划」(系统状态镜像,仅供你参考,无需回应)';
 
 class _TaskRunner implements AgentTaskRunner {
   _TaskRunner({
