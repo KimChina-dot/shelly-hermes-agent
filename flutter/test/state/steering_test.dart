@@ -212,6 +212,10 @@ void main() {
     ]);
     addTearDown(container.dispose);
     final controller = await _attachedController(container);
+    // PHASE 54 interrupt-and-steer would consume the second send as an
+    // interrupt (empty queue); this test pins the park-in-line contract,
+    // so steering is off.
+    controller.steerMode = false;
 
     await controller.send('首条');
     for (final text in ['q一', 'q二', 'q三', 'q四', 'q五', 'q六', 'q七']) {
@@ -276,6 +280,8 @@ void main() {
     ]);
     addTearDown(container.dispose);
     final controller = await _attachedController(container);
+    // PHASE 54: steering off pins the queue-only contract for this test.
+    controller.steerMode = false;
 
     await controller.send('首条');
     await controller.send('队列一');
@@ -287,5 +293,129 @@ void main() {
     expect(controller.newConversation(), isTrue);
     expect(container.read(chatSessionProvider).queuedMessages, isEmpty);
     expect(container.read(chatSessionProvider).entries, isEmpty);
+  });
+
+  test('interrupt-and-steer: empty-queue send cancels the task and re-sends',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final gateway = _ScriptedGateway([
+      _reply('被打断的答'),
+      _reply('转向后的答'),
+    ], delay: const Duration(milliseconds: 80));
+    final container = ProviderContainer(overrides: [
+      chatGatewayOverrideProvider.overrideWith((ref) => gateway),
+    ]);
+    addTearDown(container.dispose);
+    final controller = await _attachedController(container);
+
+    await controller.send('第一条');
+    await _waitUntil(
+      container,
+      (state) => state.isBusy && gateway.seen.length == 1,
+      'first round started',
+    );
+
+    // Empty queue + steerMode on: the send interrupts and parks itself.
+    expect(controller.steerMode, true);
+    await controller.send('转向消息');
+    expect(
+      container.read(chatSessionProvider).queuedMessages,
+      ['转向消息'],
+    );
+
+    // The stop propagates; the completion observer dequeues 转向消息 and
+    // re-sends it through the full send path.
+    await _waitUntil(
+      container,
+      (state) =>
+          !state.isBusy &&
+          _userTexts(state).contains('转向消息') &&
+          state.queuedMessages.isEmpty,
+      'interrupted task drained and 转向消息 re-sent',
+    );
+    await _waitForIdle(container);
+    expect(_userTexts(container.read(chatSessionProvider)),
+        ['第一条', '转向消息']);
+    expect(gateway.seen, hasLength(2));
+  });
+
+  test('steerMode=false keeps the queue-only behavior while busy', () async {
+    SharedPreferences.setMockInitialValues({});
+    final gateway = _ScriptedGateway(
+        [_reply('答一'), _reply('答二')],
+        delay: const Duration(milliseconds: 80));
+    final container = ProviderContainer(overrides: [
+      chatGatewayOverrideProvider.overrideWith((ref) => gateway),
+    ]);
+    addTearDown(container.dispose);
+    final controller = await _attachedController(container);
+
+    controller.steerMode = false;
+    await controller.send('第一条');
+    await _waitUntil(
+      container,
+      (state) => state.isBusy && gateway.seen.length == 1,
+      'first round started',
+    );
+
+    await controller.send('排队消息');
+    // No interrupt: the task keeps running (gateway still in round 1).
+    expect(gateway.seen, hasLength(1));
+    expect(container.read(chatSessionProvider).queuedMessages, ['排队消息']);
+
+    await _waitForIdle(container);
+    await _waitUntil(
+      container,
+      (state) => _userTexts(state).contains('排队消息'),
+      'queued message re-sent after completion',
+    );
+    await _waitForIdle(container);
+    expect(_userTexts(container.read(chatSessionProvider)), ['第一条', '排队消息']);
+    expect(gateway.seen, hasLength(2));
+  });
+
+  test('non-empty queue keeps park-in-line even with steerMode on',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    final gateway = _ScriptedGateway([
+      _reply('答一'),
+      _reply('答二'),
+      _reply('答三'),
+    ], delay: const Duration(milliseconds: 80));
+    final container = ProviderContainer(overrides: [
+      chatGatewayOverrideProvider.overrideWith((ref) => gateway),
+    ]);
+    addTearDown(container.dispose);
+    final controller = await _attachedController(container);
+
+    await controller.send('首条');
+    await _waitUntil(
+      container,
+      (state) => state.isBusy && gateway.seen.length == 1,
+      'first round started',
+    );
+
+    // First send parks (empty queue → interrupt); the completion observer
+    // dequeues 转向一 and starts its task right away.
+    await controller.send('转向一');
+    await _waitUntil(
+      container,
+      (state) => state.isBusy && gateway.seen.length == 2,
+      '转向一 task running after the interrupt drained',
+    );
+    await controller.send('排队二');
+    expect(gateway.seen, hasLength(2));
+    expect(container.read(chatSessionProvider).queuedMessages, ['排队二']);
+
+    await _waitForIdle(container);
+    await _waitUntil(
+      container,
+      (state) => _userTexts(state).contains('排队二'),
+      '排队二 re-sent',
+    );
+    await _waitForIdle(container);
+    expect(_userTexts(container.read(chatSessionProvider)),
+        ['首条', '转向一', '排队二']);
+    expect(gateway.seen, hasLength(3));
   });
 }

@@ -182,6 +182,12 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
   /// never chain inside the same callback.
   bool _dequeueing = false;
 
+  /// PHASE 54: when ON (default), sending a text message while busy with an
+  /// EMPTY queue cancels the running task; the completion observer then
+  /// dequeues and re-sends it (interrupt-and-steer). With a non-empty queue
+  /// or when OFF, sends park in the queue as usual.
+  bool steerMode = true;
+
   final Ref _ref;
   final ApprovalBroker _broker = ApprovalBroker();
 
@@ -262,6 +268,15 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     // Only text steers; attachments keep requiring an idle composer.
     if (state.isBusy) {
       if (trimmed.isEmpty || images.isNotEmpty || files.isNotEmpty) return;
+      // PHASE 54 interrupt-and-steer: an empty queue means the user wants
+      // the running task cut short — park the message and cancel; the
+      // completion observer dequeues and re-sends it. A non-empty queue
+      // keeps the gentler park-in-line behavior, as does steerMode=off.
+      if (steerMode && state.queuedMessages.isEmpty) {
+        _enqueueMessage(trimmed);
+        cancel();
+        return;
+      }
       _enqueueMessage(trimmed);
       return;
     }

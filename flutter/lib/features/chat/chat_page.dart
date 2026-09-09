@@ -15,6 +15,7 @@ import '../../design/components/buttons.dart';
 import '../../design/components/gradient_avatar.dart';
 import '../../design/components/markdown_text.dart';
 import '../../design/components/motion.dart';
+import 'in_chat_search.dart';
 import '../../design/components/skeleton.dart';
 import '../../design/components/tool_card.dart';
 import '../../design/tokens.dart';
@@ -180,6 +181,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   String _dictated = '';
   TtsService? _tts;
   String? _speakingEntryId;
+  // PHASE 54: in-conversation search state.
+  bool _searchOpen = false;
+  InChatSearchState _search = const InChatSearchState();
+  int? _highlightEntryIndex;
+  Timer? _highlightTimer;
 
   /// Hold-to-talk: recognition starts on press-down and the settled
   /// transcript is appended to the composer on release.
@@ -278,6 +284,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   void dispose() {
     _sharedTextSub?.cancel();
     unawaited(_tts?.stop());
+    _highlightTimer?.cancel();
     _composer.dispose();
     _scroll.dispose();
     super.dispose();
@@ -466,6 +473,54 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
+  void _toggleSearch() {
+    setState(() {
+      if (_searchOpen) {
+        _searchOpen = false;
+        _search = const InChatSearchState();
+        _highlightEntryIndex = null;
+        _highlightTimer?.cancel();
+      } else {
+        _searchOpen = true;
+      }
+    });
+  }
+
+  void _onSearchQueryChanged(String query) {
+    final matches = computeMatches(sessionEntries(), query);
+    setState(() {
+      _search = _search.copyWith(query: query, matches: matches, currentIndex: 0);
+      _highlightEntryIndex = matches.isEmpty ? null : matches.first.entryIndex;
+    });
+  }
+
+  List<ChatEntry> sessionEntries() => ref.read(chatSessionProvider).entries;
+
+  void _navigateSearch(int step) {
+    if (!_search.hasMatches) return;
+    var next = (_search.currentIndex + step) % _search.matches.length;
+    if (next < 0) next += _search.matches.length;
+    setState(() {
+      _search = _search.copyWith(currentIndex: next);
+      _highlightEntryIndex = _search.matches[next].entryIndex;
+    });
+    _highlightTimer?.cancel();
+    _highlightTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) setState(() => _highlightEntryIndex = null);
+    });
+    _scrollToEntry(_highlightEntryIndex!);
+  }
+
+  /// Best-effort scroll: jumps the transcript ListView to a fractional
+  /// position matching the entry's share of the transcript.
+  void _scrollToEntry(int entryIndex) {
+    final total = ref.read(chatSessionProvider).entries.length;
+    if (total == 0 || !_scroll.hasClients) return;
+    final target = (_scroll.position.maxScrollExtent * (entryIndex / total))
+        .clamp(0.0, _scroll.position.maxScrollExtent);
+    _scroll.jumpTo(target);
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(chatSessionProvider);
@@ -532,10 +587,19 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               onShare: session.entries.isEmpty
                   ? null
                   : () => unawaited(_shareConversation()),
+              onSearch: session.entries.isEmpty ? null : _toggleSearch,
             ),
             if (!workspaceReady)
               _WorkspaceBanner(onPick: pickWorkspaceDirectory),
             if (demoMode) _DemoBanner(onTap: () => _send('演示补丁')),
+            if (_searchOpen)
+              InChatSearchBar(
+                state: _search,
+                onQueryChanged: _onSearchQueryChanged,
+                onNext: () => _navigateSearch(1),
+                onPrevious: () => _navigateSearch(-1),
+                onClose: _toggleSearch,
+              ),
             Expanded(
               child: session.entries.isEmpty
                   ? _Greeting(onSuggestion: _send)
@@ -565,6 +629,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       onEditResend: session.isBusy
                           ? null
                           : (entry) => _showEditResendSheet(entry),
+                      highlightEntryIndex: _highlightEntryIndex,
                       pluginToolNames: ref
                           .watch(dshToolsProvider)
                           .specs
@@ -618,6 +683,7 @@ class _Header extends ConsumerWidget {
     this.onTitleTap,
     this.onNewConversation,
     this.onShare,
+    this.onSearch,
   });
 
   final bool demoMode;
@@ -625,6 +691,7 @@ class _Header extends ConsumerWidget {
   final VoidCallback? onTitleTap;
   final VoidCallback? onNewConversation;
   final VoidCallback? onShare;
+  final VoidCallback? onSearch;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -689,6 +756,16 @@ class _Header extends ConsumerWidget {
               icon: Icon(
                 Icons.ios_share_rounded,
                 size: 19,
+                color: semantic.textSecondary,
+              ),
+            ),
+          if (onSearch != null)
+            IconButton(
+              tooltip: '在会话中搜索',
+              onPressed: onSearch,
+              icon: Icon(
+                Icons.search_rounded,
+                size: 20,
                 color: semantic.textSecondary,
               ),
             ),
@@ -1230,10 +1307,12 @@ class _Transcript extends StatelessWidget {
     this.onRegenerate,
     this.onEditResend,
     this.pluginToolNames = const {},
+    this.highlightEntryIndex,
   });
 
   final List<ChatEntry> entries;
   final ScrollController controller;
+  final int? highlightEntryIndex;
 
   /// When the settings TTS toggle is on, finished assistant replies grow a
   /// speaker button that reads the message's plain text aloud.
@@ -1267,7 +1346,8 @@ class _Transcript extends StatelessWidget {
       itemCount: entries.length,
       itemBuilder: (context, index) {
         final entry = entries[index];
-        return switch (entry) {
+        final highlighted = highlightEntryIndex == index;
+        Widget row = switch (entry) {
           UserEntry() => _UserBubble(
             text: entry.text,
             images: entry.images,
@@ -1295,6 +1375,23 @@ class _Transcript extends StatelessWidget {
           ErrorEntry() => _ErrorBubble(text: entry.text),
           NoticeEntry() => _NoticePill(text: entry.text),
         };
+        if (!highlighted) return row;
+        return Container(
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: Theme.of(context)
+                      .extension<AppSemanticColors>()!
+                      .warning
+                      .withValues(alpha: 0.6),
+              width: 1.5,
+            ),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            child: row,
+          ),
+        );
       },
     );
   }
@@ -2053,7 +2150,7 @@ class _Composer extends StatelessWidget {
                     hintText: waitingApproval
                         ? '请在上方做出审批决定…'
                         : busy
-                            ? '任务进行中,发送将放入队列…'
+                            ? '任务进行中,发送将中断并处理新消息…'
                             : '给 Shelly 发送消息…',
                     hintStyle: TextStyle(
                       fontSize: 13.5,
@@ -2085,9 +2182,10 @@ class _Composer extends StatelessWidget {
               ),
               const SizedBox(width: AppSpacing.sm),
               if (busy) ...[
-                // PHASE 51: while a task runs the send affordance stays
-                // alive — it parks the composed text in the steering queue
-                // (tooltip 放入队列) next to the stop control.
+                // PHASE 51/54: while a task runs the send affordance stays
+                // alive — with an empty queue it interrupts the running task
+                // and the message re-sends on completion; with queued items
+                // it parks at the end of the line.
                 _QueueButton(onQueue: onSend),
                 const SizedBox(width: AppSpacing.sm),
                 _StopButton(onStop: onStop),
