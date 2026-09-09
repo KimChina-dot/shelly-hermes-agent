@@ -962,7 +962,7 @@ const String toolUsageRules = '「工具使用守则」\n'
     '- 搜索工具(fast_find/smart_grep)返回 JSON 且已限量截断,不要重复发起全量搜索。\n'
     '- 工具失败时先检查参数(路径必须是工作区内的相对路径),再调整重试。\n'
     '- 严禁通过 run_command 绕过搜索工具执行查找/过滤类命令。\n'
-    '- 需要历史对话或过往错误上下文时,调用 search_memory 检索,而不是要求用户复述。\n'
+    '- 需要历史对话、过往错误或已记住的用户偏好上下文时,调用 search_memory 检索,而不是要求用户复述。\n'
     '- 计划有变化时用 plan 工具更新,保持目标清晰。';
 
 /// Persona prompt with the 「工具使用守则」 prepended/appended.
@@ -1224,6 +1224,16 @@ class _TaskRunner implements AgentTaskRunner {
     } catch (_) {
       _crashLog = null;
     }
+    // Memory store resolves the same way (PHASE 52): slow or missing prefs
+    // degrade the search_memory memory scope — never a gate. Resolved once
+    // here and shared with the persona memory block below.
+    MemoryStore? memoryStore;
+    try {
+      memoryStore =
+          await (_memoryStoreFuture ?? Future<MemoryStore?>.value(null));
+    } catch (_) {
+      memoryStore = null;
+    }
     final registry = CompositeToolRegistry([
       workspaceTools,
       ShellToolRegistry(
@@ -1231,11 +1241,14 @@ class _TaskRunner implements AgentTaskRunner {
       ),
       // Structured fd/rg search with find/grep fallback (PHASE 43).
       TerminalSearchTools(runner: shellRunner),
-      // Self-diagnosis: the agent can grep its own past (PHASE 43).
+      // Self-diagnosis: the agent can grep its own past (PHASE 43) and,
+      // since PHASE 52, its tiered long-term memory facts — the only way
+      // archival facts surface.
       MemorySearchToolRegistry(
         loadSummaries: _store.loadConversations,
         loadCheckpoint: _store.loadCheckpoint,
         loadCrashes: _crashLog?.loadEntries,
+        loadFacts: memoryStore?.loadFacts,
       ),
       KnowledgeToolRegistry(store: knowledgeStore),
       // Plan/notes state (PHASE 46): record-only tools that feed the
@@ -1321,11 +1334,10 @@ class _TaskRunner implements AgentTaskRunner {
     );
 
     // Stored memories join the persona prompt so replies can use them.
-    // Additive only: loading must never gate a send.
+    // Additive only: loading must never gate a send. Reuses the store
+    // already resolved for the search_memory memory scope (PHASE 52).
     var memories = const <MemoryFact>[];
     try {
-      final memoryStore =
-          await (_memoryStoreFuture ?? Future<MemoryStore?>.value(null));
       if (memoryStore != null) memories = memoryStore.loadFacts();
     } catch (_) {
       memories = const <MemoryFact>[];

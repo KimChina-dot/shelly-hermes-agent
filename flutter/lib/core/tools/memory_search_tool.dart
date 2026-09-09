@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../crash/crash_log_store.dart';
+import '../memory/memory_store.dart';
 import '../models.dart';
 import '../runtime/tool_registry.dart';
 import '../tools/registry.dart';
@@ -13,6 +14,10 @@ import '../../state/settings_store.dart' show ConversationSummary;
 /// surrounding messages (before/after, analogous to grep's ±5 lines) and
 /// the conversation id/title so the agent can cite them.
 ///
+/// PHASE 52 adds the `memory` scope: tiered facts from [MemoryFact] stores
+/// become greppable here. Because archival facts never auto-inject into the
+/// prompt, they are reachable ONLY through this tool.
+///
 /// All loaders are injected; any loader failure is swallowed into an empty
 /// result with an `error` note — a broken history store must never break
 /// the tool surface.
@@ -21,6 +26,7 @@ class MemorySearchToolRegistry implements AgentToolRegistry {
     required this.loadSummaries,
     required this.loadCheckpoint,
     this.loadCrashes,
+    this.loadFacts,
   });
 
   final List<ConversationSummary> Function() loadSummaries;
@@ -29,10 +35,14 @@ class MemorySearchToolRegistry implements AgentToolRegistry {
   /// Null → the crash scope is reported as unavailable.
   final List<CrashEntry> Function()? loadCrashes;
 
+  /// Null → the memory scope is skipped (and reported as unavailable when
+  /// requested explicitly). Absent wiring must never break the tool.
+  final List<MemoryFact> Function()? loadFacts;
+
   static const memorySpecs = <ToolSpec>[
     ToolSpec(
       'search_memory',
-      '检索过往对话与崩溃日志,返回带上下文的结构化 JSON',
+      '检索过往对话、长期记忆事实与崩溃日志,返回带上下文的结构化 JSON',
       'low',
     ),
   ];
@@ -56,7 +66,8 @@ class MemorySearchToolRegistry implements AgentToolRegistry {
                 },
                 'scope': {
                   'type': 'string',
-                  'description': "可选,'conversation' | 'crash' | 'all'(默认 all)",
+                  'description':
+                      "可选,'conversation' | 'crash' | 'memory' | 'all'(默认 all)",
                 },
                 'max_results': {
                   'type': 'number',
@@ -82,8 +93,10 @@ class MemorySearchToolRegistry implements AgentToolRegistry {
     final scopeRaw = args['scope'];
     if (scopeRaw != null &&
         (scopeRaw is! String ||
-            !const ['conversation', 'crash', 'all'].contains(scopeRaw))) {
-      return _errorJson('"scope" must be "conversation", "crash" or "all"');
+            !const ['conversation', 'crash', 'memory', 'all']
+                .contains(scopeRaw))) {
+      return _errorJson(
+          '"scope" must be "conversation", "crash", "memory" or "all"');
     }
     final scope = (scopeRaw as String?) ?? 'all';
     final maxResults = _clampedInt(args['max_results'], 1, 30, 10);
@@ -136,6 +149,30 @@ class MemorySearchToolRegistry implements AgentToolRegistry {
           }
         } catch (e) {
           notes.add('crash log store unavailable: $e');
+        }
+      }
+    }
+
+    if (scope == 'memory' || scope == 'all') {
+      final facts = loadFacts;
+      if (facts == null) {
+        if (scope == 'memory') notes.add('memory store not wired');
+      } else {
+        try {
+          for (final fact in facts()) {
+            if (hits.length >= maxResults) break;
+            if (!fact.text.toLowerCase().contains(needle)) continue;
+            hits.add({
+              'scope': 'memory',
+              'tier': fact.tier.name,
+              'text': fact.text,
+              'createdAt': fact.createdAt.toIso8601String(),
+              'before': <String>[],
+              'after': <String>[],
+            });
+          }
+        } catch (e) {
+          notes.add('memory store unavailable: $e');
         }
       }
     }
