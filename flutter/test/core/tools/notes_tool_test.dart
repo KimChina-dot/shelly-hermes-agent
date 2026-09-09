@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shelly_hermes/core/models.dart';
+import 'package:shelly_hermes/state/chat_session.dart' show recitationBodyDecorator;
 import 'package:shelly_hermes/core/tools/notes_tool.dart';
 import 'package:shelly_hermes/core/tools/registry.dart';
 
@@ -236,6 +237,59 @@ void main() {
         '普通系统提示\n\n「当前计划」\n1. 目标',
       );
       expect(spliceRecitation('普通系统提示', null), '普通系统提示');
+    });
+  });
+
+  group('recitationBodyDecorator cache discipline (PHASE 53)', () {
+    final notes = NotesToolRegistry();
+
+    Map<String, dynamic> baseBody() => {
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'persona\n\n「工具使用守则」\n- 规则',
+            },
+            {'role': 'user', 'content': '任务开始'},
+          ],
+        };
+
+    test('system message stays byte-identical while the plan changes',
+        () async {
+      await notes.execute(_call('plan', const {'steps': ['步骤一']}));
+      final first = recitationBodyDecorator(notes, null)(baseBody());
+      final systemFirst = (first['messages'] as List).first as Map;
+
+      await notes.execute(_call('plan', const {'steps': ['步骤一', '步骤二']}));
+      await notes.execute(_call('note', const {'text': '新进展'}));
+      final second = recitationBodyDecorator(notes, null)(baseBody());
+      final systemSecond = (second['messages'] as List).first as Map;
+
+      expect(systemSecond['content'], systemFirst['content']);
+    });
+
+    test('recitation rides as the LAST message, replacing any stale copy',
+        () async {
+      await notes.execute(_call('plan', const {'steps': ['旧计划']}));
+      final first = recitationBodyDecorator(notes, null)(baseBody());
+      final firstMessages = first['messages'] as List;
+      expect(firstMessages.last['content'], contains('「当前计划」'));
+      expect(firstMessages.last['role'], 'user');
+
+      await notes.execute(_call('plan', const {'steps': ['新计划']}));
+      final second = recitationBodyDecorator(notes, null)(baseBody());
+      final secondMessages = second['messages'] as List;
+      expect(
+          secondMessages
+              .where((m) => (m['content'] as String).contains('「当前计划」')),
+          hasLength(1));
+      expect(secondMessages.last['content'], contains('新计划'));
+    });
+
+    test('empty plan leaves the body untouched', () {
+      final body = baseBody();
+      final decorated = recitationBodyDecorator(NotesToolRegistry(), null)(body);
+      expect((decorated['messages'] as List).length,
+          (body['messages'] as List).length);
     });
   });
 }
