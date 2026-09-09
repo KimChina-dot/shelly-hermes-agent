@@ -10,7 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/approval_broker.dart' show PendingApproval;
-import '../../core/models.dart' show TextFileAttachment;
+import '../../core/models.dart' show AgentLimits, TextFileAttachment;
 import '../../design/components/buttons.dart';
 import '../../design/components/gradient_avatar.dart';
 import '../../design/components/markdown_text.dart';
@@ -572,6 +572,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                           .toSet(),
                     ),
             ),
+            // PHASE 52: slim context-usage meter between the transcript and
+            // the queued-chips/composer area. Visible only once a round has
+            // consumed input tokens; a fresh conversation hides it again.
+            if (session.inputTokens > 0)
+              _ContextMeter(inputTokens: session.inputTokens),
             _Composer(
               controller: _composer,
               busy: session.isBusy,
@@ -1825,6 +1830,70 @@ class _ErrorBubble extends StatelessWidget {
                 color: semantic.textPrimary,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// PHASE 52: compact context-usage meter above the queued-chips/composer
+/// area. One static line: a 2px progress bar showing how much of the
+/// 64000-token budget the last round consumed, plus a right-aligned
+/// k-notation label. Zero interaction, no dismiss — it disappears entirely
+/// while the conversation is empty (inputTokens == 0).
+class _ContextMeter extends StatelessWidget {
+  const _ContextMeter({required this.inputTokens});
+
+  final int inputTokens;
+
+  static final int _maxTokens = const AgentLimits().maxTokens;
+
+  /// k-notation: one decimal below 10k (5.0k, 9.4k); at or above, whole
+  /// values collapse to integer k (12k, 64k) while fractional ones keep a
+  /// decimal (12.3k) — precision only where it carries information.
+  static String _formatK(int tokens) {
+    final value = tokens / 1000;
+    if (value < 10 || value != value.roundToDouble()) {
+      return '${value.toStringAsFixed(1)}k';
+    }
+    return '${value.round()}k';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final semantic = Theme.of(context).extension<AppSemanticColors>()!;
+    final double fraction =
+        (inputTokens / _maxTokens).clamp(0.0, 1.0).toDouble();
+    final tint = fraction >= 0.9
+        ? semantic.danger
+        : fraction >= 0.7
+            ? semantic.warning
+            : semantic.textTertiary;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        0,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: fraction,
+                minHeight: 2,
+                backgroundColor: semantic.border.withValues(alpha: 0.5),
+                valueColor: AlwaysStoppedAnimation<Color>(tint),
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Text(
+            '上下文 ~${_formatK(inputTokens)} / ${_formatK(_maxTokens)}',
+            style: TextStyle(fontSize: 11, color: semantic.textTertiary),
           ),
         ],
       ),

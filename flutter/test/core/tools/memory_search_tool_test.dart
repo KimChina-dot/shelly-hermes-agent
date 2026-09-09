@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shelly_hermes/core/crash/crash_log_store.dart';
+import 'package:shelly_hermes/core/memory/memory_store.dart';
 import 'package:shelly_hermes/core/models.dart';
 import 'package:shelly_hermes/core/tools/memory_search_tool.dart';
 import 'package:shelly_hermes/state/settings_store.dart';
@@ -213,6 +214,142 @@ void main() {
       expect((params['properties'] as Map).keys,
           containsAll(['pattern', 'scope', 'max_results']));
       expect((params['required'] as List), ['pattern']);
+    });
+  });
+
+  group('MemorySearchToolRegistry memory scope (PHASE 52)', () {
+    test('memory-scope hits carry tier and empty context, case-insensitive',
+        () async {
+      final registry = MemorySearchToolRegistry(
+        loadSummaries: () => summaries,
+        loadCheckpoint: (id) => checkpoints[id],
+        loadFacts: () => [
+          MemoryFact(
+            id: 'm1',
+            text: '用户喜欢 Dark Theme',
+            createdAt: DateTime.utc(2026, 9, 1, 8),
+            // Archival facts are the tier that motivated this scope: they
+            // never auto-inject, so this tool is their only retrieval path.
+            tier: MemoryTier.archival,
+          ),
+        ],
+      );
+      final json = jsonDecode(await registry
+              .execute(_call({'pattern': 'DARK', 'scope': 'memory'})))
+          as Map<String, dynamic>;
+
+      expect(json['total'], 1);
+      final hit = (json['hits'] as List).single as Map;
+      expect(hit['scope'], 'memory');
+      expect(hit['tier'], 'archival');
+      expect(hit['text'], '用户喜欢 Dark Theme');
+      expect(hit['createdAt'], '2026-09-01T08:00:00.000Z');
+      expect(hit['before'], isEmpty);
+      expect(hit['after'], isEmpty);
+    });
+
+    test('conversation-only scope never reads the memory store', () async {
+      var factsRead = false;
+      final registry = MemorySearchToolRegistry(
+        loadSummaries: () => summaries,
+        loadCheckpoint: (id) => checkpoints[id],
+        loadFacts: () {
+          factsRead = true;
+          return const [];
+        },
+      );
+      final json = jsonDecode(await registry.execute(
+              _call({'pattern': 'flutter analyze', 'scope': 'conversation'})))
+          as Map<String, dynamic>;
+      expect(factsRead, false);
+      expect((json['hits'] as List).every((h) => h['scope'] == 'conversation'),
+          true);
+    });
+
+    test('default all-scope includes memory hits alongside others', () async {
+      final registry = MemorySearchToolRegistry(
+        loadSummaries: () => summaries,
+        loadCheckpoint: (id) => checkpoints[id],
+        loadCrashes: () => [
+          CrashEntry(
+            at: DateTime(2026),
+            context: 'flutter',
+            error: 'flutter analyze boom',
+            stack: 'stack line',
+          ),
+        ],
+        loadFacts: () => [
+          MemoryFact(
+            id: 'm1',
+            text: '每次改代码都要跑 flutter analyze',
+            createdAt: DateTime.utc(2026, 9, 1),
+          ),
+        ],
+      );
+      final json =
+          jsonDecode(await registry.execute(_call({'pattern': 'flutter'})))
+              as Map<String, dynamic>;
+      final scopes =
+          (json['hits'] as List).map((h) => (h as Map)['scope']).toSet();
+      expect(scopes, containsAll(['conversation', 'crash', 'memory']));
+    });
+
+    test('absent loadFacts reports the memory scope unavailable', () async {
+      final registry = MemorySearchToolRegistry(
+        loadSummaries: () => summaries,
+        loadCheckpoint: (id) => checkpoints[id],
+      );
+      final json = jsonDecode(
+              await registry.execute(_call({'pattern': 'x', 'scope': 'memory'})))
+          as Map<String, dynamic>;
+      expect(json['total'], 0);
+      expect(json['error'], contains('memory'));
+    });
+
+    test('absent loadFacts is a silent skip under the default all-scope',
+        () async {
+      final registry = MemorySearchToolRegistry(
+        loadSummaries: () => summaries,
+        loadCheckpoint: (id) => checkpoints[id],
+      );
+      final json = jsonDecode(
+              await registry.execute(_call({'pattern': '不匹配的内容'})))
+          as Map<String, dynamic>;
+      expect(json['total'], 0);
+      expect(json.containsKey('error'), false);
+    });
+
+    test('loadFacts exceptions are swallowed with an error note', () async {
+      final registry = MemorySearchToolRegistry(
+        loadSummaries: () => summaries,
+        loadCheckpoint: (id) => checkpoints[id],
+        loadFacts: () => throw StateError('prefs broken'),
+      );
+      final json = jsonDecode(
+              await registry.execute(_call({'pattern': 'x', 'scope': 'memory'})))
+          as Map<String, dynamic>;
+      expect(json['total'], 0);
+      expect(json['error'], contains('memory store unavailable'));
+    });
+
+    test('memory hits respect max_results and flag truncation', () async {
+      final registry = MemorySearchToolRegistry(
+        loadSummaries: () => summaries,
+        loadCheckpoint: (id) => checkpoints[id],
+        loadFacts: () => [
+          for (var i = 0; i < 5; i++)
+            MemoryFact(
+              id: 'm$i',
+              text: '偏好记录 $i',
+              createdAt: DateTime.utc(2026, 9, 1),
+            ),
+        ],
+      );
+      final json = jsonDecode(await registry.execute(
+              _call({'pattern': '偏好', 'scope': 'memory', 'max_results': 2})))
+          as Map<String, dynamic>;
+      expect(json['total'], 2);
+      expect(json['truncated'], true);
     });
   });
 }
