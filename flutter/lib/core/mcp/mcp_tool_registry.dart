@@ -46,6 +46,29 @@ class McpToolRegistry implements AgentToolRegistry {
   final List<McpToolEntry> _entries;
   final McpClient _client;
 
+  /// PHASE 7: 当前可达的服务器 id 列表(按 config.id,去重,保持首次出现顺序)。
+  List<String> get serverIds {
+    final seen = <String>{};
+    return [
+      for (final entry in _entries)
+        if (seen.add(entry.server.id)) entry.server.id,
+    ];
+  }
+
+  /// PHASE 7: 指定服务器的工具 spec(按 config.id 匹配;该服务器不可达
+  /// 或无工具时为空)。
+  List<ToolSpec> specsFor(String serverId) => [
+        for (final entry in _entries)
+          if (entry.server.id == serverId)
+            ToolSpec(
+              toolId(entry.server.name, entry.info.name),
+              entry.info.description.isEmpty
+                  ? 'MCP 工具 ${entry.server.name}/${entry.info.name}'
+                  : entry.info.description,
+              'low',
+            ),
+      ];
+
   /// `mcp_<server>_<tool>` with anything outside [a-zA-Z0-9_] collapsed.
   static String toolId(String serverName, String toolName) {
     String sanitize(String raw) => raw
