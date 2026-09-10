@@ -1,6 +1,8 @@
 import 'dart:async';
 
-import 'models.dart';
+// ToolCall/ApprovalDecision arrive via this import too: the port module
+// re-exports the shared vocabulary (PHASE 12).
+import '../capability/approval/approval_port.dart';
 
 /// A tool call awaiting a human decision.
 class PendingApproval {
@@ -40,7 +42,12 @@ class PendingApproval {
 /// Revocation of persisted entries lives with the host store (app-data clear
 /// or a future settings entry); this class only exposes [persistentAllowView]
 /// and [clearPersistentAllow] for the in-memory mirror.
-class ApprovalBroker implements ApprovalGateway {
+///
+/// PHASE 12 (R7): the broker also satisfies the capability-level
+/// [ApprovalPort] seam, so features can depend on the port type instead of
+/// this concrete class. Implementing the port is purely additive — every
+/// public behavior above is byte-identical.
+class ApprovalBroker implements ApprovalGateway, ApprovalPort {
   ApprovalBroker({
     Set<String>? initialPersistentAllow,
     this.onAllowAlwaysPersist,
@@ -65,6 +72,7 @@ class ApprovalBroker implements ApprovalGateway {
 
   /// True when [toolName] is allowed for the rest of the session OR was
   /// restored from the host's persistent store.
+  @override
   bool isAlwaysAllowed(String toolName) =>
       _allowSet.contains(toolName) || _persistentAllow.contains(toolName);
 
@@ -86,6 +94,7 @@ class ApprovalBroker implements ApprovalGateway {
   /// Returns true when a pending request was resolved; false when there was
   /// nothing pending (e.g. the user opened the approval screen without an
   /// active agent request).
+  @override
   bool resolve(ApprovalDecision decision) {
     final current = _pending;
     if (current == null) return false;
@@ -99,6 +108,7 @@ class ApprovalBroker implements ApprovalGateway {
   /// the user again. In-memory only: never written to any store. When the
   /// host provided [onAllowAlwaysPersist], the hook is additionally invoked
   /// with the tool name so the host can persist it across sessions.
+  @override
   void approveAlways(ToolCall call) {
     _allowSet.add(call.name);
     onAllowAlwaysPersist?.call(call.name);
