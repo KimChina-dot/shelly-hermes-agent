@@ -26,15 +26,16 @@
 | PHASE 12 | `808b24d`(第二波任务分支提交) | ApprovalPort 审批端口解耦:`lib/capability/approval/` 端口 + re-export,ApprovalBroker implements ApprovalPort,approval_sheet 不再直连 core;纯增量零行为变化,7 例契约测试 | ≈ **P9**(审批与策略门面)已落地 |
 | PHASE 13 | `a9f4159`(第二波任务分支提交) | Mission Timeline 只读 UI:时间线列表 + 详情页(只读 MissionStore/MissionCoordinator/事件总线),第 6 个「使命」Tab 挂入 home_shell,7 例测试 | ≈ **P11** 已落地(首块;Home/Composer 改造属计划余量) |
 | PHASE 14 | 本提交(+控制器修正) | 3.0 文档收账(CHANGELOG 3.0 段 + 本执行状态段) | ≈ **P15** 的"CHANGELOG 同步"单项,非发布门禁本身 |
+| PHASE 15 | `7a9efe6`(#62,第三波) | 安全网补测:§3 空洞(approval_sheet UI 10 例/task_service/dsh_provider/hermes_provider)+ bridge_dashboard 计时可注入消雷(5 连跑无 flake) | ≈ **P1**(安全网加固)已落地 |
+| PHASE 16 | `d476e66`(#63,第三波) | shelly_facade.dart 聚合 37 库,features 64/65 处 core/state 直连 import 机械替换,零逻辑改动 | ≈ **P10**(features 消费面收敛)已落地(approval_sheet 的 state 导入按 PHASE 12 端口策略保留) |
+| PHASE 17 | `76682c2`(#64,第三波) | 能力谓词收紧:任务装配期构建真实能力可用集(filesystem/terminal/mcp_<id>/bridge/DSH id)驱动 use_skill | 计划外(能力面收紧,PHASE 9 遗留占位退役) |
 
 ### 尚未落地的文档阶段
 
-- **P1 安全网补测**(approval_sheet UI、task_service、provider 装配测试等 TEST_COVERAGE_MAP §3 空洞)——无提交(approval_sheet 的端口契约测试已随实际 PHASE 12 落地,但 TEST_COVERAGE_MAP §3 全表未清)。
 - **P8 cutover 启用迁移**(main.dart 接线 `MigrationManager.run()` + v2.2→v2.3→v3 三路升级矩阵)——未做;PHASE 10 明确 build-only,生产代码不调用。
-- **P10 features 消费面收敛**(R7 表 33 处 import 改 facade)——未做;`lib/shelly_facade.dart` 尚不存在(features/approval 已随 PHASE 12 改经端口导入,是唯一收敛点)。
 - **P11 余量**(Home/Composer 改造)——Mission Timeline 已随 PHASE 13 落地,Home/Composer 仍属计划余量。
 - **P13 平台契约回归**(subst 冒烟、Android 六通道契约测试、release SHA256)——未做。
-- **P14 Facade 冻结 + 3.1 搬迁清单**(MODULE_MAP keep/wrap/move 标注、@Deprecated)——未做。
+- **P14 Facade 冻结 + 3.1 搬迁清单**(MODULE_MAP keep/wrap/move 标注、@Deprecated)——未做;facade 本体已随 PHASE 16 就位,冻结标注未做。
 - **P15 发布门禁**(全量绿、迁移矩阵三路、双构建 SHA256、rollback 演练)——未做;PHASE 14 仅覆盖其中 CHANGELOG 同步单项。
 
 ### 与计划的净偏差摘要

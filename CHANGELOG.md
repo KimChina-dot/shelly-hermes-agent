@@ -34,6 +34,13 @@ v3.0 架构迁移:按 `docs/audit/V3_MIGRATION_PLAN.md` 以增量并行轨推进
   挂入 home_shell,数据只经 MissionStore/MissionCoordinator/事件总线(`a9f4159`,第二波任务提交)。
 - **PHASE 14** 文档收账:CHANGELOG 3.0 段 + V3_MIGRATION_PLAN 执行状态段
   (实际阶段↔文档编号映射全表、未落地清单)(`1861474`,第二波任务提交)。
+- **PHASE 15** 安全网补测:TEST_COVERAGE_MAP §3 空洞(approval_sheet UI 10 例/task_service/
+  dsh_provider/hermes_provider)+ bridge_dashboard 计时可注入消雷(5 连跑无 flake,套件 1:38→1:09)
+  (`7a9efe6`,第三波,#62)。
+- **PHASE 16** facade 收敛:shelly_facade.dart 聚合 37 库,features 64/65 处 core/state 直连
+  import 机械替换,零逻辑改动(`d476e66`,第三波,#63)。
+- **PHASE 17** 能力谓词收紧:任务装配期构建真实能力可用集(filesystem/terminal/mcp_<id>/bridge/
+  DSH id)驱动 use_skill,PHASE 9 占位退役(`76682c2`,第三波,#64)。
 
 ### 状态说明
 
