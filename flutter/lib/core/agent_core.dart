@@ -107,6 +107,7 @@ class AgentCore {
     this.limits = const AgentLimits(),
     this.approvalPolicy = toolApprovalRequireAll,
     this.contextCompactor,
+    this.initialConsumedTokens = 0,
     AgentObserver? observer,
   })  : _model = model,
         _streamingModel = model is StreamingModelGateway ? model : null,
@@ -125,6 +126,11 @@ class AgentCore {
   final ContextCompactor? contextCompactor;
   final AgentObserver? _observer;
 
+  /// Tokens charged before the first round (PHASE 8 Brain preflight); they
+  /// share the one maxTokens budget with the agent rounds. A resume's
+  /// checkpoint value always wins over this seed.
+  final int initialConsumedTokens;
+
   Future<AgentResult> run(
     List<AgentMessage> initialMessages,
     CancellationSignal cancellation, {
@@ -132,7 +138,8 @@ class AgentCore {
   }) async {
     final messages = List<AgentMessage>.from(resumeFrom?.messages ?? initialMessages);
     var round = resumeFrom?.round ?? 0;
-    var consumedTokens = resumeFrom?.consumedTokens ?? 0;
+    var consumedTokens =
+        resumeFrom?.consumedTokens ?? initialConsumedTokens;
     var toolCallCount = resumeFrom?.toolCalls ?? 0;
     final pendingToolCalls = List<PendingToolCall>.from(
       resumeFrom?.pendingToolCalls ?? const <PendingToolCall>[],

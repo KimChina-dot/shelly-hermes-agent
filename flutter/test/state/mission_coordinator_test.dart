@@ -249,7 +249,11 @@ void main() {
     test('a full chat round creates and completes a mission with one step '
         'per round', () async {
       SharedPreferences.setMockInitialValues({});
-      final gateway = _ScriptedGateway([const ModelReply(content: '第一答')]);
+      // Brain classify prefill (PHASE 8) precedes the one agent round.
+      final gateway = _ScriptedGateway([
+        const ModelReply(content: 'quickAnswer'),
+        const ModelReply(content: '第一答'),
+      ]);
       final bus = AgentEventBus();
       final collector = _EventCollector(bus);
       final container = ProviderContainer(overrides: [
@@ -331,7 +335,9 @@ void main() {
     test('a missing prefs backend degrades to no-op without breaking the '
         'chat', () async {
       SharedPreferences.setMockInitialValues({});
-      final gateway = _ScriptedGateway([const ModelReply(content: '降级回答')]);
+      // Brain classify prefill (PHASE 8) precedes the one agent round.
+      final gateway =
+          _ScriptedGateway([const ModelReply(content: 'quickAnswer'), const ModelReply(content: '降级回答')]);
       final bus = AgentEventBus();
       final collector = _EventCollector(bus);
       final container = ProviderContainer(overrides: [

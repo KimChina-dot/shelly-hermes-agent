@@ -27,10 +27,9 @@ class _ScriptedGateway implements StreamingModelGateway {
 
   @override
   Future<ModelReply> complete(List<AgentMessage> messages) async {
-    if (delay > Duration.zero) {
-      await Future<void>.delayed(delay);
-    }
-    seen.add(List.of(messages));
+    // Brain prefill calls (PHASE 8) come through the non-streaming path:
+    // they consume the same script but stay out of [seen], so round-count
+    // assertions keep counting model rounds only.
     return replies.removeAt(0);
   }
 
@@ -39,7 +38,11 @@ class _ScriptedGateway implements StreamingModelGateway {
     List<AgentMessage> messages,
     void Function(String text) onDelta,
   ) async {
-    final reply = await complete(messages);
+    if (delay > Duration.zero) {
+      await Future<void>.delayed(delay);
+    }
+    seen.add(List.of(messages));
+    final reply = replies.removeAt(0);
     if (reply.content.isNotEmpty) onDelta(reply.content);
     return reply;
   }
@@ -75,8 +78,14 @@ void main() {
 
   test('regenerateLast drops the old reply and produces a new one', () async {
     SharedPreferences.setMockInitialValues({});
-    final gateway =
-        _ScriptedGateway([_reply('第一版回复'), _reply('第二版回复')]);
+    final gateway = _ScriptedGateway([
+      // Brain classify prefill for the initial send only (PHASE 8); a
+      // regeneration re-dispatches through the resume path, which skips
+      // the preflight.
+      _reply('quickAnswer'),
+      _reply('第一版回复'),
+      _reply('第二版回复'),
+    ]);
     final container = ProviderContainer(overrides: [
       chatGatewayOverrideProvider.overrideWith((ref) => gateway),
     ]);
@@ -123,8 +132,11 @@ void main() {
 
   test('editAndResend replaces the user text and re-runs', () async {
     SharedPreferences.setMockInitialValues({});
-    final gateway =
-        _ScriptedGateway([_reply('原始回复'), _reply('修改后的回复')]);
+    final gateway = _ScriptedGateway([
+      _reply('quickAnswer'),
+      _reply('原始回复'),
+      _reply('修改后的回复'),
+    ]);
     final container = ProviderContainer(overrides: [
       chatGatewayOverrideProvider.overrideWith((ref) => gateway),
     ]);
@@ -162,7 +174,7 @@ void main() {
       () async {
     SharedPreferences.setMockInitialValues({});
     final gateway = _ScriptedGateway(
-      [_reply('慢回复')],
+      [_reply('quickAnswer'), _reply('慢回复')],
       delay: const Duration(milliseconds: 400),
     );
     final container = ProviderContainer(overrides: [
@@ -206,8 +218,11 @@ void main() {
   test('checkpoint truncation persists: a fresh controller reloads only the '
       'regenerated turn', () async {
     SharedPreferences.setMockInitialValues({});
-    final gateway =
-        _ScriptedGateway([_reply('第一版回复'), _reply('第二版回复')]);
+    final gateway = _ScriptedGateway([
+      _reply('quickAnswer'),
+      _reply('第一版回复'),
+      _reply('第二版回复'),
+    ]);
     final container = ProviderContainer(overrides: [
       chatGatewayOverrideProvider.overrideWith((ref) => gateway),
     ]);

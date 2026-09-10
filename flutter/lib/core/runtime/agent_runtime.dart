@@ -43,6 +43,7 @@ class AgentRuntime {
       approvalPolicy:
           context.approvalPolicy ?? ToolPolicy.standard.toApprovalPolicy(),
       contextCompactor: context.contextCompactor,
+      initialConsumedTokens: context.initialConsumedTokens,
       observer: _observer,
     );
     final result = await core.run(effective, cancellation, resumeFrom: resumeFrom);

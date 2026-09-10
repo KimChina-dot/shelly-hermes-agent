@@ -10,6 +10,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../application/mission_coordinator.dart';
+import '../agent/brain/brain_gateway.dart';
+import '../agent/brain/intent_router.dart';
+import '../agent/brain/planner.dart';
 import '../core/agent_core.dart';
 import '../core/context/context_compactor.dart';
 import '../core/dsh/tool_registry.dart';
@@ -1275,6 +1278,12 @@ class _TaskRunner implements AgentTaskRunner {
     } catch (_) {
       memoryStore = null;
     }
+    // The raw user request (last user message) keys both the v3 Brain
+    // preflight and the mission bridge below.
+    var userText = '';
+    for (final message in preparedMessages) {
+      if (message.role == MessageRole.user) userText = message.content;
+    }
     // v3 mission bridge (PHASE 2): one mission per task run — created at
     // task start, one StepStarted per model round, one tool-call record per
     // ToolFinished, completed/failed when the run settles. Best-effort and
@@ -1289,10 +1298,6 @@ class _TaskRunner implements AgentTaskRunner {
     }
     _MissionBridge? bridge;
     if (missionCoordinator != null) {
-      var userText = '';
-      for (final message in preparedMessages) {
-        if (message.role == MessageRole.user) userText = message.content;
-      }
       final missionId = missionCoordinator.startForConversation(
         _conversationId,
         userText,
@@ -1351,6 +1356,40 @@ class _TaskRunner implements AgentTaskRunner {
                 ),
               )
             : DemoModelGateway());
+
+    // v3 PHASE 8 brain preflight: on a fresh send the Brain classifies the
+    // request and, for a multi-step intent, seeds the plan into the notes
+    // registry so the 「当前计划」 recitation block opens the task with a
+    // plan the model keeps current through the `plan` tool. Brain calls
+    // are extra prefills on the same main gateway, so their tokens are
+    // charged to the one 64K budget via [AgentContext.initialConsumedTokens]
+    // (never a side ledger). Strictly best-effort: any failure — or the 10s
+    // cap on a hung gateway — degrades to "no plan", never to a failed
+    // task. Demo mode and resumes skip the preflight; a resume replays its
+    // checkpoint, whose consumedTokens already carries the original charge.
+    var brainTokens = 0;
+    if (resumeFrom == null && model is! DemoModelGateway) {
+      try {
+        final meter = MeteredGateway(inner: model);
+        final decision = await Brain(gateway: meter)
+            .decide(userText)
+            .timeout(
+              const Duration(seconds: 10),
+              onTimeout: () =>
+                  const BrainDecision(kind: IntentKind.quickAnswer),
+            );
+        // Read before seeding: a reply landing after the timeout cap still
+        // counts here if it made it back in time; a straggler after this
+        // read is at most one under-counted prefill.
+        brainTokens = meter.consumedTokens;
+        if (decision.kind == IntentKind.multiStep &&
+            decision.steps.isNotEmpty) {
+          notesTools.seedPlan(decision.steps);
+        }
+      } catch (_) {
+        // A broken preflight must never break the chat.
+      }
+    }
 
     // Lightweight summary jobs (context-compaction digest, oversized
     // tool-output digests) run on the cheap auxiliary model when it is
@@ -1448,6 +1487,7 @@ class _TaskRunner implements AgentTaskRunner {
             ToolPolicy.standard.toApprovalPolicy(),
           ),
         ),
+        initialConsumedTokens: brainTokens,
       ),
       approvals: _session.broker,
       observer: _SessionObserver(_session, memoryExtractor, mission: bridge),
