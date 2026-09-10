@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/models.dart' show ApprovalDecision;
-import '../../core/approval_broker.dart' show PendingApproval;
+// PHASE 12 (R7): the sheet consumes the approval vocabulary through the
+// capability port module instead of importing core directly.
+import '../../capability/approval/approval_port.dart'
+    show ApprovalDecision, PendingApproval;
 import '../../design/components/buttons.dart';
 import '../../design/components/risk_chip.dart';
 import '../../design/tokens.dart';

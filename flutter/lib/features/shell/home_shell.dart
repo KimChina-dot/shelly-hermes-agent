@@ -14,6 +14,7 @@ import '../../design/tokens.dart';
 import '../chat/chat_page.dart';
 import '../capabilities/capabilities_page.dart';
 import '../history/history_page.dart';
+import '../missions/mission_timeline_page.dart';
 import '../profile/profile_page.dart';
 import '../tasks/tasks_page.dart';
 
@@ -21,11 +22,13 @@ import '../tasks/tasks_page.dart';
 /// (e.g. 历史 → 对话 after resuming) can drive tab switches.
 final tabIndexProvider = StateProvider<int>((ref) => 0);
 
-/// Five-tab bottom navigation shell: 对话 / 任务 / 历史 / 能力 / 我的.
+/// Six-tab bottom navigation shell: 对话 / 任务 / 历史 / 能力 / 我的 / 使命.
 /// An [IndexedStack] keeps every tab's scroll and stream state alive while
 /// the user switches destinations. The stateful shell also arms the
 /// scheduled-task ticker (PHASE 41): started on init, re-ticked on app
 /// resume, and re-armed whenever the tasks page changes the schedule.
+/// PHASE 13 appends the read-only mission timeline tab at the end so the
+/// existing tab indices (e.g. the profile listener on index 4) stay put.
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -35,6 +38,7 @@ class HomeShell extends ConsumerStatefulWidget {
     HistoryPage(),
     CapabilitiesPage(),
     ProfilePage(),
+    MissionTimelinePage(),
   ];
 
   @override
@@ -218,6 +222,11 @@ class _HomeShellState extends ConsumerState<HomeShell>
             icon: Icon(Icons.person_outline_rounded),
             selectedIcon: Icon(Icons.person_rounded),
             label: '我的',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.timeline_outlined),
+            selectedIcon: Icon(Icons.timeline_rounded),
+            label: '使命',
           ),
         ],
       ),
