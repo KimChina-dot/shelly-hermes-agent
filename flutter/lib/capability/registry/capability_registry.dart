@@ -15,6 +15,9 @@ class CapabilityRegistry {
 
   Capability? byId(String id) => _byId[id];
 
+  /// 移除一个 capability(Dsh 插件禁用/卸载时由 DynamicSkillHost 调用)。
+  void remove(String id) => _byId.remove(id);
+
   List<Capability> byCategory(CapabilityCategory category) =>
       [for (final c in _byId.values) if (c.category == category) c];
 
