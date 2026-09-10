@@ -3,6 +3,47 @@
 > PHASE 0 审计文档 3-3。对齐 v3.0 主计划 Phase 0-15,并按控制器评审结论**适配**:3.0 期**不做目录大挪移**;新模块进新路径(`lib/domain/`、`lib/agent/brain/`、`lib/capability/`);既有模块**以 facade 导出**;物理搬迁整体推迟到 3.1。
 > 本计划直接消费同目录三份文档:TEST_COVERAGE_MAP.md(闸门清单)、MIGRATION_RISK.md(R1-R7)、CURRENT_ARCHITECTURE.md / MODULE_MAP.md / DATA_MODEL_MAP.md(结构事实)。
 
+## 执行状态(2026-09-10)
+
+> 依据 `git log 6694556..141cfa5`(#49-#58)逐提交核对。**实际执行的 PHASE 序列与本节下方 P0-P15 编号不一一对应**:执行序按依赖重排,且包含一批计划外的能力层扩展;个别台账条目在仓库历史中无可证提交,已按事实标注。
+
+### 实际阶段 ↔ 文档编号映射(全表)
+
+| 实际阶段 | 提交(合并号) | 实际内容(以 diff 为准) | 对应文档编号 |
+| --- | --- | --- | --- |
+| PHASE 0 | `6694556`(#49) | 架构审计九文档(docs/audit/*) | = P0(已标"已完成") |
+| PHASE 1 | `b8bb189`(#50) | `lib/domain/agent/` 只读模型(Goal/Mission/Task/Step/Action + MissionStore)+ `lib/core/events/` MissionEvent/AgentEventBus,纯增量零改旧文件 | ≈ **P2**(domain 骨架);超出项:P2 未列事件总线,与 domain 同批落地 |
+| PHASE 2 | `08064b6`(#51) | `lib/application/mission_coordinator.dart` 桥接 task 生命周期到 v3 Mission 域,chat_session 挂接发事件 | ≈ **P7**(Mission API);差异:门面落在新增 `lib/application/` 桥接器而非 domain 内,task_queue/task_recovery 零改(符合 P7"不复制状态机") |
+| PHASE 3 | `e253e15`(#52) | 最小 Brain:intent_router + planner(脚本化可测,无旁路网关) | ≈ **P5 前半**(Brain 组件就位,尚未接 AgentCore) |
+| PHASE 4 | `68512d8`(#53) | 统一 Capability 层:capability/registry(caps)+ trust(trust_score/trust_store,落 `shelly.capability.trust` 键) | ≈ **P4**(能力端口);实现方式差异:新建增量层,**未**把 core/tools、core/runtime 现有 registry 改造为 adapter 满足端口(P4 原文的 facade 兼容改造未做) |
+| PHASE 5 | `17518c2`(#54) | 技能层:skill_definition/skill_registry/builtin_skills | 计划外新增(能力层扩展系列,P0-P15 无对应编号) |
+| PHASE 6 | `ef28daf`(#53 合并流) | DynamicSkillHost:DSH 插件统一挂为 capability | 计划外新增(能力层扩展系列) |
+| PHASE 7 | `2b05992`(#53 合并流) | MCP 桥:servers as capabilities,serverIds/specsFor API | 计划外新增(能力层扩展系列) |
+| PHASE 8 | `408b63a`(#55) | Brain preflight 集成:plan seeding + shared budget(Brain 调用计入同一 64K 账本),agent_core/chat_session 接线,含 steering/regenerate 适配 | ≈ **P5 后半**(接入 AgentCore)+ **P6**(计入 64K 预算)合并落地 |
+| PHASE 9 | `d20c844`(#56) | 技能激活工具:list_skills/use_skill 上模型工具面(skill_tool_registry) | 计划外新增(能力层扩展系列) |
+| PHASE 10 | `22b97a8`(#57) | MigrationManager 五段式(backup→validate→migrate→verify→rollback)+ R1 键清单 MigrationKeySpec 校验表(30 条 spec);build-only,生产启动串未接线 | ≈ **P3**(MigrationManager 只建不跑) |
+| PHASE 11 | `141cfa5`(#58) | eval 扩展:brain 路径场景(plan seeding/bypass/budget/fail-open/recitation refresh),场景 11→16,原场景不回归 | ≈ **P12**(评测扩展,≥5 新场景达成:实测 +5) |
+| PHASE 12 | `808b24d`(第二波任务分支提交) | ApprovalPort 审批端口解耦:`lib/capability/approval/` 端口 + re-export,ApprovalBroker implements ApprovalPort,approval_sheet 不再直连 core;纯增量零行为变化,7 例契约测试 | ≈ **P9**(审批与策略门面)已落地 |
+| PHASE 13 | `a9f4159`(第二波任务分支提交) | Mission Timeline 只读 UI:时间线列表 + 详情页(只读 MissionStore/MissionCoordinator/事件总线),第 6 个「使命」Tab 挂入 home_shell,7 例测试 | ≈ **P11** 已落地(首块;Home/Composer 改造属计划余量) |
+| PHASE 14 | 本提交(+控制器修正) | 3.0 文档收账(CHANGELOG 3.0 段 + 本执行状态段) | ≈ **P15** 的"CHANGELOG 同步"单项,非发布门禁本身 |
+
+### 尚未落地的文档阶段
+
+- **P1 安全网补测**(approval_sheet UI、task_service、provider 装配测试等 TEST_COVERAGE_MAP §3 空洞)——无提交(approval_sheet 的端口契约测试已随实际 PHASE 12 落地,但 TEST_COVERAGE_MAP §3 全表未清)。
+- **P8 cutover 启用迁移**(main.dart 接线 `MigrationManager.run()` + v2.2→v2.3→v3 三路升级矩阵)——未做;PHASE 10 明确 build-only,生产代码不调用。
+- **P10 features 消费面收敛**(R7 表 33 处 import 改 facade)——未做;`lib/shelly_facade.dart` 尚不存在(features/approval 已随 PHASE 12 改经端口导入,是唯一收敛点)。
+- **P11 余量**(Home/Composer 改造)——Mission Timeline 已随 PHASE 13 落地,Home/Composer 仍属计划余量。
+- **P13 平台契约回归**(subst 冒烟、Android 六通道契约测试、release SHA256)——未做。
+- **P14 Facade 冻结 + 3.1 搬迁清单**(MODULE_MAP keep/wrap/move 标注、@Deprecated)——未做。
+- **P15 发布门禁**(全量绿、迁移矩阵三路、双构建 SHA256、rollback 演练)——未做;PHASE 14 仅覆盖其中 CHANGELOG 同步单项。
+
+### 与计划的净偏差摘要
+
+1. **顺序重排**:P2/P5/P6/P7/P3/P12 按依赖序作为实际 PHASE 1/3/8/2/10/11 执行;P0 唯一同号。
+2. **计划外扩展**:实际 PHASE 4-7、9 在 P4 能力层基础上长出技能层、DSh 插件、MCP 桥、技能工具面五件套,P0-P15 无对应编号。
+3. **P4 实现方式偏差**:新建增量 capability 层而非现有 registry 的 adapter 改造,工具派发顺序经 eval 回归保障。
+4. **facade 策略未启动**:总纲"既有模块以 facade 导出"至今零落地(shelly_facade.dart 不存在),features 直调现状未收敛,3.1 搬迁的机械替换前提尚未就绪。
+
 ## 0. 适配性总纲(控制器评审决议)
 
 | 决议 | 落地含义 |

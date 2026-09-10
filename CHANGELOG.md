@@ -1,5 +1,45 @@
 # Changelog
 
+## 3.0.0 (未发布)
+
+v3.0 架构迁移:按 `docs/audit/V3_MIGRATION_PLAN.md` 以增量并行轨推进——新模块全部进新路径
+(`lib/domain/`、`lib/agent/brain/`、`lib/capability/`、`lib/skills/`、`lib/core/migration/`),
+既有 `lib/core|state|features` 原路径不动,目录大挪移推迟到 3.1。阶段序列与提交号如下
+(每阶段独立提交串,`6694556..141cfa5`,#49-#58)。
+
+### 迁移阶段(PHASE 0 → PHASE 14)
+
+- **PHASE 0** 架构审计:docs/audit/ 九文档(架构/模块/依赖/数据模型/Agent 回路/UI/测试覆盖/风险登记/迁移计划)(`6694556`,#49)。
+- **PHASE 1** v3 领域模型 + 事件总线:Goal/Mission/Task/Step/Action 只读模型、MissionStore、
+  MissionEvent/AgentEventBus;纯增量,零改旧文件(`b8bb189`,#50)。
+- **PHASE 2** Mission 桥接:MissionCoordinator 把 task 生命周期桥接到 v3 Mission 域
+  (chat_session 挂接发事件),不复制任务状态机(`08064b6`,#51)。
+- **PHASE 3** 最小 Brain:intent_router + planner,脚本化可测,不经旁路网关(`e253e15`,#52)。
+- **PHASE 4** 统一能力层:Capability/CapabilityRegistry/CapabilityRouter + 信任分
+  (trust_score/trust_store),为技能/插件/MCP 提供同一注册面(`68512d8`,#53)。
+- **PHASE 5** 技能层:skill_definition/skill_registry + 内置技能(`17518c2`,#54)。
+- **PHASE 6** DynamicSkillHost:DSH 插件统一挂为 capability(`ef28daf`,#53 合并流)。
+- **PHASE 7** MCP 桥:MCP servers as capabilities,serverIds/specsFor API(`2b05992`,#53 合并流)。
+- **PHASE 8** Brain preflight 集成:计划注入(plan seeding)+ 共享 token 预算,
+  Brain 调用计入同一 64K 消耗账本;agent_core/chat_session 接线,默认路径行为可回退(`408b63a`,#55)。
+- **PHASE 9** 技能激活工具:list_skills/use_skill 上模型工具面(skill_tool_registry),
+  模型可自主查用已注册技能(`d20c844`,#56)。
+- **PHASE 10** MigrationManager:五段式 backup→validate→migrate→verify→rollback +
+  R1 键清单 MigrationKeySpec 校验表;build-only,生产启动串未接线(`22b97a8`,#57)。
+- **PHASE 11** eval 扩展:brain 路径场景(plan seeding/bypass/budget/fail-open/recitation
+  refresh),eval 场景 11→16,原场景不回归(`141cfa5`,#58)。
+- **PHASE 12** ApprovalPort:审批经能力端口解耦,ApprovalBroker implements ApprovalPort,
+  approval_sheet 不再直连 core;纯增量零行为变化(`808b24d`,第二波任务提交)。
+- **PHASE 13** Mission Timeline:只读任务时间线 UI(列表 + 详情),第 6 个「使命」Tab
+  挂入 home_shell,数据只经 MissionStore/MissionCoordinator/事件总线(`a9f4159`,第二波任务提交)。
+- **PHASE 14** 文档收账:CHANGELOG 3.0 段 + V3_MIGRATION_PLAN 执行状态段
+  (实际阶段↔文档编号映射全表、未落地清单)(`1861474`,第二波任务提交)。
+
+### 状态说明
+
+- 尚未落地(见 V3_MIGRATION_PLAN.md 执行状态段):安全网补测、cutover 启用迁移、
+  features 收敛(facade)、Home/Composer 余量、平台契约回归、facade 冻结、发布门禁。
+
 ## 2.0.0 (2026-09-03)
 
 三系统融合版本:Shelly(执行)+ Hermes(记忆)+ DSH(能力),按 V2.0 路线图 PHASE 01→22 落地。
