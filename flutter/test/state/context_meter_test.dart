@@ -130,6 +130,8 @@ void main() {
       (tester) async {
     final container = await _sessionContainer(
       replies: [
+        // Brain classify prefill (PHASE 8): zero tokens, off the meter.
+        const ModelReply(content: 'quickAnswer'),
         const ModelReply(content: '已收到', inputTokens: 12345, outputTokens: 500),
       ],
     );
@@ -220,6 +222,8 @@ void main() {
   testWidgets('meter danger tint after a scripted heavy round', (tester) async {
     final container = await _sessionContainer(
       replies: [
+        // Brain classify prefill (PHASE 8): zero tokens, off the meter.
+        const ModelReply(content: 'quickAnswer'),
         const ModelReply(content: '长回复', inputTokens: 60000, outputTokens: 200),
       ],
     );

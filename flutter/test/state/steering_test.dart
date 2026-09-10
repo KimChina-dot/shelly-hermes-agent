@@ -29,14 +29,9 @@ class _ScriptedGateway implements StreamingModelGateway {
 
   @override
   Future<ModelReply> complete(List<AgentMessage> messages) async {
-    // Recording happens BEFORE the delay, so "seen" grows as soon as a round
-    // STARTS — polling on it never races past the reply.
-    seen.add(List.of(messages));
-    if (delay > Duration.zero) {
-      await Future<void>.delayed(delay);
-    }
-    // An exhausted script throws: the task fails (TaskState.failed), which
-    // the steering queue must NOT auto-dequeue on.
+    // Brain prefill calls (PHASE 8) come through the non-streaming path:
+    // they consume the same script but stay out of [seen], so the
+    // round-count assertions below keep counting model rounds only.
     return replies.removeAt(0);
   }
 
@@ -45,7 +40,15 @@ class _ScriptedGateway implements StreamingModelGateway {
     List<AgentMessage> messages,
     void Function(String text) onDelta,
   ) async {
-    final reply = await complete(messages);
+    // Recording happens BEFORE the delay, so "seen" grows as soon as a round
+    // STARTS — polling on it never races past the reply.
+    seen.add(List.of(messages));
+    if (delay > Duration.zero) {
+      await Future<void>.delayed(delay);
+    }
+    // An exhausted script throws: the task fails (TaskState.failed), which
+    // the steering queue must NOT auto-dequeue on.
+    final reply = replies.removeAt(0);
     if (reply.content.isNotEmpty) onDelta(reply.content);
     return reply;
   }
@@ -91,8 +94,14 @@ void main() {
   test('send while busy enqueues instead of no-op, auto-sends on completion',
       () async {
     SharedPreferences.setMockInitialValues({});
-    final gateway = _ScriptedGateway([_reply('第一答'), _reply('第二答')],
-        delay: const Duration(milliseconds: 60));
+    final gateway = _ScriptedGateway([
+      // One brain classify prefill per dispatch (PHASE 8), not counted in
+      // seen.
+      _reply('quickAnswer'),
+      _reply('第一答'),
+      _reply('quickAnswer'),
+      _reply('第二答'),
+    ], delay: const Duration(milliseconds: 60));
     final container = ProviderContainer(overrides: [
       chatGatewayOverrideProvider.overrideWith((ref) => gateway),
     ]);
@@ -142,9 +151,13 @@ void main() {
   test('queued messages drain FIFO, one per completion', () async {
     SharedPreferences.setMockInitialValues({});
     final gateway = _ScriptedGateway([
+      _reply('quickAnswer'),
       _reply('答一'),
+      _reply('quickAnswer'),
       _reply('答二'),
+      _reply('quickAnswer'),
       _reply('答三'),
+      _reply('quickAnswer'),
       _reply('答四'),
     ], delay: const Duration(milliseconds: 60));
     final container = ProviderContainer(overrides: [
@@ -200,11 +213,17 @@ void main() {
   test('queue caps at 5 and drops the oldest', () async {
     SharedPreferences.setMockInitialValues({});
     final gateway = _ScriptedGateway([
+      _reply('quickAnswer'),
       _reply('答零'),
+      _reply('quickAnswer'),
       _reply('答三'),
+      _reply('quickAnswer'),
       _reply('答四'),
+      _reply('quickAnswer'),
       _reply('答五'),
+      _reply('quickAnswer'),
       _reply('答六'),
+      _reply('quickAnswer'),
       _reply('答七'),
     ], delay: const Duration(milliseconds: 40));
     final container = ProviderContainer(overrides: [
@@ -237,8 +256,12 @@ void main() {
   test('removeQueuedMessage dismisses a parked message before its send',
       () async {
     SharedPreferences.setMockInitialValues({});
-    final gateway = _ScriptedGateway([_reply('答一'), _reply('答乙')],
-        delay: const Duration(milliseconds: 60));
+    final gateway = _ScriptedGateway([
+      _reply('quickAnswer'),
+      _reply('答一'),
+      _reply('quickAnswer'),
+      _reply('答乙'),
+    ], delay: const Duration(milliseconds: 60));
     final container = ProviderContainer(overrides: [
       chatGatewayOverrideProvider.overrideWith((ref) => gateway),
     ]);
@@ -299,7 +322,9 @@ void main() {
       () async {
     SharedPreferences.setMockInitialValues({});
     final gateway = _ScriptedGateway([
+      _reply('quickAnswer'),
       _reply('被打断的答'),
+      _reply('quickAnswer'),
       _reply('转向后的答'),
     ], delay: const Duration(milliseconds: 80));
     final container = ProviderContainer(overrides: [
@@ -342,7 +367,12 @@ void main() {
   test('steerMode=false keeps the queue-only behavior while busy', () async {
     SharedPreferences.setMockInitialValues({});
     final gateway = _ScriptedGateway(
-        [_reply('答一'), _reply('答二')],
+        [
+          _reply('quickAnswer'),
+          _reply('答一'),
+          _reply('quickAnswer'),
+          _reply('答二'),
+        ],
         delay: const Duration(milliseconds: 80));
     final container = ProviderContainer(overrides: [
       chatGatewayOverrideProvider.overrideWith((ref) => gateway),
@@ -378,8 +408,11 @@ void main() {
       () async {
     SharedPreferences.setMockInitialValues({});
     final gateway = _ScriptedGateway([
+      _reply('quickAnswer'),
       _reply('答一'),
+      _reply('quickAnswer'),
       _reply('答二'),
+      _reply('quickAnswer'),
       _reply('答三'),
     ], delay: const Duration(milliseconds: 80));
     final container = ProviderContainer(overrides: [

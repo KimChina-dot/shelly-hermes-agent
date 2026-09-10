@@ -47,10 +47,13 @@ void main() {
       'it in the system prompt', () async {
     SharedPreferences.setMockInitialValues({});
 
-    // Per round: the chat reply, then the extractor's JSON array.
+    // Per send: the brain classify prefill (PHASE 8), then the chat reply,
+    // then the extractor's JSON array.
     final gateway = _ScriptedGateway([
+      _reply('quickAnswer'),
       _reply('好的,已记住。'),
       _reply('["用户偏好简洁的中文回复"]'),
+      _reply('quickAnswer'),
       _reply('好的,已记住。'),
       _reply('["用户偏好简洁的中文回复"]'),
     ]);
@@ -83,9 +86,10 @@ void main() {
         .join();
     expect(reply, contains('好的,已记住。'));
 
-    // ...with the latest user + assistant pair as its input.
-    await _until(() => gateway.seen.length >= 2);
-    final extractionInput = gateway.seen[1];
+    // ...with the latest user + assistant pair as its input. Seen order:
+    // [0] brain classify, [1] chat round, [2] extraction.
+    await _until(() => gateway.seen.length >= 3);
+    final extractionInput = gateway.seen[2];
     expect(extractionInput.first.role, MessageRole.system);
     expect(
       extractionInput.last.content,
@@ -108,8 +112,9 @@ void main() {
     await controller.send('再聊两句');
     await _until(() =>
         container.read(chatSessionProvider).phase == SessionPhase.idle &&
-        gateway.seen.length >= 3);
-    final round2Messages = gateway.seen[2];
+        gateway.seen.length >= 5);
+    // [3] brain classify 2, [4] chat round 2.
+    final round2Messages = gateway.seen[4];
     expect(
       round2Messages.any((m) =>
           m.role == MessageRole.system &&
@@ -119,7 +124,7 @@ void main() {
     );
 
     // The second round re-extracts the same fact; dedupe keeps the store at 1.
-    await _until(() => gateway.seen.length >= 4);
+    await _until(() => gateway.seen.length >= 6);
     await Future<void>.delayed(const Duration(milliseconds: 500));
     expect(memory.loadFacts().length, 1);
     expect(memory.loadFacts().single.text, '用户偏好简洁的中文回复');

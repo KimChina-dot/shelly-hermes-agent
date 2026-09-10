@@ -91,13 +91,21 @@ class NotesToolRegistry implements AgentToolRegistry {
     if (steps is! List || steps.any((step) => step is! String)) {
       return 'error: plan requires "steps" to be an array of strings';
     }
+    seedPlan(steps.cast<String>());
+    return 'plan updated (${_steps.length} steps)';
+  }
+
+  /// Seeds the plan from outside the tool surface (PHASE 8): the Brain
+  /// preflight's steps open the task as the 「当前计划」 recitation block,
+  /// which the model then keeps current through the `plan` tool. Same shape
+  /// rules as the tool: blanks dropped, the list replaces any old plan.
+  void seedPlan(List<String> steps) {
     _steps
       ..clear()
       ..addAll([
         for (final step in steps)
           if (step.trim().isNotEmpty) step.trim(),
       ]);
-    return 'plan updated (${_steps.length} steps)';
   }
 
   /// Appends one progress note.

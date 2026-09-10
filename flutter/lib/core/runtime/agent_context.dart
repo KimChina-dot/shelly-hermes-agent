@@ -32,6 +32,7 @@ class AgentContext {
     this.contextCompactor,
     this.limits = const AgentLimits(maxRounds: 16, maxToolCalls: 32),
     this.approvalPolicy,
+    this.initialConsumedTokens = 0,
   });
 
   /// Conversation/task identifier used for checkpoint scoping.
@@ -61,4 +62,11 @@ class AgentContext {
   /// Null disables context compaction (small demos, tests). When set, the
   /// core folds older exchanges into a summary before each model round.
   final ContextCompactor? contextCompactor;
+
+  /// Tokens already spent before the first agent round (PHASE 8: the Brain
+  /// preflight's classify/plan calls). They share the one
+  /// [AgentLimits.maxTokens] budget with the agent rounds. A resume
+  /// ignores this: its checkpoint's consumedTokens already carries the
+  /// original preflight charge.
+  final int initialConsumedTokens;
 }
