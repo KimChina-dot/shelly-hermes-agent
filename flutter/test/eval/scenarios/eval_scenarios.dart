@@ -6,6 +6,13 @@
 /// the exact textual path. Rubric checks are plain Dart predicates, so the
 /// suite needs no LLM judge and is fully reproducible.
 ///
+/// PHASE 11 adds the Brain-path scenarios (11-15): a scenario may replay a
+/// Brain preflight ([BrainScript]) through the same scripted transport the
+/// engine rounds use, composed exactly like `chat_session.dart` wires it in
+/// production — [MeteredGateway] accounting, plan seeding into the notes
+/// registry, and the preflight charge carried into the engine's one token
+/// budget via `AgentCore.initialConsumedTokens`.
+///
 /// The harness in [runScenario] drives the real [AgentCore] with:
 /// - a scripted [StreamingModelGateway] (replies queued up front),
 /// - a [MemoryWorkspace] seeded by the scenario,
@@ -17,14 +24,25 @@ library;
 
 import 'dart:convert';
 
+import 'package:shelly_hermes/agent/brain/brain_gateway.dart';
+import 'package:shelly_hermes/agent/brain/intent_router.dart' show IntentKind;
+import 'package:shelly_hermes/agent/brain/planner.dart';
 import 'package:shelly_hermes/core/agent_core.dart';
 import 'package:shelly_hermes/core/approval_broker.dart';
+import 'package:shelly_hermes/core/gateway/openai_messages.dart';
 import 'package:shelly_hermes/core/memory/memory_store.dart';
 import 'package:shelly_hermes/core/models.dart';
 import 'package:shelly_hermes/core/runtime/tool_registry.dart';
 import 'package:shelly_hermes/core/shell/shell_executor.dart';
+import 'package:shelly_hermes/core/tools/notes_tool.dart';
 import 'package:shelly_hermes/core/tools/registry.dart';
 import 'package:shelly_hermes/core/tools/workspace.dart';
+import 'package:shelly_hermes/state/chat_session.dart'
+    show
+        personaWithRecitation,
+        personaWithToolRules,
+        recitationBodyDecorator,
+        systemPromptWithMemory;
 
 // ---------------------------------------------------------------------------
 // Scenario + rubric model
@@ -52,6 +70,9 @@ class EvalRunEvidence {
     required this.approvalRequests,
     required this.shellCommands,
     required this.checkpointsSaved,
+    required this.gatewayCalls,
+    required this.preflightTokens,
+    required this.engineRequests,
   });
 
   /// Terminal [AgentResult]; null when the run threw out of [AgentCore].
@@ -72,11 +93,13 @@ class EvalRunEvidence {
   /// Tool calls whose execution threw (ToolFinished.succeeded == false).
   final List<String> failedToolCalls;
 
-  /// Number of model rounds actually consumed.
+  /// Number of engine rounds actually consumed (AgentCore model calls only,
+  /// Brain preflight calls excluded).
   final int modelRounds;
 
   /// System-role message content the model saw at round start (memory /
-  /// persona composition grading).
+  /// persona composition grading); engine requests only, so a Brain
+  /// preflight's router/planner prompts never pollute the check.
   final List<String> systemPromptsSeen;
 
   /// Tool names that were routed through the approval gateway.
@@ -87,9 +110,45 @@ class EvalRunEvidence {
 
   final int checkpointsSaved;
 
+  /// Every model-gateway call the run made — Brain preflight (classify,
+  /// plan, failed calls included) plus engine rounds. The exact count pins
+  /// down "the planner was never called" (PHASE 11 bypass shape).
+  final int gatewayCalls;
+
+  /// Tokens the Brain preflight charged through [MeteredGateway], handed to
+  /// the engine as `AgentCore.initialConsumedTokens` (PHASE 8 seam).
+  final int preflightTokens;
+
+  /// What the engine-facing gateway saw per round, after the production
+  /// recitation decoration: one message list per engine round, in order.
+  final List<List<AgentMessage>> engineRequests;
+
   /// Final assistant message when the run completed, else null.
   String? get finalAnswer =>
       result is AgentCompleted ? (result as AgentCompleted).message : null;
+}
+
+/// Scripted Brain preflight (PHASE 11): [classify] is the reply the intent
+/// classify call receives; [plan] (only for a `multiStep` verdict) is the
+/// reply the planning call receives. The `BrainScript.failing` constructor
+/// makes the classify call throw before any reply is delivered — the
+/// fail-open shape of a broken classifier.
+///
+/// The replies replay through the SAME scripted transport the engine rounds
+/// use, ordered classify → plan → engine rounds, mirroring how production
+/// routes Brain calls through the main gateway as extra prefills.
+class BrainScript {
+  const BrainScript({required this.classify, this.plan})
+      : classifyThrows = false;
+
+  const BrainScript.failing()
+      : classify = null,
+        plan = null,
+        classifyThrows = true;
+
+  final ModelReply? classify;
+  final ModelReply? plan;
+  final bool classifyThrows;
 }
 
 /// A single eval case: user task + scripted gateway replies + seeded
@@ -107,6 +166,8 @@ class EvalScenario {
     this.memories = const [],
     this.systemPrompt,
     this.composeMemoryPrompt = false,
+    this.brain,
+    this.withNotesTools = false,
   });
 
   final String name;
@@ -114,6 +175,8 @@ class EvalScenario {
   final String userTask;
 
   /// Scripted model replies: tool-call rounds first, final answer last.
+  /// With a [brain] preflight these are the ENGINE replies only — the
+  /// preflight replies live in the [BrainScript].
   final List<ModelReply> script;
 
   /// Files present in the workspace before the run.
@@ -138,6 +201,18 @@ class EvalScenario {
   /// personaWithToolRules(persona), memories: memories). The composition
   /// call itself lives in trajectory_test.dart (visibleForTesting seam).
   final bool composeMemoryPrompt;
+
+  /// Brain preflight to run before the engine (PHASE 11). When set, the
+  /// harness reproduces the production wiring from chat_session.dart: the
+  /// Brain decides through a MeteredGateway over the shared transport, a
+  /// multiStep verdict with steps seeds the notes registry plan, and the
+  /// charged tokens become `AgentCore.initialConsumedTokens`.
+  final BrainScript? brain;
+
+  /// Notes-tool surface without a Brain (PHASE 46 recitation semantics):
+  /// adds the plan/note tools and the per-round 「当前计划」 refresh so a
+  /// scenario can grade the model keeping its own plan current.
+  final bool withNotesTools;
 }
 
 /// Aggregated verdict for one scenario, rendered by the harness report.
@@ -267,6 +342,86 @@ RubricCheck systemPromptContains(String needle) => RubricCheck(
           e.systemPromptsSeen.first.contains(needle),
     );
 
+/// Trajectory: exactly [n] model-gateway calls in total — Brain preflight
+/// (classify/plan, failed calls included) plus engine rounds. Pins down
+/// "the planner was never called" and fail-open call shapes.
+RubricCheck gatewayCallsExactly(int n) => RubricCheck(
+      'trajectory: exactly $n gateway calls (preflight + engine rounds)',
+      (e) => e.gatewayCalls == n,
+    );
+
+/// Trajectory: some engine-round request (any message in it) contains
+/// [needle] — the recitation 「当前计划」 block and its step text ride in
+/// either the opening system prompt or the per-round mirror message.
+RubricCheck requestContains(String needle) => RubricCheck(
+      'trajectory: some engine request contains "$needle"',
+      (e) => e.engineRequests
+          .any((request) => _requestHas(request, needle)),
+    );
+
+/// Trajectory: no engine-round request ever contains [needle].
+RubricCheck requestLacks(String needle) => RubricCheck(
+      'trajectory: no engine request contains "$needle"',
+      (e) => e.engineRequests
+          .every((request) => !_requestHas(request, needle)),
+    );
+
+/// Trajectory: engine round [round] (1-based) contains [needle] in some
+/// message — per-round recitation grading (e.g. the round AFTER a plan
+/// tool call reflects the new steps).
+RubricCheck requestRoundContains(int round, String needle) => RubricCheck(
+      'trajectory: engine round $round request contains "$needle"',
+      (e) =>
+          round >= 1 &&
+          round <= e.engineRequests.length &&
+          _requestHas(e.engineRequests[round - 1], needle),
+    );
+
+/// Trajectory: engine round [round] (1-based) contains no [needle] in any
+/// message — e.g. the round BEFORE any plan was recorded stays clean.
+RubricCheck requestRoundLacks(int round, String needle) => RubricCheck(
+      'trajectory: engine round $round request lacks "$needle"',
+      (e) =>
+          round >= 1 &&
+          round <= e.engineRequests.length &&
+          !_requestHas(e.engineRequests[round - 1], needle),
+    );
+
+bool _requestHas(List<AgentMessage> request, String needle) =>
+    request.any((message) => message.content.contains(needle));
+
+/// Trajectory: the Brain preflight charged exactly [n] tokens through the
+/// MeteredGateway (the PHASE 8 seam value handed to
+/// `AgentCore.initialConsumedTokens`).
+RubricCheck preflightTokensExactly(int n) => RubricCheck(
+      'trajectory: brain preflight charged exactly $n tokens',
+      (e) => e.preflightTokens == n,
+    );
+
+/// Outcome: the terminal checkpoint's consumedTokens equals [n] exactly —
+/// preflight charge plus every engine round's input+output tokens.
+RubricCheck consumedTokensExactly(int n) => RubricCheck(
+      'outcome: final checkpoint consumedTokens == $n',
+      (e) {
+        final result = e.result;
+        if (result is AgentCompleted) {
+          return result.checkpoint.consumedTokens == n;
+        }
+        if (result is AgentStopped) {
+          return result.checkpoint.consumedTokens == n;
+        }
+        return false;
+      },
+    );
+
+/// Trajectory: the named tool never went through the approval gateway
+/// (the inverse of [approvalAskedFor]; used for the auto-run plan/note
+/// state tools).
+RubricCheck approvalNotAskedFor(String tool) => RubricCheck(
+      'trajectory: $tool never routed through approval',
+      (e) => !e.approvalRequests.contains(tool),
+    );
+
 // ---------------------------------------------------------------------------
 // Harness
 // ---------------------------------------------------------------------------
@@ -299,6 +454,119 @@ class ScriptedGateway implements StreamingModelGateway {
     void Function(String text) onDelta,
   ) =>
       complete(messages);
+}
+
+/// Gateway whose first call — the Brain classify prefill — throws; later
+/// calls delegate normally. This is the fail-open shape of a broken
+/// classifier (mirrors test/state/brain_integration_test.dart): the Brain
+/// degrades to quickAnswer and the engine rounds still replay from the
+/// scripted transport. Records every call so the rubric can count the
+/// failed prefill in [EvalRunEvidence.gatewayCalls].
+class _FirstCallThrowsGateway implements StreamingModelGateway {
+  _FirstCallThrowsGateway(this._inner);
+
+  final StreamingModelGateway _inner;
+  final List<List<AgentMessage>> seen = [];
+  var _calls = 0;
+
+  @override
+  Future<ModelReply> complete(List<AgentMessage> messages) async {
+    seen.add(List.of(messages));
+    _calls += 1;
+    if (_calls == 1) throw StateError('classify down');
+    return _inner.complete(messages);
+  }
+
+  @override
+  Future<ModelReply> completeStreaming(
+    List<AgentMessage> messages,
+    void Function(String text) onDelta,
+  ) =>
+      complete(messages);
+}
+
+/// Engine-facing gateway that refreshes the 「当前计划」 recitation into
+/// every round the way the production OpenAI gateway's body decorator does:
+/// messages are encoded to the wire shape, run through the REAL
+/// [recitationBodyDecorator] (strip any stale mirror, append the current
+/// block as the LAST user message), then decoded back for the scripted
+/// transport and the evidence log. With an empty notes state the decorator
+/// is a no-op, so plan-less rounds keep their exact request shape.
+class _RecitationGateway implements StreamingModelGateway {
+  _RecitationGateway(this._inner, this._notes);
+
+  final StreamingModelGateway _inner;
+  final NotesToolRegistry _notes;
+
+  /// Decorated requests the model actually saw, one entry per engine round.
+  final List<List<AgentMessage>> requests = [];
+
+  @override
+  Future<ModelReply> complete(List<AgentMessage> messages) async {
+    final decorated = _applyRecitation(messages);
+    requests.add(decorated);
+    return _inner.complete(decorated);
+  }
+
+  @override
+  Future<ModelReply> completeStreaming(
+    List<AgentMessage> messages,
+    void Function(String text) onDelta,
+  ) =>
+      complete(messages);
+
+  List<AgentMessage> _applyRecitation(List<AgentMessage> messages) {
+    final body = <String, dynamic>{'messages': encodeMessages(messages)};
+    final decorated = recitationBodyDecorator(_notes, null)(body);
+    final encoded =
+        (decorated['messages'] as List).cast<Map<String, dynamic>>();
+    return [for (final message in encoded) _decodeMessage(message)];
+  }
+}
+
+AgentMessage _decodeMessage(Map<String, dynamic> raw) {
+  final role = switch (raw['role'] as String? ?? 'user') {
+    'system' => MessageRole.system,
+    'assistant' => MessageRole.assistant,
+    'tool' => MessageRole.tool,
+    _ => MessageRole.user,
+  };
+  return AgentMessage(
+    role: role,
+    content: _contentString(raw['content']),
+    toolCallId: raw['tool_call_id'] as String?,
+    toolCalls: decodeToolCalls(raw['tool_calls'] as List<dynamic>?),
+  );
+}
+
+String _contentString(Object? content) {
+  if (content is String) return content;
+  if (content is List) {
+    // Multipart content (images): join the text parts. Eval messages carry
+    // no attachments, so this only keeps the decode total.
+    return [
+      for (final part in content)
+        if (part is Map<String, dynamic> && part['type'] == 'text')
+          part['text'] as String? ?? '',
+    ].join('\n');
+  }
+  return '';
+}
+
+/// Auto-runs the no-op plan/note state tools, mirroring the chat session's
+/// notes approval policy (PHASE 46): they only mutate in-memory recitation
+/// state and never touch the workspace, so a user prompt per update would
+/// defeat the recitation pattern. Every other tool defers to [base].
+class _NotesStateApprovalPolicy implements ToolApprovalPolicy {
+  const _NotesStateApprovalPolicy(this._base);
+
+  final ToolApprovalPolicy _base;
+
+  static const _stateOnlyTools = {'plan', 'note'};
+
+  @override
+  bool requiresApproval(ToolCall call) =>
+      _stateOnlyTools.contains(call.name) ? false : _base.requiresApproval(call);
 }
 
 /// Approval gateway that records requests and approves everything, matching
@@ -365,29 +633,93 @@ Future<ScenarioOutcome> runScenario(
   final workspace = MemoryWorkspace(
     scenario.seedFiles.isEmpty ? null : Map.of(scenario.seedFiles),
   );
-  final gateway = ScriptedGateway(scenario.script);
+  final brain = scenario.brain;
+  final useNotes = brain != null || scenario.withNotesTools;
+
+  // One scripted transport shared by the Brain preflight and the engine
+  // rounds — production routes both through the same main gateway, so the
+  // call order is classify → plan → engine rounds.
+  final transport = ScriptedGateway([
+    if (brain != null && !brain.classifyThrows) ...[
+      brain.classify!,
+      if (brain.plan != null) brain.plan!,
+    ],
+    ...scenario.script,
+  ]);
+  final thrower = brain != null && brain.classifyThrows
+      ? _FirstCallThrowsGateway(transport)
+      : null;
+  final StreamingModelGateway shared = thrower ?? transport;
+
+  final notesTools = NotesToolRegistry();
+
+  // Brain preflight, composed exactly like chat_session.dart wires a fresh
+  // send: the Brain sees the shared gateway through a MeteredGateway (its
+  // tokens land in the one consumedTokens budget), and a multiStep verdict
+  // with steps seeds the opening recitation plan. Strictly best-effort —
+  // the Brain itself never throws. The preflight deliberately skips the
+  // recitation decoration: at preflight time the notes state is still
+  // empty, so the production decorator would append nothing anyway.
+  var preflightTokens = 0;
+  if (brain != null) {
+    final meter = MeteredGateway(inner: shared);
+    final decision = await Brain(gateway: meter).decide(scenario.userTask);
+    preflightTokens = meter.consumedTokens;
+    if (decision.kind == IntentKind.multiStep && decision.steps.isNotEmpty) {
+      notesTools.seedPlan(decision.steps);
+    }
+  }
+
+  // Engine-facing gateway: with notes tools in play it refreshes the
+  // 「当前计划」 recitation into every round through the REAL production
+  // body decorator.
+  final recitation = useNotes ? _RecitationGateway(shared, notesTools) : null;
+  final engineGateway = recitation ?? shared;
+
   final shellRunner = _NeverExecuteRunner();
   final registry = CompositeToolRegistry([
     WorkspaceToolRegistry(workspace: workspace),
     ShellToolRegistry(executor: ShellExecutor(runner: shellRunner)),
+    if (useNotes) notesTools,
   ]);
   final approvals = _ApproveAllGateway();
   final checkpoints = _MemoryCheckpoints();
   final observer = _EvalObserver();
   final core = AgentCore(
-    model: gateway,
+    model: engineGateway,
     tools: registry,
     approvals: approvals,
     checkpoints: checkpoints,
     limits: scenario.limits,
     approvalPolicy: ShellApprovalPolicy(
-      base: ToolPolicy.standard.toApprovalPolicy(),
+      // Notes scenarios mirror the chat session: plan/note auto-run, every
+      // other tool keeps the standard trust policy.
+      base: useNotes
+          ? _NotesStateApprovalPolicy(ToolPolicy.standard.toApprovalPolicy())
+          : ToolPolicy.standard.toApprovalPolicy(),
     ),
+    initialConsumedTokens: preflightTokens,
     observer: observer,
   );
+
+  // Prompt composition, mirroring the chat session seam: an explicit
+  // systemPrompt parameter wins; otherwise notes scenarios compose the
+  // production opening prompt — persona + tool rules + the current
+  // recitation block (the Brain-seeded plan, if any) + memories.
+  String? effectivePrompt = systemPrompt;
+  if (effectivePrompt == null && useNotes) {
+    effectivePrompt = systemPromptWithMemory(
+      persona: personaWithRecitation(
+        personaWithToolRules(scenario.persona),
+        notesTools.recitationBlock(),
+      ),
+      memories: scenario.memories,
+    );
+  }
+
   final messages = <AgentMessage>[
-    if (systemPrompt != null && systemPrompt.isNotEmpty)
-      AgentMessage(role: MessageRole.system, content: systemPrompt),
+    if (effectivePrompt != null && effectivePrompt.isNotEmpty)
+      AgentMessage(role: MessageRole.system, content: effectivePrompt),
     AgentMessage(role: MessageRole.user, content: scenario.userTask),
   ];
 
@@ -399,6 +731,7 @@ Future<ScenarioOutcome> runScenario(
     runError = error.toString();
   }
 
+  final engineRequests = recitation?.requests ?? transport.requests;
   final evidence = EvalRunEvidence(
     result: result,
     runError: runError,
@@ -406,15 +739,18 @@ Future<ScenarioOutcome> runScenario(
     toolCallOrder: observer.toolCallOrder,
     toolResults: observer.toolResults,
     failedToolCalls: observer.failedToolCalls,
-    modelRounds: gateway.requests.length,
+    modelRounds: engineRequests.length,
     systemPromptsSeen: [
-      for (final request in gateway.requests)
+      for (final request in engineRequests)
         if (request.isNotEmpty && request.first.role == MessageRole.system)
           request.first.content,
     ],
     approvalRequests: approvals.requestedTools,
     shellCommands: shellRunner.commands,
     checkpointsSaved: checkpoints.saved.length,
+    gatewayCalls: thrower?.seen.length ?? transport.requests.length,
+    preflightTokens: preflightTokens,
+    engineRequests: engineRequests,
   );
 
   final failed = <String>[];
@@ -480,10 +816,10 @@ Map<String, String> get blockedCommandSeedFiles => const {
     };
 
 // ---------------------------------------------------------------------------
-// The ten scenarios
+// The scenarios: 01-10 the PHASE 46 baseline, 11-15 the PHASE 11 Brain paths
 // ---------------------------------------------------------------------------
 
-/// The deterministic regression baseline: all ten must always pass.
+/// The deterministic regression baseline: all fifteen must always pass.
 List<EvalScenario> evalScenarios() => [
       // (1) read + summarize -------------------------------------------------
       EvalScenario(
@@ -820,6 +1156,212 @@ List<EvalScenario> evalScenarios() => [
           filePresent('assets/logo.svg'),
           finalAnswerContains('logo.svg'),
           modelRoundsAtMost(3),
+          noToolFailures(),
+        ],
+      ),
+
+      // (11) Brain multi-step: plan seeding ------------------------------------
+      EvalScenario(
+        name: '11-brain-multistep-plan',
+        description: 'The production preflight combination: MeteredGateway '
+            'wraps the scripted transport, Brain.decide classifies multiStep '
+            'and plans numbered steps, the steps seed the notes registry, and '
+            'the engine runs with the preflight charge as its initial token '
+            'budget. Every engine request must open with the 「当前计划」 '
+            'recitation carrying the planned steps.',
+        userTask: '先读 docs/architecture.md,再总结三层各自的职责',
+        seedFiles: {'docs/architecture.md': architectureDoc},
+        brain: BrainScript(
+          classify: ModelReply(
+            content: 'multiStep',
+            inputTokens: 30,
+            outputTokens: 10,
+          ),
+          plan: ModelReply(
+            content: '1. 读取 docs/architecture.md\n2. 总结三层职责',
+            inputTokens: 50,
+            outputTokens: 20,
+          ),
+        ),
+        script: [
+          ModelReply(toolCalls: [
+            ToolCall(
+              id: 's11-t1',
+              name: 'read_file',
+              argumentsJson: '{"path":"docs/architecture.md"}',
+            ),
+          ]),
+          ModelReply(
+            content: '按计划完成:UI 层负责展示,AgentCore 引擎层负责在轮次之间'
+                '调度工具调用,工具层提供具体能力。',
+            inputTokens: 100,
+            outputTokens: 40,
+          ),
+        ],
+        rubric: [
+          completed(),
+          usedTool('read_file'),
+          gatewayCallsExactly(4), // classify + plan + 2 engine rounds
+          requestContains('「当前计划」'),
+          requestContains('1. 读取 docs/architecture.md'),
+          requestContains('2. 总结三层职责'),
+          finalAnswerContains('引擎层'),
+          fileEquals('docs/architecture.md', architectureDoc),
+          preflightTokensExactly(110),
+          modelRoundsAtMost(2),
+          noToolFailures(),
+        ],
+      ),
+
+      // (12) Brain quick-answer: planner bypass --------------------------------
+      EvalScenario(
+        name: '12-brain-quickanswer-bypass',
+        description: 'classify returns quickAnswer: the planner is never '
+            'called (gateway calls == classify + engine rounds exactly), no '
+            'plan is seeded, and the task prompt carries no 「当前计划」 '
+            'block anywhere.',
+        userTask: '用一句话解释什么是幂等性',
+        brain: BrainScript(
+          classify: ModelReply(
+            content: 'quickAnswer',
+            inputTokens: 30,
+            outputTokens: 10,
+          ),
+        ),
+        script: [
+          ModelReply(
+            content: '幂等性指同一操作执行一次与执行多次的结果完全一致。',
+            inputTokens: 100,
+            outputTokens: 40,
+          ),
+        ],
+        rubric: [
+          completed(),
+          gatewayCallsExactly(2), // classify + 1 engine round; planner: 0
+          requestLacks('「当前计划」'),
+          toolCallsAtMost(0),
+          preflightTokensExactly(40),
+          finalAnswerContains('幂等'),
+          modelRoundsAtMost(1),
+          noToolFailures(),
+        ],
+      ),
+
+      // (13) Brain budget charge ------------------------------------------------
+      EvalScenario(
+        name: '13-brain-budget-charge',
+        description: 'Prefill tokens recorded by the MeteredGateway join the '
+            'one 64K budget: preflight (classify + plan) plus both engine '
+            'rounds sum to an exact consumedTokens value in the final '
+            'checkpoint.',
+        userTask: '分两步:读取 lib/config.dart 并汇报版本号',
+        seedFiles: {'lib/config.dart': configBefore},
+        brain: BrainScript(
+          classify: ModelReply(
+            content: 'multiStep',
+            inputTokens: 30,
+            outputTokens: 10,
+          ),
+          plan: ModelReply(
+            content: '1. 读取 lib/config.dart\n2. 汇报版本号',
+            inputTokens: 50,
+            outputTokens: 20,
+          ),
+        ),
+        script: [
+          ModelReply(
+            toolCalls: [
+              ToolCall(
+                id: 's13-t1',
+                name: 'read_file',
+                argumentsJson: '{"path":"lib/config.dart"}',
+              ),
+            ],
+            inputTokens: 100,
+            outputTokens: 40,
+          ),
+          ModelReply(
+            content: '当前版本号是 1.0.0。',
+            inputTokens: 200,
+            outputTokens: 50,
+          ),
+        ],
+        rubric: [
+          completed(),
+          usedTool('read_file'),
+          preflightTokensExactly(110), // classify 40 + plan 70
+          consumedTokensExactly(500), // 110 prefill + 140 + 250 rounds
+          finalAnswerContains('1.0.0'),
+          fileEquals('lib/config.dart', configBefore),
+          modelRoundsAtMost(2),
+          noToolFailures(),
+        ],
+      ),
+
+      // (14) Brain fail-open ----------------------------------------------------
+      EvalScenario(
+        name: '14-brain-failopen',
+        description: 'The classify prefill throws (broken classifier): the '
+            'Brain degrades to quickAnswer, nothing is seeded, zero tokens '
+            'are charged, and the task still completes through its normal '
+            'engine round with no plan block anywhere.',
+        userTask: '简单介绍这个项目是做什么的',
+        brain: const BrainScript.failing(),
+        script: [
+          ModelReply(
+            content: '这是 Shelly,一个 Flutter 端的结对编程助手应用。',
+            inputTokens: 100,
+            outputTokens: 40,
+          ),
+        ],
+        rubric: [
+          completed(),
+          gatewayCallsExactly(2), // failed classify + 1 engine round
+          requestLacks('「当前计划」'),
+          preflightTokensExactly(0),
+          consumedTokensExactly(140), // initial budget 0 + one round only
+          finalAnswerContains('Shelly'),
+          modelRoundsAtMost(1),
+          noToolFailures(),
+        ],
+      ),
+
+      // (15) plan-tool recitation refresh (no Brain) ----------------------------
+      EvalScenario(
+        name: '15-plan-tool-recitation-refresh',
+        description: 'Pure existing tools, no Brain: the model calls the plan '
+            'tool in round one, and the NEXT engine request\'s recitation '
+            'mirror reflects the new steps (PHASE 46 semantics). Round one '
+            'stays clean — nothing was planned yet — and the plan tool '
+            'auto-runs without touching the workspace or approval.',
+        userTask: '校验 lib/config.dart,并把校验步骤记录到计划里',
+        seedFiles: {'lib/config.dart': configBefore},
+        withNotesTools: true,
+        script: [
+          ModelReply(toolCalls: [
+            ToolCall(
+              id: 's15-t1',
+              name: 'plan',
+              argumentsJson: jsonEncode({
+                'steps': ['重读配置文件', '逐项校验字段'],
+              }),
+            ),
+          ]),
+          ModelReply(
+            content: '已把两步校验计划记入当前计划,lib/config.dart 字段完整。',
+          ),
+        ],
+        rubric: [
+          completed(),
+          usedTool('plan'),
+          toolResultContains('plan', 'plan updated (2 steps)'),
+          requestRoundLacks(1, '「当前计划」'),
+          requestRoundContains(2, '「当前计划」'),
+          requestRoundContains(2, '1. 重读配置文件'),
+          requestRoundContains(2, '2. 逐项校验字段'),
+          approvalNotAskedFor('plan'),
+          workspaceUnchanged({'lib/config.dart': configBefore}),
+          modelRoundsAtMost(2),
           noToolFailures(),
         ],
       ),
