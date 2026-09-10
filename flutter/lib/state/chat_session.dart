@@ -13,6 +13,7 @@ import '../application/mission_coordinator.dart';
 import '../agent/brain/brain_gateway.dart';
 import '../agent/brain/intent_router.dart';
 import '../agent/brain/planner.dart';
+import '../capability/skills/skill_tool_registry.dart';
 import '../core/agent_core.dart';
 import '../core/context/context_compactor.dart';
 import '../core/dsh/tool_registry.dart';
@@ -50,6 +51,7 @@ import '../platform/platform_workspace.dart';
 import '../platform/conversation_images.dart';
 import '../platform/process_runner.dart';
 import '../platform/task_service.dart';
+import '../skills/builtin_skills.dart';
 import 'dsh_provider.dart';
 import 'settings_store.dart';
 import 'usage_stats.dart';
@@ -1047,16 +1049,18 @@ String? systemPromptWithMemory({
   return buffer.toString();
 }
 
-/// Auto-approves the no-op plan/note state tools (PHASE 46): they only
-/// mutate in-memory recitation state and never touch the workspace, so a
-/// user prompt per update would defeat the recitation pattern. Every other
-/// tool defers to the wrapped [base] policy.
+/// Auto-approves the no-op state/read tools: `plan`/`note` (PHASE 46) only
+/// mutate in-memory recitation state, and `list_skills`/`use_skill`
+/// (PHASE 9) only read the Skill catalog — none ever touches the
+/// workspace, so a user prompt per call would defeat the recitation and
+/// skill-activation patterns. Every other tool defers to the wrapped
+/// [base] policy.
 class _NotesStateApprovalPolicy implements ToolApprovalPolicy {
   const _NotesStateApprovalPolicy(this._base);
 
   final ToolApprovalPolicy _base;
 
-  static const _stateOnlyTools = {'plan', 'note'};
+  static const _stateOnlyTools = {'plan', 'note', 'list_skills', 'use_skill'};
 
   @override
   bool requiresApproval(ToolCall call) =>
@@ -1225,6 +1229,18 @@ class _TaskRunner implements AgentTaskRunner {
     // No-op plan/notes state tools (PHASE 46): fresh per task run, so plan
     // recitation state resets between tasks.
     final notesTools = NotesToolRegistry();
+    // Skill activation tools (PHASE 9): expose the built-in Skill catalog
+    // on the model tool surface. Skills are prompt roadmaps — these tools
+    // only read the registry, they never issue model calls or touch the
+    // workspace. Capability availability: no live CapabilityRegistry is
+    // wired into task assembly yet (the unified capability surface lands in
+    // a later phase), so the predicate admits everything — honest fallback
+    // until requiredCapabilities can be checked against real capability
+    // ids.
+    final skillTools = SkillToolRegistry(
+      registry: buildBuiltinSkillRegistry(),
+      isCapabilityAvailable: (_) => true,
+    );
     final knowledgeStore = HermesKnowledgeStore(
       workspace: workspace,
       project: project.name,
@@ -1330,6 +1346,9 @@ class _TaskRunner implements AgentTaskRunner {
       // Plan/notes state (PHASE 46): record-only tools that feed the
       // todo-recitation block; core entries win over plugin name clashes.
       notesTools,
+      // Skill catalog reads (PHASE 9): list_skills/use_skill roadmaps,
+      // before the DSH plugin tools so built-ins win name collisions.
+      skillTools,
       _dshTools,
       ?mcpRegistry,
       ?bridgeRegistry,
@@ -1481,8 +1500,8 @@ class _TaskRunner implements AgentTaskRunner {
           maxToolCalls: profile.maxToolCalls,
         ),
         approvalPolicy: ShellApprovalPolicy(
-          // Plan/note state tools auto-run (PHASE 46); everything else
-          // keeps the standard trust policy.
+          // Plan/note state tools and skill catalog reads auto-run
+          // (PHASE 46/9); everything else keeps the standard trust policy.
           base: _NotesStateApprovalPolicy(
             ToolPolicy.standard.toApprovalPolicy(),
           ),
