@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../application/mission_coordinator.dart';
-import '../../core/events/agent_events.dart';
+import '../../shelly_facade.dart';
 import '../../design/tokens.dart';
 import '../../domain/agent/mission.dart';
 import 'mission_timeline_page.dart'

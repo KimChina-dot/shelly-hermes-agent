@@ -4,14 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/mission_coordinator.dart';
-import '../../core/events/agent_events.dart';
-import '../../core/events/event_bus.dart';
+import '../../shelly_facade.dart';
 import '../../design/components/empty_state.dart';
 import '../../design/components/motion.dart';
 import '../../design/tokens.dart';
 import '../../domain/agent/mission.dart';
-import '../../state/chat_session.dart'
-    show missionBusProvider, missionCoordinatorProvider, missionStoreProvider;
 import 'mission_detail_page.dart';
 
 /// Semantic tone a [MissionStatus] renders in; the concrete color resolves

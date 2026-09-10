@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../core/hermes/memory_settings.dart';
+import '../../shelly_facade.dart';
 import '../../design/tokens.dart';
-import '../../state/settings_store.dart';
 
 /// Memory tuning page (V2.1 PHASE 26): storage budget (ledger size and
 /// forgetting windows) vs recall budget (what gets injected per round).

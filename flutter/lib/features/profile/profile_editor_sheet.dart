@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/agent_profile.dart';
+import '../../shelly_facade.dart';
 import '../../design/tokens.dart';
-import '../../state/settings_store.dart';
 
 /// Opens the profile editor. Presets are copied into a user-owned profile
 /// (V2.1 PHASE 27); custom profiles are edited in place and can be deleted.

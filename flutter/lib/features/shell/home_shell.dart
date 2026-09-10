@@ -4,12 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/platform/background_tasks.dart';
-import '../../core/platform/home_widget_bridge.dart';
-import '../../state/chat_session.dart';
-import '../../state/memory_maintenance.dart';
-import '../../state/scheduled_tasks.dart';
-import '../../state/settings_store.dart';
+import '../../shelly_facade.dart';
 import '../../design/tokens.dart';
 import '../chat/chat_page.dart';
 import '../capabilities/capabilities_page.dart';

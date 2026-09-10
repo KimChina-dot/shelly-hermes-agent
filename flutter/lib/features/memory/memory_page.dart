@@ -8,15 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../core/hermes/forgetting.dart';
-import '../../core/hermes/memory_settings.dart';
-import '../../core/hermes/knowledge.dart';
-import '../../core/memory/memory_store.dart';
+import '../../shelly_facade.dart';
 import '../../design/tokens.dart';
-import '../../state/hermes_provider.dart';
-import '../../state/chat_session.dart';
-import '../../state/memory_maintenance.dart';
-import '../../state/settings_store.dart';
 import 'memory_settings_page.dart';
 
 /// Injectable backup share hook (PHASE 50); widget tests capture the

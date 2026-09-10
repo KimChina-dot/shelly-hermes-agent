@@ -1,19 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/diagnostics/environment_checker.dart';
-import '../../core/dsh/installer.dart';
-import '../../core/dsh/plugin.dart';
-import '../../core/dsh/tool_registry.dart' show DshTrust;
-import '../../core/mcp/mcp_client.dart';
-import '../../core/mcp/mcp_guard.dart';
-import '../../core/tools/registry.dart';
+import '../../shelly_facade.dart';
 import '../../design/components/risk_chip.dart';
 import '../../design/tokens.dart';
-import '../../state/chat_session.dart';
-import '../../state/dsh_provider.dart';
-import '../../state/plugin_repo.dart';
-import '../../state/settings_store.dart';
 import '../../platform/process_runner.dart';
 
 /// Live file count of the active workspace, shown on the capability page.

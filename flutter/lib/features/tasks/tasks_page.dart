@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/task_queue.dart';
+import '../../shelly_facade.dart';
 import '../../design/components/empty_state.dart';
 import '../../design/tokens.dart';
-import '../../state/chat_session.dart';
-import '../../state/scheduled_tasks.dart';
 
 /// Task queue page: live status of the conversation task plus the rolling
 /// status log, and (PHASE 41) the in-app scheduled agent tasks. Each
