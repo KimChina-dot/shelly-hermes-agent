@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../design/tokens.dart';
-import '../../state/chat_session.dart';
-import '../../state/settings_store.dart';
+import '../../shelly_facade.dart';
 
 /// Shared conversation management actions used by the chat session sheet
 /// and the history page. Each mutation refreshes the store providers.

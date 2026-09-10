@@ -3,13 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/task_recovery.dart';
+import '../../shelly_facade.dart';
 import '../../design/components/empty_state.dart';
 import '../../design/components/motion.dart';
 import '../../design/tokens.dart';
-import '../../state/chat_session.dart';
-import '../../state/conversation_search.dart';
-import '../../state/settings_store.dart';
 import '../chat/conversation_actions.dart';
 import '../shell/home_shell.dart';
 

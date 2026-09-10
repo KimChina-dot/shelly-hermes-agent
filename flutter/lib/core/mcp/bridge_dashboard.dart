@@ -30,6 +30,41 @@ import 'package:shelly_hermes/core/mcp/bridge_server.dart';
 // formals do not apply here.
 // ignore_for_file: prefer_initializing_formals
 
+/// Cancel-only view of a timer, so the repaint loop can run on injected
+/// (test) timers instead of real ones.
+abstract interface class BridgeTimer {
+  void cancel();
+}
+
+/// Creates the dashboard's periodic ticker and one-shot deferred repaint
+/// timers. Production uses real `dart:async` timers (the default factory);
+/// tests inject a fake factory and fire ticks manually, so repaint-count
+/// assertions are deterministic and never touch the wall clock (PHASE 15).
+abstract interface class BridgeTimerFactory {
+  BridgeTimer periodic(Duration interval, void Function() onTick);
+
+  BridgeTimer oneShot(Duration delay, void Function() onTick);
+}
+
+class _RealTimerFactory implements BridgeTimerFactory {
+  @override
+  BridgeTimer periodic(Duration interval, void Function() onTick) =>
+      _RealTimer(Timer.periodic(interval, (_) => onTick()));
+
+  @override
+  BridgeTimer oneShot(Duration delay, void Function() onTick) =>
+      _RealTimer(Timer(delay, onTick));
+}
+
+class _RealTimer implements BridgeTimer {
+  _RealTimer(this._timer);
+
+  final Timer _timer;
+
+  @override
+  void cancel() => _timer.cancel();
+}
+
 /// One observed bridge tool call, as rendered in the dashboard call log.
 class BridgeCallEntry {
   const BridgeCallEntry({
@@ -128,6 +163,7 @@ class BridgeDashboard {
     Future<List<String>> Function()? lanAddressProvider,
     this.refreshInterval = defaultRefreshInterval,
     BridgeCallLog? callLog,
+    BridgeTimerFactory? timerFactory,
   })  : _server = server,
         _token = token,
         _out = output ?? stdout,
@@ -135,7 +171,8 @@ class BridgeDashboard {
             stdin.transform(utf8.decoder).transform(const LineSplitter()),
         _clock = clock ?? DateTime.now,
         _lanAddressProvider = lanAddressProvider,
-        _callLog = callLog ?? BridgeCallLog();
+        _callLog = callLog ?? BridgeCallLog(),
+        _timers = timerFactory ?? _RealTimerFactory();
 
   /// Time between automatic repaints — 500 ms keeps the loop at the promised
   /// "at most 2 repaints per second".
@@ -155,12 +192,13 @@ class BridgeDashboard {
   final DateTime Function() _clock;
   final Future<List<String>> Function()? _lanAddressProvider;
   final BridgeCallLog _callLog;
+  final BridgeTimerFactory _timers;
 
   final Duration refreshInterval;
 
   Completer<void>? _quitCompleter;
-  Timer? _ticker;
-  Timer? _pendingRepaint;
+  BridgeTimer? _ticker;
+  BridgeTimer? _pendingRepaint;
   StreamSubscription<String>? _inputSub;
   bool _stopping = false;
   bool _dirty = false;
@@ -214,7 +252,7 @@ class BridgeDashboard {
     // Silent: populate addresses before the first frame, without painting.
     await _refreshLan(repaint: false);
     _paint();
-    _ticker = Timer.periodic(refreshInterval, (_) => _requestRepaint());
+    _ticker = _timers.periodic(refreshInterval, _requestRepaint);
     _inputSub = _input.listen(
       _onInputLine,
       onDone: _requestQuit,
@@ -291,7 +329,7 @@ class BridgeDashboard {
       _paint();
     } else {
       // Coalesce: one deferred repaint at most, at the interval boundary.
-      _pendingRepaint ??= Timer(refreshInterval - elapsed, () {
+      _pendingRepaint ??= _timers.oneShot(refreshInterval - elapsed, () {
         _pendingRepaint = null;
         if (_dirty && !_stopping) _paint();
       });

@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/error_messages.dart';
-import '../../core/gateway/model_discovery.dart';
-import '../../core/gateway/providers.dart';
+import '../../shelly_facade.dart';
 import '../../design/tokens.dart';
-import '../../state/settings_store.dart';
 
 /// Quick model switching from the chat page: pick a provider preset, fetch
 /// the endpoint's model list, test the connection and apply. Writes the

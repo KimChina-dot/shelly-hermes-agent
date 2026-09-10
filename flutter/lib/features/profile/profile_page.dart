@@ -4,24 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app.dart' show themeModeProvider;
-import '../../core/agent_profile.dart';
-import '../../core/crash/crash_log_store.dart';
-import '../../core/error_messages.dart';
-import '../../core/gateway/model_discovery.dart';
-import '../../core/gateway/providers.dart';
+import '../../shelly_facade.dart';
 import '../../design/components/buttons.dart';
 import '../../design/tokens.dart';
 import '../../features/memory/memory_page.dart';
 import '../../features/shell/home_shell.dart' show tabIndexProvider;
 import 'profile_editor_sheet.dart';
 import '../../platform/platform_workspace.dart';
-import '../../state/chat_session.dart'
-    show workspaceAuthorizedProvider, workspaceProvider;
-
-import '../../state/lan_companion.dart';
-import '../../state/settings_store.dart';
-import '../../state/update_check.dart';
-import '../../state/usage_stats.dart';
 
 /// Profile / settings page: model endpoint config with a masked API key,
 /// provider presets, model discovery, agent profiles, theme switch and

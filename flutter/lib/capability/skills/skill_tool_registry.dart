@@ -32,7 +32,11 @@ class SkillToolRegistry implements AgentToolRegistry {
   /// Whether a capability id (CapabilityRegistry ids, PHASE 4) is usable in
   /// the current task. Checked against each skill's
   /// [SkillDefinition.requiredCapabilities] before the roadmap is handed
-  /// out, so the model never starts a route it cannot finish.
+  /// out, so the model never starts a route it cannot finish. Since PHASE
+  /// 17 the session feeds this `availableCapabilityIds(...).contains` —
+  /// the real set derived from what the task assembly actually registered
+  /// (workspace → 'filesystem', shell → 'terminal', live MCP/bridge/DSH →
+  /// their capability ids); see `task_capability_availability.dart`.
   final bool Function(String capabilityId) isCapabilityAvailable;
 
   static const skillSpecs = <ToolSpec>[

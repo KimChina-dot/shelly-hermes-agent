@@ -14,6 +14,7 @@ import '../agent/brain/brain_gateway.dart';
 import '../agent/brain/intent_router.dart';
 import '../agent/brain/planner.dart';
 import '../capability/skills/skill_tool_registry.dart';
+import '../capability/skills/task_capability_availability.dart';
 import '../core/agent_core.dart';
 import '../core/context/context_compactor.dart';
 import '../core/dsh/tool_registry.dart';
@@ -1229,18 +1230,6 @@ class _TaskRunner implements AgentTaskRunner {
     // No-op plan/notes state tools (PHASE 46): fresh per task run, so plan
     // recitation state resets between tasks.
     final notesTools = NotesToolRegistry();
-    // Skill activation tools (PHASE 9): expose the built-in Skill catalog
-    // on the model tool surface. Skills are prompt roadmaps — these tools
-    // only read the registry, they never issue model calls or touch the
-    // workspace. Capability availability: no live CapabilityRegistry is
-    // wired into task assembly yet (the unified capability surface lands in
-    // a later phase), so the predicate admits everything — honest fallback
-    // until requiredCapabilities can be checked against real capability
-    // ids.
-    final skillTools = SkillToolRegistry(
-      registry: buildBuiltinSkillRegistry(),
-      isCapabilityAvailable: (_) => true,
-    );
     final knowledgeStore = HermesKnowledgeStore(
       workspace: workspace,
       project: project.name,
@@ -1264,7 +1253,10 @@ class _TaskRunner implements AgentTaskRunner {
     // and are consumed over HTTP. Best-effort discovery — an unreachable
     // bridge degrades to no bridge tools, never stalls a task.
     final bridgeConfig = _store.loadMcpBridge();
-    AgentToolRegistry? bridgeRegistry;
+    // PHASE 17: typed as the concrete registry so the skill availability
+    // set can consume it directly; behavior is unchanged (it only ever
+    // holds a BridgeToolRegistry or null).
+    BridgeToolRegistry? bridgeRegistry;
     if (bridgeConfig.isComplete) {
       try {
         final registry = BridgeToolRegistry(
@@ -1326,6 +1318,26 @@ class _TaskRunner implements AgentTaskRunner {
         );
       }
     }
+    // Skill activation tools (PHASE 9): expose the built-in Skill catalog
+    // on the model tool surface. Skills are prompt roadmaps — these tools
+    // only read the registry, they never issue model calls or touch the
+    // workspace. PHASE 17: the requiredCapabilities gate now runs against
+    // the real availability set derived from what this assembly actually
+    // registered — workspace and shell join the composite below
+    // unconditionally ('filesystem'/'terminal'), MCP, the desktop bridge
+    // and DSH contribute their ids only when they actually came up. This
+    // replaces the PHASE 9 admit-everything placeholder.
+    final availableCapabilities = availableCapabilityIds(
+      workspaceRegistered: true,
+      shellRegistered: true,
+      mcpRegistry: mcpRegistry,
+      bridgeRegistry: bridgeRegistry,
+      dshTools: _dshTools,
+    );
+    final skillTools = SkillToolRegistry(
+      registry: buildBuiltinSkillRegistry(),
+      isCapabilityAvailable: availableCapabilities.contains,
+    );
     final registry = CompositeToolRegistry([
       workspaceTools,
       ShellToolRegistry(

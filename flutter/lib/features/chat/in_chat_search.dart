@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../design/tokens.dart';
-import '../../state/chat_session.dart';
+import '../../shelly_facade.dart';
 
 /// One search match: the transcript entry index it points at.
 @immutable
