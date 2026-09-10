@@ -25,11 +25,11 @@ void main() {
   final scenarios = evalScenarios();
   final scenarioNames = scenarios.map((s) => s.name).toList();
 
-  test('scenario set is the fixed ten-scenario baseline', () {
-    expect(scenarios, hasLength(10));
+  test('scenario set is the fixed fifteen-scenario baseline', () {
+    expect(scenarios, hasLength(15));
     expect(
       scenarioNames.toSet().length,
-      10,
+      15,
       reason: 'scenario names must be unique so report lines stay greppable',
     );
   });
@@ -49,6 +49,9 @@ void main() {
       } else if (scenario.systemPrompt != null) {
         systemPrompt = scenario.systemPrompt;
       }
+      // Brain/notes scenarios need no prompt here: runScenario composes the
+      // production opening prompt itself (the recitation block must reflect
+      // state seeded by the preflight, which only exists inside the harness).
 
       final outcome = await runScenario(scenario, systemPrompt: systemPrompt);
 

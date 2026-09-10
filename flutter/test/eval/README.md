@@ -40,7 +40,7 @@ flutter test test/eval/trajectory_test.dart
 The suite is deterministic: no network, no filesystem outside the process,
 no timing dependencies. All scenarios must pass on every commit.
 
-## The ten baseline scenarios
+## The baseline scenarios
 
 | # | Name | What it pins down |
 | --- | --- | --- |
@@ -54,6 +54,26 @@ no timing dependencies. All scenarios must pass on every commit.
 | 8 | `08-memory-injected-answer` | system prompt composed via `systemPromptWithMemory` + `personaWithToolRules` (same helpers `lib/state/chat_session.dart` uses); memory fact + tool rules present |
 | 9 | `09-no-tool-direct-answer` | one-round answer, zero tool calls |
 | 10 | `10-list-files-then-exists` | list_files inventory then exists verification |
+
+## The Brain-path scenarios (PHASE 11)
+
+A scenario with a `brain: BrainScript(...)` runs the production preflight
+combination before the engine: `MeteredGateway` wraps the shared scripted
+transport, `Brain.decide` classifies (and plans for multiStep intents),
+the steps seed the notes registry, and the charged tokens become
+`AgentCore.initialConsumedTokens`. The opening system prompt is composed
+exactly like `chat_session.dart` (persona + tool rules + the seeded
+「当前计划」 block), and every engine round refreshes the recitation
+through the REAL `recitationBodyDecorator` — the same code the OpenAI
+gateway runs per round.
+
+| # | Name | What it pins down |
+| --- | --- | --- |
+| 11 | `11-brain-multistep-plan` | multiStep verdict seeds the plan; every engine request carries 「当前计划」 + the step text; gateway calls == classify + plan + rounds |
+| 12 | `12-brain-quickanswer-bypass` | quickAnswer verdict: planner never called (exact gateway-call count), prompt carries no plan block |
+| 13 | `13-brain-budget-charge` | preflight tokens join the one 64K budget: final `checkpoint.consumedTokens` == preflight + rounds (exact value) |
+| 14 | `14-brain-failopen` | classify call throws: task still completes, no plan block, zero preflight charge, only round tokens consumed |
+| 15 | `15-plan-tool-recitation-refresh` | no Brain: the `plan` tool updates the plan in round one and the NEXT request's recitation mirror reflects the new steps (PHASE 46 semantics); round one stays clean; plan auto-runs, workspace untouched |
 
 ## What the rubric grades
 
@@ -99,7 +119,7 @@ always-green harness cannot hide regressions.
      (`completed()`, `fileEquals`, `toolSequence`, `usedTool`, …). Prefer
      outcome checks; add trajectory checks for contracts worth pinning
      (order, approval routing, budgets).
-3. If the baseline count changes, update the `hasLength(10)` expectation in
+3. If the baseline count changes, update the `hasLength(15)` expectation in
    `trajectory_test.dart`.
 
 Keep scenarios deterministic and hermetic: no clocks, no randomness, no
