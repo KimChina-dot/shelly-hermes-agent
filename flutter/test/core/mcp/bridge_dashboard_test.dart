@@ -1,6 +1,13 @@
-// Tests for the interactive bridge dashboard. Everything is driven through an
-// injectable recording sink + an injectable stdin line stream, and the wrapped
-// BridgeServer is a fake subclass, so no real terminal or HTTP server is used.
+// Tests for the interactive bridge dashboard. Everything is driven through
+// an injectable recording sink + an injectable stdin line stream, and the
+// wrapped BridgeServer is a fake subclass, so no real terminal or HTTP
+// server is used.
+//
+// PHASE 15 determinism: the repaint loop's ticker and deferred-repaint
+// timers are created through an injectable [BridgeTimerFactory] (default:
+// real timers, zero behavior change), and every test injects a fake factory
+// plus a scripted clock. No assertion in this file depends on wall-clock
+// time — timers fire only when the test fires them.
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -33,6 +40,71 @@ class _RecordingSink implements StringSink {
   @override
   void writeCharCode(int charCode) =>
       writes.add(String.fromCharCode(charCode));
+}
+
+/// Mutable clock: the dashboard reads it only through the injected
+/// `clock` callback, so tests advance time explicitly.
+class _ScriptedClock {
+  DateTime now = DateTime(2026, 9, 10, 12, 0, 0);
+
+  DateTime call() => now;
+
+  void advance(Duration by) => now = now.add(by);
+}
+
+/// Fake timer seam: records every timer the dashboard schedules and lets
+/// tests fire (or cancel) them by hand. `pending` one-shots are the not-yet
+/// fired, not-cancelled ones — what the dashboard currently holds.
+class _FakeTimer implements BridgeTimer {
+  _FakeTimer.oneShot(this.delay, this.onTick) : interval = null;
+  _FakeTimer.periodic(this.interval, this.onTick) : delay = null;
+
+  final Duration? delay;
+  final Duration? interval;
+  final void Function() onTick;
+
+  bool canceled = false;
+  bool fired = false;
+
+  bool get isPending => !canceled && !fired;
+
+  @override
+  void cancel() {
+    canceled = true;
+  }
+
+  void fire() {
+    if (canceled || fired) {
+      throw StateError('timer is no longer runnable');
+    }
+    fired = interval == null;
+    onTick();
+  }
+}
+
+class _FakeTimerFactory implements BridgeTimerFactory {
+  final List<_FakeTimer> created = <_FakeTimer>[];
+
+  List<_FakeTimer> get periodics =>
+      created.where((t) => t.interval != null).toList();
+  List<_FakeTimer> get oneShots =>
+      created.where((t) => t.interval == null).toList();
+  List<_FakeTimer> get pendingOneShots =>
+      oneShots.where((t) => t.isPending).toList();
+
+  @override
+  BridgeTimer periodic(Duration interval, void Function() onTick) {
+    final timer = _FakeTimer.periodic(interval, onTick);
+    created.add(timer);
+    return timer;
+  }
+
+  @override
+  BridgeTimer oneShot(Duration delay, void Function() onTick) {
+    final timer = _FakeTimer.oneShot(delay, onTick);
+    created.add(timer);
+    return timer;
+  }
 }
 
 /// BridgeServer fake: never starts anything, reports a scripted health
@@ -78,22 +150,38 @@ Map<String, dynamic> _serverEntry(
       'toolCount': toolCount,
     };
 
+/// Flushes stream/microtask delivery without any wall-clock dependency:
+/// no real timer exists in these tests, so the duration is irrelevant.
 Future<void> _pump() => Future<void>.delayed(const Duration(milliseconds: 10));
 
-BridgeDashboard _dashboard(
+class _Harness {
+  _Harness(this.dashboard, this.input, this.clock, this.timers);
+
+  final BridgeDashboard dashboard;
+  final StreamController<String> input;
+  final _ScriptedClock clock;
+  final _FakeTimerFactory timers;
+}
+
+_Harness _dashboard(
   _FakeBridgeServer server,
   _RecordingSink out,
-  Stream<String> input, {
+  StreamController<String> input, {
   Duration interval = const Duration(milliseconds: 500),
 }) {
-  return BridgeDashboard(
+  final clock = _ScriptedClock();
+  final timers = _FakeTimerFactory();
+  final dashboard = BridgeDashboard(
     server: server,
     token: 'secret-token',
     output: out,
-    inputLines: input,
+    inputLines: input.stream,
     refreshInterval: interval,
     lanAddressProvider: () async => const <String>['http://10.0.0.5:8766'],
+    clock: clock.call,
+    timerFactory: timers,
   );
+  return _Harness(dashboard, input, clock, timers);
 }
 
 // ---------------------------------------------------------------------------
@@ -110,8 +198,8 @@ void main() {
       ]);
     final out = _RecordingSink();
     final input = StreamController<String>();
-    final dashboard = _dashboard(server, out, input.stream);
-    final done = dashboard.run();
+    final h = _dashboard(server, out, input);
+    final done = h.dashboard.run();
     await _pump();
 
     final frame = out.first;
@@ -125,7 +213,9 @@ void main() {
     expect(frame, contains('已离线'));
     expect(frame, isNot(contains('secret-token')));
     expect(frame, contains('配对令牌: ************ (按 t 显示)'));
-    expect(dashboard.repaintCount, 1);
+    // The periodic ticker exists but never fired: exactly one paint.
+    expect(h.dashboard.repaintCount, 1);
+    expect(h.timers.periodics, hasLength(1));
 
     input.add('q');
     await done;
@@ -137,8 +227,8 @@ void main() {
     final server = _FakeBridgeServer();
     final out = _RecordingSink();
     final input = StreamController<String>();
-    final dashboard = _dashboard(server, out, input.stream);
-    final done = dashboard.run();
+    final h = _dashboard(server, out, input);
+    final done = h.dashboard.run();
     await _pump();
     expect(out.last, isNot(contains('secret-token')));
 
@@ -152,7 +242,7 @@ void main() {
     await _pump();
     expect(out.last, contains('************'));
     expect(out.last, isNot(contains('secret-token')));
-    expect(dashboard.repaintCount, 3);
+    expect(h.dashboard.repaintCount, 3);
 
     input.add('q');
     await done;
@@ -163,25 +253,25 @@ void main() {
       ..health = _health([_serverEntry('filesys', alive: true, toolCount: 1)]);
     final out = _RecordingSink();
     final input = StreamController<String>();
-    final dashboard = _dashboard(server, out, input.stream);
-    final done = dashboard.run();
+    final h = _dashboard(server, out, input);
+    final done = h.dashboard.run();
     await _pump();
 
-    dashboard.callLog.record(
+    h.dashboard.callLog.record(
       server: 'filesys',
       tool: 'read_file',
       durationMs: 123,
       ok: true,
       time: DateTime(2026, 9, 8, 15, 30, 5),
     );
-    dashboard.recordCall(
+    h.dashboard.recordCall(
       server: 'git',
       tool: 'status',
       durationMs: 45,
       ok: false,
       error: 'boom',
     );
-    expect(dashboard.callLog.length, 2);
+    expect(h.dashboard.callLog.length, 2);
 
     input.add('r');
     await _pump();
@@ -202,12 +292,12 @@ void main() {
     final server = _FakeBridgeServer();
     final out = _RecordingSink();
     final input = StreamController<String>();
-    final dashboard = _dashboard(server, out, input.stream);
-    final done = dashboard.run();
+    final h = _dashboard(server, out, input);
+    final done = h.dashboard.run();
     await _pump();
 
     for (var i = 1; i <= 12; i++) {
-      dashboard.callLog.record(
+      h.dashboard.callLog.record(
         server: 'filesys',
         tool: 't${i.toString().padLeft(2, '0')}',
         durationMs: i,
@@ -241,8 +331,8 @@ void main() {
       ..health = _health([_serverEntry('filesys', alive: true, toolCount: 2)]);
     final out = _RecordingSink();
     final input = StreamController<String>();
-    final dashboard = _dashboard(server, out, input.stream);
-    final done = dashboard.run();
+    final h = _dashboard(server, out, input);
+    final done = h.dashboard.run();
     await _pump();
 
     server.health =
@@ -267,27 +357,33 @@ void main() {
     final server = _FakeBridgeServer();
     final out = _RecordingSink();
     final input = StreamController<String>();
-    final dashboard = _dashboard(server, out, input.stream);
-    final done = dashboard.run();
+    final h = _dashboard(server, out, input);
+    final done = h.dashboard.run();
     await _pump();
 
     input.add('q');
     await done;
     expect(server.stopCount, 1);
     expect(out.text, contains('正在停止桥接服务…'));
+    // Shutdown cancels both the ticker and any pending deferred repaint.
+    expect(h.timers.periodics.single.canceled, isTrue);
+    for (final timer in h.timers.pendingOneShots) {
+      expect(timer.canceled, isTrue);
+    }
   });
 
   test('closing the input stream quits and stops the server', () async {
     final server = _FakeBridgeServer();
     final out = _RecordingSink();
     final input = StreamController<String>();
-    final dashboard = _dashboard(server, out, input.stream);
-    final done = dashboard.run();
+    final h = _dashboard(server, out, input);
+    final done = h.dashboard.run();
     await _pump();
 
     await input.close();
     await done;
     expect(server.stopCount, 1);
+    expect(h.timers.periodics.single.canceled, isTrue);
   });
 
   test('repaint loop is throttled to the refresh interval (at most 2x/sec)',
@@ -296,32 +392,92 @@ void main() {
       ..health = _health([_serverEntry('filesys', alive: true, toolCount: 3)]);
     final out = _RecordingSink();
     final input = StreamController<String>();
-    final dashboard = _dashboard(server, out, input.stream);
-    final done = dashboard.run();
+    final h = _dashboard(server, out, input);
+    final done = h.dashboard.run();
     await _pump();
-    expect(dashboard.repaintCount, 1);
+    expect(h.dashboard.repaintCount, 1);
 
-    // A burst of non-forced refresh requests must not repaint immediately.
+    // A burst of non-forced refresh requests must not repaint immediately…
     for (var i = 0; i < 10; i++) {
       input.add('x$i');
     }
-    await Future<void>.delayed(const Duration(milliseconds: 140));
-    expect(dashboard.repaintCount, 1);
+    await _pump();
+    expect(h.dashboard.repaintCount, 1);
 
-    // One repaint around the interval boundary (ticker + deferred coalesce).
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    expect(dashboard.repaintCount, 2);
+    // …and must coalesce into exactly one deferred repaint at the interval
+    // boundary. A second burst while it is pending schedules nothing new.
+    input.add('again');
+    await _pump();
+    expect(h.timers.pendingOneShots, hasLength(1));
+    expect(h.dashboard.repaintCount, 1);
 
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    expect(dashboard.repaintCount, 3);
+    // Firing the deferred repaint paints once — the whole burst collapses.
+    h.clock.advance(const Duration(milliseconds: 500));
+    h.timers.pendingOneShots.single.fire();
+    expect(h.dashboard.repaintCount, 2);
+    // The deferred timer was one-shot: it cannot fire a second time.
+    expect(h.timers.pendingOneShots, isEmpty);
 
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    // 4 paints in ~1.6 s of wall time = at most 2 per second.
-    expect(dashboard.repaintCount, 4);
+    // The periodic ticker repaints once per interval boundary, never per
+    // event: 3 paints in 2 ticks (+ initial), i.e. at most 2 per second.
+    h.clock.advance(const Duration(milliseconds: 500));
+    h.timers.periodics.single.fire();
+    expect(h.dashboard.repaintCount, 3);
+
+    h.clock.advance(const Duration(milliseconds: 500));
+    h.timers.periodics.single.fire();
+    expect(h.dashboard.repaintCount, 4);
+
+    // Without a tick or input nothing repaints, however long we wait.
+    await _pump();
+    await _pump();
+    expect(h.dashboard.repaintCount, 4);
 
     input.add('q');
     await done;
     expect(server.stopCount, 1);
+  });
+
+  test('deferred repaint is skipped when a newer paint already happened',
+      () async {
+    final server = _FakeBridgeServer();
+    final out = _RecordingSink();
+    final input = StreamController<String>();
+    final h = _dashboard(server, out, input);
+    final done = h.dashboard.run();
+    await _pump();
+    expect(h.dashboard.repaintCount, 1);
+
+    // A non-forced request schedules the deferred repaint (dirty)…
+    input.add('x');
+    await _pump();
+    expect(h.timers.pendingOneShots, hasLength(1));
+
+    // …then a periodic tick past the interval boundary paints immediately
+    // (clearing the dirty flag) WITHOUT cancelling the pending deferred
+    // timer — the immediate path only paints, it does not touch it.
+    h.clock.advance(const Duration(milliseconds: 500));
+    h.timers.periodics.single.fire();
+    expect(h.dashboard.repaintCount, 2);
+    expect(h.timers.pendingOneShots, hasLength(1));
+
+    // The still-pending deferred timer fires but must NOT paint again:
+    // nothing is dirty, so the coalesced request is dropped.
+    h.timers.pendingOneShots.single.fire();
+    expect(h.dashboard.repaintCount, 2);
+
+    // By contrast, forced repaints ('r') cancel the pending deferred timer
+    // outright — it can never fire afterwards.
+    input.add('x');
+    await _pump();
+    expect(h.timers.pendingOneShots, hasLength(1));
+    input.add('r');
+    await _pump();
+    expect(h.dashboard.repaintCount, 3);
+    expect(h.timers.pendingOneShots, isEmpty);
+
+    input.add('q');
+    await done;
   });
 
   test('BridgeCallLog keeps only the newest maxEntries records', () {
