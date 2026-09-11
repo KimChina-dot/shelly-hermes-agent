@@ -29,14 +29,14 @@
 | PHASE 15 | `7a9efe6`(#62,第三波) | 安全网补测:§3 空洞(approval_sheet UI 10 例/task_service/dsh_provider/hermes_provider)+ bridge_dashboard 计时可注入消雷(5 连跑无 flake) | ≈ **P1**(安全网加固)已落地 |
 | PHASE 16 | `d476e66`(#63,第三波) | shelly_facade.dart 聚合 37 库,features 64/65 处 core/state 直连 import 机械替换,零逻辑改动 | ≈ **P10**(features 消费面收敛)已落地(approval_sheet 的 state 导入按 PHASE 12 端口策略保留) |
 | PHASE 17 | `76682c2`(#64,第三波) | 能力谓词收紧:任务装配期构建真实能力可用集(filesystem/terminal/mcp_<id>/bridge/DSH id)驱动 use_skill | 计划外(能力面收紧,PHASE 9 遗留占位退役) |
+| PHASE 18 | 本提交 | cutover:main.dart 启动串接入五段式迁移(失败开放+8s 超时+崩溃日志留证);三路升级矩阵(v2.2/v2.3/v2.4)+回滚演练+崩溃恢复+超时+全新安装全部入测试 | ≈ **P8**(cutover)已落地。注:checkpoint 版本保持 1(无 v2 写入方),R3 读侧容错由 settings_store.loadCheckpoint 的 FormatException→null 降级承担 |
 
 ### 尚未落地的文档阶段
 
-- **P8 cutover 启用迁移**(main.dart 接线 `MigrationManager.run()` + v2.2→v2.3→v3 三路升级矩阵)——未做;PHASE 10 明确 build-only,生产代码不调用。
 - **P11 余量**(Home/Composer 改造)——Mission Timeline 已随 PHASE 13 落地,Home/Composer 仍属计划余量。
 - **P13 平台契约回归**(subst 冒烟、Android 六通道契约测试、release SHA256)——未做。
 - **P14 Facade 冻结 + 3.1 搬迁清单**(MODULE_MAP keep/wrap/move 标注、@Deprecated)——未做;facade 本体已随 PHASE 16 就位,冻结标注未做。
-- **P15 发布门禁**(全量绿、迁移矩阵三路、双构建 SHA256、rollback 演练)——未做;PHASE 14 仅覆盖其中 CHANGELOG 同步单项。
+- **P15 发布门禁**(全量绿、迁移矩阵三路、双构建 SHA256、rollback 演练)——迁移矩阵与 rollback 演练已随 PHASE 18 入测试;全量绿为常态闸门;余下双构建 SHA256 与版本元数据同步未做。
 
 ### 与计划的净偏差摘要
 
