@@ -2,7 +2,7 @@ name: shelly_hermes
 description: "Shelly Hermes — Android agent workbench (Flutter 1.0)."
 publish_to: 'none'
 
-version: 2.3.0+4
+version: 3.0.0+5
 
 environment:
   sdk: ^3.13.2
