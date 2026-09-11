@@ -1,6 +1,6 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -58,3 +58,9 @@ bool get _hasKeystoreBridge => !kIsWeb && Platform.isAndroid;
 /// Channel-backed secure storage on Android, SharedPreferences elsewhere.
 SecureBox? createSecureBox() =>
     _hasKeystoreBridge ? _ChannelSecureBox() : _PrefsSecureBox();
+
+/// Test hook (PHASE 20): exposes the channel-backed box so the wire
+/// contract against SecureStore.kt is regression-testable on hosts where
+/// `Platform.isAndroid` is false. Production code uses [createSecureBox].
+@visibleForTesting
+SecureBox debugChannelSecureBox() => _ChannelSecureBox();
