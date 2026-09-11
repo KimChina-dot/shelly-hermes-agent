@@ -60,6 +60,32 @@ void main() {
       expect(calls.single.method, 'cancel');
     });
 
+    test('a failing native handler never breaks the caller '
+        '(PHASE 20: the catch-all swallow is contractual)', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        throw PlatformException(
+            code: 'bg_tasks', message: 'native refused ${call.method}');
+      });
+      final bridge = BackgroundTaskBridge();
+      var fired = 0;
+
+      // None of these may throw: background housekeeping must never break
+      // the app even when WorkManager enqueuing fails natively.
+      await bridge.scheduleWorkChecks(intervalMinutes: 15);
+      await bridge.pushState(const []);
+      await bridge.cancel();
+      bridge.handlePendingCatchup(() => fired++);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(calls, isNotEmpty,
+          reason: 'every entry point must still reach the native side');
+      expect(fired, 0,
+          reason: 'a failed catch-up drain must not fire the callback');
+      bridge.dispose();
+    });
+
     test('catchup event routes to the registered callback', () async {
       final bridge = BackgroundTaskBridge();
       var fired = 0;
