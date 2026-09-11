@@ -41,6 +41,8 @@ v3.0 架构迁移:按 `docs/audit/V3_MIGRATION_PLAN.md` 以增量并行轨推进
   import 机械替换,零逻辑改动(`d476e66`,第三波,#63)。
 - **PHASE 17** 能力谓词收紧:任务装配期构建真实能力可用集(filesystem/terminal/mcp_<id>/bridge/
   DSH id)驱动 use_skill,PHASE 9 占位退役(`76682c2`,第三波,#64)。
+- **PHASE 18** cutover(P8):启动串接入五段式迁移(crash logging 之后、runApp 之前,失败开放 +
+  8s 超时 + 崩溃日志留证);三路升级矩阵(v2.2/v2.3/v2.4 档案)与回滚演练入测试。
 
 ### 状态说明
 
