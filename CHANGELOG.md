@@ -42,11 +42,18 @@ v3.0 架构迁移:按 `docs/audit/V3_MIGRATION_PLAN.md` 以增量并行轨推进
 - **PHASE 17** 能力谓词收紧:任务装配期构建真实能力可用集(filesystem/terminal/mcp_<id>/bridge/
   DSH id)驱动 use_skill,PHASE 9 占位退役(`76682c2`,第三波,#64)。
 - **PHASE 18** cutover(P8):启动串接入五段式迁移(crash logging 之后、runApp 之前,失败开放 +
-  8s 超时 + 崩溃日志留证);三路升级矩阵(v2.2/v2.3/v2.4 档案)与回滚演练入测试。
+  8s 超时 + 崩溃日志留证);三路升级矩阵(v2.2/v2.3/v2.4 档案)与回滚演练入测试(`ad2bdb7`,#65)。
+- **PHASE 19** facade 冻结(P14):MODULE_MAP 全行处置(keep 62/wrap 31/move 6)+ V31 搬迁清单
+  (6 项 8 步,可执行替换命令)+ 模块头锚点注释;@Deprecated 按实验证据诚实降级(`589c886`,最终波,#66)。
+- **PHASE 20** 平台契约回归(P13):全部实存 5 通道契约测试(20 例新増)+ build-smoke.mjs
+  构建冒烟(debug APK SHA256 留证)+ CI 可达的 @visibleForTesting 通道钩子(`92be275`,最终波,#67)。
+- **PHASE 21** 发布门禁准备(P15):版本四处同步 3.0.0(修复 v2.2 起 release-gate 陈年红)+
+  用户视角发布说明(`75f89d8`,最终波,#68)。
 
 ### 状态说明
 
-- 安全网补测(PHASE 15)、features facade 收敛(PHASE 16)、cutover 启动迁移(PHASE 18)均已随第三波落地。
+- **v3.0 开发关账(PHASE 0-21 全部落地)**:发布只差人工打 `v3.0.0` tag 触发发布流水线。
+- 3.1(目录物理搬迁)按 V31_MIGRATION_CHECKLIST.md 执行,属下一里程碑。
 - 尚未落地(见 V3_MIGRATION_PLAN.md 执行状态段):Home/Composer 余量、平台契约回归、facade 冻结标注、
   双构建 SHA256;本段更新随 3.0.0 版本元数据同步(PHASE 21,plan P15 prep)完成,发布仍未执行。
 
