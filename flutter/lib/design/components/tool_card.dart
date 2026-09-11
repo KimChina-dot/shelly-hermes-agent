@@ -3,6 +3,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+// V3.1 搬迁锚点(PHASE 19 冻结):下面这行 state/chat_session 直连是 design→state
+// 反向边(DEPENDENCY_MAP §3.2),清单 M1a 落地后改指 lib/domain/chat/chat_entry.dart。
+// 见 docs/audit/V31_MIGRATION_CHECKLIST.md M1a。
 import '../../state/chat_session.dart';
 import '../tokens.dart';
 

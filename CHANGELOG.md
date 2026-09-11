@@ -46,8 +46,9 @@ v3.0 架构迁移:按 `docs/audit/V3_MIGRATION_PLAN.md` 以增量并行轨推进
 
 ### 状态说明
 
-- 尚未落地(见 V3_MIGRATION_PLAN.md 执行状态段):安全网补测、cutover 启用迁移、
-  features 收敛(facade)、Home/Composer 余量、平台契约回归、facade 冻结、发布门禁。
+- 安全网补测(PHASE 15)、features facade 收敛(PHASE 16)、cutover 启动迁移(PHASE 18)均已随第三波落地。
+- 尚未落地(见 V3_MIGRATION_PLAN.md 执行状态段):Home/Composer 余量、平台契约回归、facade 冻结标注、
+  双构建 SHA256;本段更新随 3.0.0 版本元数据同步(PHASE 21,plan P15 prep)完成,发布仍未执行。
 
 ## 2.0.0 (2026-09-03)
 

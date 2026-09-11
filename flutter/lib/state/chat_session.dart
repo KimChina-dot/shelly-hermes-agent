@@ -1,3 +1,9 @@
+// V3.1 搬迁锚点(PHASE 19 冻结,V3 计划 P14):move — 本文件 3.1 三拆为
+// lib/domain/chat/chat_entry.dart(ChatEntry 族)+ lib/agent/session_runtime.dart
+// (_TaskRunner 引擎装配)+ lib/application/chat_session_controller.dart(控制器余量)。
+// 机械替换命令与逐文件风险见 docs/audit/V31_MIGRATION_CHECKLIST.md M1;
+// features 消费面经 lib/shelly_facade.dart,搬迁只改写 facade export 行。
+// 注:测试直连(23 文件)与 approval_sheet/tool_card 例外直连按清单 M1a/M1c 同步改写。
 import 'dart:async';
 import 'dart:io';
 

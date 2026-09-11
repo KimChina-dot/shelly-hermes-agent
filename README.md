@@ -92,7 +92,7 @@ dart run tool/mcp_bridge.dart --port 8766 --token <你的令牌> --config server
 
 ## 发布
 
-版本通过 git tag 触发(`v*` → 构建 + 发布 GitHub Release),当前版本 2.3.0。历史版本与 APK / SHA256SUMS 下载见
+版本通过 git tag 触发(`v*` → 构建 + 发布 GitHub Release),当前版本 3.0.0。历史版本与 APK / SHA256SUMS 下载见
 [Releases](https://github.com/KimChina-dot/shelly-hermes-agent/releases)。
 
 ## 相关文档

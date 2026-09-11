@@ -1,6 +1,6 @@
 {
   "name": "shelly-hermes-agent",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "description": "Portable minimal coding-agent core for Android and Windows",

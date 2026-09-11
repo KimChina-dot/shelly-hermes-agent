@@ -1,3 +1,7 @@
+// V3.1 搬迁锚点(PHASE 19 冻结,V3 计划 P14):move → lib/capability/tools/memory_search_tool.dart,
+// 并把 ConversationSummary 下沉 lib/domain/chat/conversation_summary.dart(settings_store 再导出兼容),
+// 就此清零全库唯一 core→state 反向边(DEPENDENCY_MAP §3.1)。
+// 命令与风险见 docs/audit/V31_MIGRATION_CHECKLIST.md M6;搬迁后必须抽测 test/core/migration/。
 import 'dart:convert';
 
 import '../crash/crash_log_store.dart';

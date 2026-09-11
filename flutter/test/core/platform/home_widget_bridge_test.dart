@@ -119,6 +119,27 @@ void main() {
     bridge.dispose();
   });
 
+  test('pushUpdate never breaks the caller when the native side fails '
+      '(PHASE 20: the catch-all swallow is contractual)', () async {
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      throw PlatformException(
+          code: 'hermes_widget', message: 'repaint refused');
+    });
+
+    final bridge = HomeWidgetBridge();
+    await bridge.pushUpdate(
+      lastConversationTitle: '随便一条',
+      conversationCount: 3,
+    );
+
+    expect(calls, hasLength(1),
+        reason: 'pushUpdate must still reach the native side exactly once');
+    bridge.dispose();
+  });
+
   test('does not deliver a cached action after dispose', () async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
