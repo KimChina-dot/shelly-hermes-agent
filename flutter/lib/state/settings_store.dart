@@ -1,3 +1,7 @@
+// V3.1 搬迁锚点(PHASE 19 冻结,V3 计划 P14):wrap — 原路径保留,消费面经
+// lib/shelly_facade.dart 收口。R1 全部 32 个 shelly.* 键与 MigrationManager
+// 锚定本文件,3.1 不整体搬迁;仅 ConversationSummary 随清单 M6 下沉 domain/chat/。
+// 见 docs/audit/MODULE_MAP.md「3.1 处置」列。
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';

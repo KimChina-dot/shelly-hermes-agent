@@ -1,3 +1,7 @@
+// V3.1 搬迁锚点(PHASE 19 冻结,V3 计划 P14):move → lib/agent/runtime/agent_runtime.dart。
+// 引擎组装职责归 agent 层(与 brain/ 同层);agent_context.dart 原地不动。
+// 命令与风险见 docs/audit/V31_MIGRATION_CHECKLIST.md M5;本模块不经 facade,
+// 替换面 = chat_session 直连 + 2 个测试文件。
 // Private fields take named public constructor params, so initializing
 // formals do not apply here.
 // ignore_for_file: prefer_initializing_formals

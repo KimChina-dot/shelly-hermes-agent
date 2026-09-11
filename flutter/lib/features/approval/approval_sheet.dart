@@ -10,6 +10,9 @@ import '../../capability/approval/approval_port.dart'
 import '../../design/components/buttons.dart';
 import '../../design/components/risk_chip.dart';
 import '../../design/tokens.dart';
+// V3.1 搬迁锚点(PHASE 19 冻结):下面这行 state/chat_session 直连(approvalQueueProvider)
+// 是 facade 收口的两个例外之一(PHASE 12 端口策略保留);清单 M1c 落地后改指
+// lib/application/chat_session_controller.dart。见 docs/audit/V31_MIGRATION_CHECKLIST.md M1c。
 import '../../state/chat_session.dart';
 
 /// High-visual-weight approval modal. Each pending request — a whole tool

@@ -1,3 +1,7 @@
+// V3.1 搬迁锚点(PHASE 19 冻结,V3 计划 P14):move → lib/application/hermes_provider.dart。
+// 账本快照编排归 application 层(与 mission_coordinator 同层);自身对
+// chat_session/settings_store 的 import 改 '../state/...' 前缀。
+// 命令与风险见 docs/audit/V31_MIGRATION_CHECKLIST.md M3;facade export 行是唯一 features 改写点。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/hermes/forgetting.dart';

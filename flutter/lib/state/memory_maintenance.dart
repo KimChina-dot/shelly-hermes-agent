@@ -1,3 +1,6 @@
+// V3.1 搬迁锚点(PHASE 19 冻结,V3 计划 P14):move → lib/application/memory_maintenance.dart。
+// 维护服务编排归 application 层;自身 import 全为 ../core/...(同深度,零修正)。
+// 命令与风险见 docs/audit/V31_MIGRATION_CHECKLIST.md M4;facade export 行是唯一 features 改写点。
 // Named constructor params are kept public-named for call-site readability;
 // the initializing-formal rewrite would force private names at call sites.
 // ignore_for_file: prefer_initializing_formals

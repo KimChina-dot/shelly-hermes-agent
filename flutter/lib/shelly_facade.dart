@@ -18,6 +18,13 @@
 /// and is intentionally left on that path.
 ///
 /// This file must stay logic-free: re-exports only.
+///
+/// PHASE 19 (V3 migration plan P14) — facade FROZEN. Every export line below
+/// carries a keep/wrap/move disposition in docs/audit/MODULE_MAP.md (§1-§8);
+/// the six `move` entries are executed in v3.1 strictly per
+/// docs/audit/V31_MIGRATION_CHECKLIST.md (M1-M6, one mechanical step + full
+/// test gate each). Until then this export set does not change: additions or
+/// removals beyond the checklist are rejected by the controller decision.
 library;
 
 // ---------------------------------------------------------------------------
